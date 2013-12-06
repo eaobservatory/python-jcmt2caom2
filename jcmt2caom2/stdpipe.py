@@ -1,0 +1,1496 @@
+#!/usr/bin/env python2.7
+#/*+
+#************************************************************************
+#****  C A N A D I A N   A S T R O N O M Y   D A T A   C E N T R E  *****
+#*
+#* (c) 2013.                  (c) 2013.
+#* National Research Council        Conseil national de recherches
+#* Ottawa, Canada, K1A 0R6         Ottawa, Canada, K1A 0R6
+#* All rights reserved            Tous droits reserves
+#*
+#* NRC disclaims any warranties,    Le CNRC denie toute garantie
+#* expressed, implied, or statu-    enoncee, implicite ou legale,
+#* tory, of any kind with respect    de quelque nature que se soit,
+#* to the software, including        concernant le logiciel, y com-
+#* without limitation any war-        pris sans restriction toute
+#* ranty of merchantability or        garantie de valeur marchande
+#* fitness for a particular pur-    ou de pertinence pour un usage
+#* pose.  NRC shall not be liable    particulier.  Le CNRC ne
+#* in any event for any damages,    pourra en aucun cas etre tenu
+#* whether direct or indirect,        responsable de tout dommage,
+#* special or general, consequen-    direct ou indirect, particul-
+#* tial or incidental, arising        ier ou general, accessoire ou
+#* from the use of the software.    fortuit, resultant de l'utili-
+#*                     sation du logiciel.
+#*
+#************************************************************************
+#*
+#*   Script Name:    stdpipe.py
+#*
+#*   Purpose:
+#*    Ingest JCMT standard pipeline products into CAOM 2.0 using fits2caom2
+#*
+#+ Usage: stdpipe.py [options]
+#+
+#+ Options:
+#+  -h, --help            show this help message and exit
+#+  --qsub                (optional) submit to gridengine
+#+  --container=CONTAINER
+#+                        (optional) file containing a pickled container
+#+  --archive=ARCHIVE     mandatory AD archive recording the data files
+#+  --stream=STREAM       (optional) use adPut to put FITS files into AD with
+#+                        this stream
+#+  --adput
+#+  --server=SERVER
+#+  --database=DATABASE
+#+  --schema=SCHEMA
+#+  --config=CONFIG       (optional) path to fits2caom2 config file
+#+  --default=DEFAULT     (optional) path to fits2caom2 default file
+#+  --outdir=OUTDIR       output directory, (default = current directory
+#+  --test                (optional) simulate operation of fits2caom2
+#+  --log=LOG             (optional) name of the log file
+#+  --quiet               (optional) only show error messages
+#+  --verbose             (optional) show warning and error messages
+#+  --debug               (optional) show all messages
+#*
+#*
+#****  C A N A D I A N   A S T R O N O M Y   D A T A   C E N T R E  *****
+#************************************************************************
+#-*/
+"""
+The stdpipe class immplements methods to collect metadata from a a set of FITS
+files and from the jcmtmd database that will be passed to fits2caom2 to
+construct a caom2 observation.  Once completed, it is serialized to a temporary
+xml file in outdir and copied to the CAOM-2 repository.
+
+This routine requires read access to the jcmtmd database, but does only reads.
+It should therefore access SYBASE rather than DEVSYBASE unless heavy loading
+makes SYBASE access problematic.
+"""
+
+__author__ = "Russell O. Redman"
+
+from contextlib import contextmanager
+import logging
+import os.path
+import pyfits
+import re
+import string
+
+from caom2.xml.caom2_observation_reader import ObservationReader
+from caom2.xml.caom2_observation_writer import ObservationWriter
+
+from caom2.caom2_enums import CalibrationLevel
+from caom2.caom2_enums import ObservationIntentType
+from caom2.wcs.caom2_axis import Axis
+from caom2.wcs.caom2_coord_axis1d import CoordAxis1D
+from caom2.wcs.caom2_coord_bounds1d import CoordBounds1D
+from caom2.wcs.caom2_coord_range1d import CoordRange1D
+from caom2.wcs.caom2_ref_coord import RefCoord
+from caom2.wcs.caom2_temporal_wcs import TemporalWCS
+from caom2.caom2_enums import ProductType
+
+from tools4caom2.database import database
+from tools4caom2.ingest2caom2 import ingest2caom2
+from tools4caom2.timezone import UTC
+from tools4caom2.mjd import utc2mjd
+
+
+# from caom2.caom2_enums import CalibrationLevel
+# from caom2.caom2_enums import DataProductType
+
+def jcmtcmp(f1, f2):
+    # This comparison should order files so that
+    # 1) Files with earlier versions are before files with later versions
+    # 2) FITS products are ingested in the order
+    #    NIT OBS / CUBE REDUCED RIMG RSP
+    # 3) Catalogs are ingested immediately after the SMOOTH files from which
+    #    they were generated
+    orderprod = {'cube': 1,
+                 'reduced': 2,
+                 'rimg': 3,
+                 'rsp': 4}
+    
+    # Associations will be ingested in "reverse" order for heteroyne data, 
+    # i.e. all nit, pro and pub products will be ingested before obs products,
+    # because masks used for obs products are derived from composite products
+    
+    # Associations will be ingested in the "normal" order for SCUBA-2, 
+    # i.e. obs before nit, pro and pub, because composites can be built 
+    # from obs products
+    orderasn = {'jcmth': {'obs': '4',
+                          'nit': '3',
+                          'pro': '2',
+                          'pub': '1'},
+                'jcmts': {'obs': '1',
+                          'nit': '2',
+                          'pro': '3',
+                          'pub': '4'}}
+    try:
+        (date1, obs1, subsys1, prod1, asntype1, version1) = \
+            re.split(r'_', os.path.splitext(os.path.basename(f1))[0])
+    except:
+        print f1, f2
+        raise
+    
+    
+    if re.match(r'[a-z]+\d{3}', prod1):
+        tile1 = prod1[-3:]
+        prod1 = prod1[:-3]
+    else:
+        tile1 = ''
+    text1 = orderasn[date1[0:5]][asntype1] + date1 + obs1 + subsys1 + tile1
+
+    (date2, obs2, subsys2, prod2, asntype2, version2) = \
+        re.split(r'_', os.path.splitext(os.path.basename(f2))[0])
+    if re.match(r'[a-z]+\d{3}', prod2):
+        tile2 = prod2[-3:]
+        prod2 = prod2[:-3]
+    else:
+        tile2 = ''
+    text2 = orderasn[date2[0:5]][asntype2] + date2 + obs2 + subsys2 + tile2
+
+    val = cmp(orderprod[prod1], orderprod[prod2])
+    if val == 0:
+        val = cmp(text1, text2)
+    return val
+
+
+# define the jcmt2caom class to manage the ingestions
+class stdpipe(ingest2caom2):
+    """
+    A derived class of ingest2caom2 specialized to ingest JCMT standard pipeline
+    products.
+    """
+    speedOfLight = 2.9979250e8 # Speed of light in m/s
+    lambda_csotau = 225.0e9 # Frequency of CSO tau meter in Hz
+    raw_acsis_regex = \
+        r'^([ah])(20[\d]{2})(0[1-9]|1[012])(0[1-9]|[12][0-9]|3[01])_' +\
+        r'([\d]{5})_([\d]{2})_([\d]{4})$'
+    raw_scuba2_regex = \
+        r'^(s[48][abcd])(20[\d]{2})(0[1-9]|1[012])(0[1-9]|[12][0-9]|3[01])_' +\
+        r'([\d]{5})_([\d]{4})$'
+    proc_acsis_regex = \
+        r'jcmth(20[\d]{2})(0[1-9]|1[012])(0[1-9]|[12][0-9]|3[01])_' +\
+        r'([\d]{5})_(0[0-4])_(cube[\d]{3}|reduced[\d]{3}|rimg|rsp|rvel|' + \
+        r'linteg[\d]{3}|sp[\d]{3}|std)_(obs|nit|pro|pub)_([\d]{3})$'
+    proc_scuba2_regex = \
+        r'jcmts(20[\d]{2})(0[1-9]|1[012])(0[1-9]|[12][0-9]|3[01])_' +\
+        r'([\d]{5})_([48]50)_(reduced[\d]{3})_(obs|nit|pro|pub)_([\d]{3})$'
+
+    def __init__(self):
+        ingest2caom2.__init__(self)
+        self.archive = 'JCMT'
+        self.stream = 'product'
+        self.server = 'SYBASE'
+        self.database = 'jcmt'
+        self.needs_connection = True
+        
+
+        # set default locations for the config files, if they can be found
+        configpath = os.path.join(self.configpath, 'jcmt_stdpipe.config')
+        if os.path.exists(configpath):
+            self.config = configpath
+        defaultpath = os.path.join(self.configpath, 'jcmt_stdpipe.default')
+        if os.path.exists(defaultpath):
+            self.default = defaultpath
+
+        # set the JCMT comparison function
+        self.cmpfunc = jcmtcmp
+
+        self.UTC = UTC()
+
+        # Connection to database
+        self.conn = None
+
+        # Log level for validity checking
+        self.validitylevel = logging.ERROR
+
+        # Append another argument to the list of command line switches
+        self.arg.add_argument('--check',
+                              action='store_true',
+                              help='Only do the validity tests for a FITS file')
+
+        # get xml file reader and writer, to allow insertion of the
+        # time structures for chunks with WCS
+        self.reader = ObservationReader(True)
+        self.writer = ObservationWriter()
+
+    #************************************************************************
+    # Include the custome command line switch in the log
+    #************************************************************************
+    def logCommandLineSwitches(self):
+        """
+        Log the values of the command line switches.
+
+        Arguments:
+        <none>
+        """
+        ingest2caom2.logCommandLineSwitches(self)
+
+        if self.switches.check:
+            self.validitylevel = logging.WARN
+
+        self.log.console('check           = ' + str(self.switches.check))
+        self.log.console('')
+
+    #************************************************************************
+    # Connect to the database for JCMT-specific metadata
+    #************************************************************************
+    def connection(self):
+        '''
+        JCMT-specific code to connect to the JSA to read additional metadata from
+        the TDM.
+        '''
+        return database(self.server,
+                        self.database,
+                        self.log)
+
+    # Utility for checking missing headers
+    def check_missing(self, key, head):
+        """
+        Check whether a header expected in head is missing or undefined.
+        If so, append the key to the list of missing headers.
+
+        Arguments:
+        key: name of a FITS keyword that should be in the header
+        head: pyfits header or a dictionary of headers
+
+        Return:
+        True if the key is missing or undefined, False otherwise
+        """
+        bad = False
+        if key not in head or head[key] == pyfits.card.UNDEFINED:
+            self.log.console('Mandatory header ' + key + ' is missing',
+                             logging.WARN)
+            bad = True
+        return bad
+
+    # Utility for checking missing headers
+    def check_values(self, key, head, acceptable):
+        """
+        Check whether a the value of a keyword is in the list of acceptable 
+        values. If not, log the keyword, value and list of acceptable values.
+
+        Arguments:
+        key: name of a FITS keyword that should be in the header
+        head: pyfits header or a dictionary of headers
+        acceptable: list of acceptable values
+
+        Return:
+        True if the key is missing or not in the acceptable list, False otherwise
+        """
+        bad = False
+        if key not in head:
+            self.log.console('Mandatory header ' + key + ' is missing',
+                             logging.WARN)
+            bad = True
+
+        else:
+            value = head[key]
+            if isinstance(value, str):
+                value = value.strip()
+            
+            if value not in acceptable:
+                acceptable_list = \
+                    ['UNDEFINED' if v == pyfits.card.UNDEFINED else v
+                     for v in acceptable]
+                acceptable_str = '[' + ', '.join(acceptable_list) + ']'
+                self.log.console('Mandatory header ' + key + 
+                                 ' has the value "' +
+                                 value + '" but should be in ' +
+                                 acceptable_str,
+                                 logging.WARN)
+                bad = True
+        return bad
+
+    #************************************************************************
+    # archive-specific structures to write override files
+    #************************************************************************
+    def build_dict(self, header):
+        '''Archive-specific code to read the common dictionary from the
+               file header.
+           The following keys must be defined:
+               collection
+               observationID
+               productID
+        '''
+
+        self.log.file('Entering build_dict')
+        if 'file_id' not in header:
+            self.log.console('No file_id in ' + repr(header),
+                             logging.ERROR)
+        file_id = header['file_id']
+
+        self.log.console('Starting ' + file_id)
+        # Doing all the required checks here simplifies the code
+        # farther down and ensures error reporting of these basic problems
+        # even if the ingestion fails before reaching the place where the
+        # header would be used.
+
+        someBAD = False
+
+        # check that all headers are acceptable
+        someBAD |= self.check_acceptable_headers(header)
+
+        # Check that the mandatory file headers exist
+        # it is not necessary to check here for keywords that have restricted
+        # sets of acceptable values, since they will be subject to more detailed
+        # testing below.
+        mandatory = ('ASN_TYPE',
+                     'BITPIX',
+                     'CHECKSUM',
+                     'DATASUM',
+                     'DPDATE',
+                     'DPRCINST',
+                     'FILEID',
+                     'INSTREAM',
+                     'OBSGEO-X',
+                     'OBSGEO-Y',
+                     'OBSGEO-Z',
+                     'PIPEVERS',
+                     'PROCVERS',
+                     'PRODUCT',
+                     'RECIPE',
+                     'SIMULATE',
+                     'TELESCOP')
+        for key in mandatory:
+            someBAD |= self.check_missing(key, header)
+
+        # Conditionally mandatory
+        if header['ASN_TYPE'] in ('obs',):
+            someBAD |= self.check_missing('OBSID', header)
+        else:
+            # any other value for ASN_TYPE indicates a composite observation
+            someBAD |= self.check_missing('ASN_ID', header)
+
+        # We will need self.observationID and algorithm for later error
+        # checking, so compute them here.
+        if header['ASN_TYPE'] == 'obs':
+            algorithm = 'exposure'
+            self.observationID = header['OBSID']
+        else:
+            algorithm = header['ASN_TYPE']
+            self.observationID = header['ASN_ID']
+
+        self.log.console('observationID = ' + self.observationID,
+                         logging.DEBUG)
+        self.log.console('algorithm.name = ' + algorithm,
+                         logging.DEBUG)
+
+        if header['BACKEND'] in ('SCUBA-2',):
+            someBAD |= self.check_missing('FILTER', header)
+        else:
+            # ACSIS-like files must define the SUBSYSNR
+            someBAD |= self.check_missing('SUBSYSNR', header)
+
+        if int(header['OBSCNT']) > 0:
+            for n in range(int(header['OBSCNT'])):
+                obsn = 'OBS' + str(n+1)
+                someBAD |= self.check_missing(obsn, header)
+
+        if int(header['PRVCNT']) > 0:
+            for n in range(int(header['PRVCNT'])):
+                prvn = 'PRV' + str(n+1)
+                someBAD |= self.check_missing(prvn, header)
+
+        # Check that headers with restricted sets of values are valid
+        someBAD |= self.check_values('ASN_TYPE', header,
+                                     ['obs', 'night', 'project', 'night'])
+
+        backendBAD = self.check_values('BACKEND', header,
+                                       ['ACSIS', 'DAS', 'AOS-C', 'SCUBA-2'])
+        someBAD |= backendBAD
+
+        if not backendBAD:
+            # Only do thse tests if the backend is OK
+            if header['BACKEND'] == 'ACSIS':
+                someBAD |= self.check_values('INBEAM', header,
+                    [pyfits.card.UNDEFINED,
+                     'POL'])
+
+                someBAD |= self.check_values('INSTRUME', header,
+                    ['HARP', 'RxA3', 'RxWB', 'RxWD2'])
+
+                someBAD |= self.check_values('OBS_TYPE', header,
+                    ['pointing', 'science', 'focus', 'skydip'])
+
+                someBAD |= self.check_values('SAM_MODE', header,
+                    ['jiggle', 'grid', 'raster', 'scan'])
+
+                someBAD |= self.check_values('SB_MODE', header,
+                    ['DSB', 'SSB'])
+
+                someBAD |= self.check_values('OBS_SB', header,
+                    ['LSB', 'USB'])
+
+                someBAD |= self.check_values('SURVEY', header,
+                    [pyfits.card.UNDEFINED,
+                     'GBS', 'NGS', 'SLS'])
+
+                someBAD |= self.check_values('SW_MODE', header,
+                    ['chop', 'freqsw', 'none', 'pssw'])
+
+            elif header['BACKEND'] == 'SCUBA-2':
+                someBAD |= self.check_values('INBEAM', header,
+                    [pyfits.card.UNDEFINED,
+                     'POL', 'fts2', 'shutter'])
+
+                someBAD |= self.check_values('INSTRUME', header,
+                    ['SCUBA-2'])
+
+                someBAD |= self.check_values('OBS_TYPE', header,
+                    ['pointing', 'science', 'focus', 'skydip',
+                     'flatfield', 'setup', 'noise'])
+
+                someBAD |= self.check_values('SAM_MODE', header,
+                    ['scan', 'stare'])
+
+                someBAD |= self.check_values('SURVEY', header,
+                    [pyfits.card.UNDEFINED,
+                     'CLS', 'DDS', 'GBS', 'JPS', 'NGS', 'SASSY'])
+
+                someBAD |= self.check_values('SW_MODE', header,
+                    ['none', 'self'])
+            
+            # verify membership headers are real observations
+            max_release_date = None
+            obstimes = {}
+
+            self.log.file('Reading membership',
+                          logging.DEBUG)
+            if 'OBSCNT' in header:
+                obscnt = int(header['OBSCNT'])
+                self.log.console('OBSCNT = ' + str(obscnt),
+                                 logging.DEBUG)
+                if obscnt > 0:
+                    for i in range(obscnt):
+                        # Starlink records the obsid-subsysnr in OBSn to
+                        # identify the input observation.  There is no ICD
+                        # to parse the obsid_subsysnr; the FILES and ACSIS 
+                        # tables provide the only valid translation from 
+                        # obsid_subsysnr to obsid.  The COMMON table provides 
+                        # the definitive source for raw data release dates,
+                        # from which pipeline product release dates are 
+                        # computed.
+                        obskey = 'OBS' + str(i + 1)
+                        obsn = header[obskey]
+                        sqlcmd = """
+                                 SELECT distinct f.obsid,
+                                                 c.release_date,
+                                                 c.date_obs,
+                                                 c.date_end
+                                 FROM jcmtmd.dbo.FILES f
+                                    inner join jcmtmd.dbo.COMMON c
+                                         on f.obsid=c.obsid
+                                 WHERE f.obsid_subsysnr = '%s'
+                                 """ % (obsn,)
+                        result = self.conn.read(sqlcmd)
+                        if len(result):
+                            obsid, release_date, date_obs, date_end = result[0]
+
+                            # record the time interval
+                            if ((algorithm != 'exposure'
+                                 or obsid == self.observationID)
+                                and obsid not in obstimes):
+                                    obstimes[obsid] = (date_obs, date_end)
+
+# Check whether out-of-observation OBSn headers are just recording the mask
+#                            if algorithm != 'exposure':
+#                                if obsid != self.observationID:
+#                                    self.log.console(
+#                                        obskey + ' => ' + obsid +
+#                                        ' which is not in ' +
+#                                        self.observationID,
+#                                        logging.WARN)
+#                                    someBAD = True
+
+                            if max_release_date:
+                                if max_release_date < release_date:
+                                    max_release_date = release_date
+                            else:
+                                max_release_date = release_date
+
+                        else:
+                            self.log.console('Member key ' + obsn + ' is '
+                                             'not in jcmtmd.dbo.FILES',
+                                             logging.WARN)
+                            someBAD = True
+
+            if algorithm != 'exposure' and not obstimes:
+                # It is an error if a composite has no members
+                self.log.console('No members in a composite '
+                                 'observation: ' + self.observationID,
+                                 logging.WARN)
+                someBAD = True
+
+            if not max_release_date:
+                self.log.console('Release date could not be '
+                                 'calculated from membership: ' +
+                                 self.observationID,
+                                 logging.WARN)
+                someBAD = True
+            
+            # Translate the PRV1..PRV<PRVCNT> headers into plane URIs
+            product = header['PRODUCT']
+            self.log.file('Reading provenance')
+            prvprocset = set()
+            prvrawset = set()
+
+            if (product not in ('rimg', 'rsp') and
+                'PRVCNT' in header and
+                header['PRVCNT'] != pyfits.card.UNDEFINED):
+
+                prvcnt = int(header['PRVCNT'])
+                self.log.file('PRVCNT = ' + str(prvcnt))
+                if prvcnt > 0:
+                    for i in range(prvcnt):
+                        # Verify that files in provenance are being ingested
+                        # or have already been ingested.
+                        prvkey = 'PRV' + str(i + 1)
+                        prvn = header[prvkey]
+                        self.log.file(prvkey + ' = ' + prvn)
+                        if (re.match(stdpipe.proc_acsis_regex, prvn) or
+                            re.match(stdpipe.proc_scuba2_regex, prvn)):
+                            # Does this look like a processed file?
+                            # An existing problem is that some files include 
+                            # themselves in their provenance, but are otherwise
+                            # OK.
+                            if prvn == file_id:
+                                self.log.console(
+                                    'file_id = ' + file_id + ' includes itself'
+                                    ' in its provenance as ' + prvkey,
+                                    logging.WARN)
+                                continue
+                            prvprocset.add(prvn)
+
+                        elif (re.match(stdpipe.raw_acsis_regex, prvn) or
+                              re.match(stdpipe.raw_scuba2_regex, prvn)):
+                            # Does it look like a raw file?
+                            if algorithm == 'exposure':
+                                sqlcmd = """
+                                         SELECT obsid
+                                         FROM jcmtmd.dbo.FILES
+                                         WHERE file_id = '%s.sdf'
+                                         """ % (prvn,)
+                                result = self.conn.read(sqlcmd)
+                                if len(result):
+                                    obsid = result[0][0]
+                                    if obsid != self.observationID:
+                                        continue
+                            # Add the file if this is NOT an exposure,
+                            # or if it is and the file is part of the same exposure
+                            prvrawset.add(prvn)
+# Code to complain
+#                                        self.log.console(
+#                                            prvkey + ' => ' + obsid +
+#                                            ' which is not in ' +
+#                                            self.observationID,
+#                                            logging.WARN)
+#                                        someBAD = True
+                        else:
+                            # There are many files with bad provenance.
+                            # This should be an error, but it is prudent
+                            # to report it as a warning untill all of the
+                            # otherwise valid recipes have been fixed.
+                            self.log.console('In file "' + file_id + '", ' +
+                                             prvkey + ' = ' + prvn + ' is '
+                                             'neither processed nor raw',
+                                             logging.WARN)
+                            # Remove the comment character to make this 
+                            # conditiuon an error.
+                            # someBAD = True
+
+        # Report any problems that have been encountered, including
+        # the file name
+        if someBAD:
+            self.log.console('Bad headers in ' + file_id,
+                             self.validitylevel)
+        else:
+            # In check mode, return immediately without attempting ingestion
+            if self.switches.check:
+                self.log.console('SUCCESS: header check passes for ' + file_id)
+            else:
+                self.log.console('PROGRESS: header check passes for ' + file_id)
+        if self.switches.check:
+            return
+                
+        #----------------------------------------------------------------------
+        # Only get here if NOT in check mode
+        # Begin real ingestion
+        #----------------------------------------------------------------------
+        self.collection = 'JCMT'
+
+        # Determine whether this is a simple or composite observation
+        self.add_to_plane_dict('algorithm.name', algorithm)
+        if algorithm != 'exposure':
+            for obsid in list(obstimes):
+                obsnURI = self.observationURI(self.collection,
+                                              obsid)
+
+        # proposal - define this structure only if the proposal is unambiguous
+        if 'PROJECT' in header and header['PROJECT'] != pyfits.card.UNDEFINED:
+            self.add_to_plane_dict('proposal.id', header['PROJECT'])
+
+            if 'SURVEY' in header and header['SURVEY'] != pyfits.card.UNDEFINED:
+                self.add_to_plane_dict('proposal.project', header['SURVEY'])
+
+            sqlcmd = '\n'.join([
+                'SELECT ',
+                '    ou.uname,',
+                '    op.title',
+                'FROM jcmtmd.dbo.ompproj op',
+                '    left join jcmtmd.dbo.ompuser ou on op.pi=ou.userid',
+                'WHERE op.projectid="%s"' % (header['PROJECT'],)])
+            answer = self.conn.read(sqlcmd)
+
+            if len(answer):
+                self.add_to_plane_dict('proposal.pi',
+                                       answer[0][0])
+                self.add_to_plane_dict('proposal.title',
+                                       answer[0][1])
+
+        # Instrument
+        keywords = []
+
+        if 'BACKEND' in header and header['BACKEND'] != pyfits.card.UNDEFINED:
+            instrument = header['BACKEND'].upper()
+            self.add_to_plane_dict('instrument.name', instrument)
+            for key in ('INSTRUME', 'SW_MODE', 'INBEAM'):
+                if (key in header and header[key] != pyfits.card.UNDEFINED):
+                    keywords.append(header[key].upper())
+
+            if instrument in ('ACSIS', 'DAS', 'AOS-C'):
+                if algorithm == 'exposure':
+                    # Is this a hybrid-mode observation? 
+                    sqlcmd = '\n'.join(
+                        ['SELECT count(a.subsysnr)',
+                         'FROM jcmtmd.dbo.ACSIS a',
+                         'WHERE a.obsid="%s"' % (header['OBSID'], ),
+                         'GROUP BY a.obsid,',
+                         '         a.restfreq,',
+                         '         a.iffreq,',
+                         '         a.ifchansp'])
+                    result = self.conn.read(sqlcmd)
+                    if len(result):
+                        for cnt, in result:
+                            if cnt > 1:
+                                keywords.append('HYBRID')
+                                break
+                    else:
+                        self.log.console('Could not find OBSID for' +
+                                         file_id,
+                                         logging.ERROR)
+
+                for key in ('OBS_SB', 'SB_MODE'):
+                    if (key in header and
+                        header[key] != pyfits.card.UNDEFINED):
+                        keywords.append(header[key].upper())
+
+            self.add_to_plane_dict('instrument.keywords',
+                                   ' '.join(keywords))
+
+        # Environment
+        if 'SEEINGST' in header and header['SEEINGST'] != pyfits.card.UNDEFINED:
+            self.add_to_plane_dict('environment.seeing',
+                                   '%f' % (header['SEEINGST'],))
+
+        if 'HUMSTART' in header and header['HUMSTART'] != pyfits.card.UNDEFINED:
+            # Humity is reported in %, but should be scaled to [0.0, 1.0]
+            self.add_to_plane_dict('environment.humidity',
+                                   '%f' % (header['HUMSTART'] / 100.0,))
+
+        if 'ELSTART' in header and header['ELSTART'] != pyfits.card.UNDEFINED:
+            self.add_to_plane_dict('environment.elevation',
+                                   '%f' % (header['ELSTART'],))
+
+        if 'TAU225ST' in header and header['TAU225ST'] != pyfits.card.UNDEFINED:
+            self.add_to_plane_dict('environment.tau',
+                                   '%f' % (header['TAU225ST'],))
+            wave_tau = '%12.9f' % (stdpipe.speedOfLight/stdpipe.lambda_csotau)
+            self.add_to_plane_dict('environment.wavelengthTau',
+                                   wave_tau)
+
+        if 'ATSTART' in header and header['ATSTART'] != pyfits.card.UNDEFINED:
+            self.add_to_plane_dict('environment.ambientTemp',
+                                   '%f' % (header['ATSTART'],))
+
+
+        # if they are unambiguous, calculate the observation type
+        # from OBS_TYPE and SAM_MODE.
+        obs_type = None
+        if 'OBS_TYPE' in header and header['OBS_TYPE'] != pyfits.card.UNDEFINED:
+            obs_type = header['OBS_TYPE'].strip()
+            if obs_type == "science":
+                self.add_to_plane_dict('obs.intent', 'science')
+            else:
+                self.add_to_plane_dict('obs.intent', 'calibration')
+
+            if ('SAM_MODE' in header and
+                header['SAM_MODE'] != pyfits.card.UNDEFINED):
+
+                if obs_type == "science":
+                    if header["SAM_MODE"] == "raster":
+                        self.add_to_plane_dict('OBSTYPE',
+                                               'scan')
+                    else:
+                        self.add_to_plane_dict('OBSTYPE',
+                                               header['SAM_MODE'])
+                else:
+                    if obs_type not in ("phase", "ramp"):
+                        self.add_to_plane_dict('OBSTYPE',
+                                               obs_type)
+
+        # Plane metadata
+        product = header['PRODUCT']
+        if header['INSTRUME'] == 'SCUBA-2':
+            self.productID = product + '_' + str(header['FILTER'])
+            self.add_to_plane_dict('plane.calibrationLevel',
+                                   str(CalibrationLevel.CALIBRATED.value))
+        else:  # ACSIS-like backends
+            if product in ['reduced', 'rimg', 'rsp']:
+                self.productID = 'reduced_' + str(header['SUBSYSNR'])
+            elif product == 'cube':
+                # like raw data files, cube files need to be grouped into
+                # hybrid planes.  These are the same as ACSIS subsystems if
+                # the observation does not include hybrid mode sybsystems.
+                sqlcmd = '\n'.join(
+                    ['SELECT min(a.subsysnr)',
+                     'FROM jcmtmd.dbo.ACSIS a',
+                     '    INNER JOIN (',
+                     '        SELECT aa.obsid,',
+                     '               aa.restfreq,',
+                     '               aa.iffreq,',
+                     '               aa.ifchansp',
+                     '        FROM jcmtmd.dbo.ACSIS aa',
+                     '        WHERE aa.obsid="%s" AND' % (header['OBSID'], ),
+                     '              aa.subsysnr=%s) s' % (header['SUBSYSNR'], ),
+                     '            ON a.obsid=s.obsid AND',
+                     '               a.restfreq=s.restfreq AND',
+                     '               a.iffreq=s.iffreq AND',
+                     '               a.ifchansp=s.ifchansp',
+                     'GROUP BY a.obsid,',
+                     '         a.restfreq,',
+                     '         a.iffreq,',
+                     '         a.ifchansp'])
+                result = self.conn.read(sqlcmd)
+                if len(result):
+                    self.productID = 'cube_%d' % result[0]
+                else:
+                    self.log.console('Could not generate productID for' +
+                                     file_id,
+                                     logging.ERROR)
+            else:
+                self.productID = product + '_' + str(header['SUBSYSNR'])
+
+            if product == 'cube':
+                self.add_to_plane_dict('plane.calibrationLevel',
+                                       str(CalibrationLevel.RAW_STANDARD.value))
+            else:
+                self.add_to_plane_dict('plane.calibrationLevel',
+                                       str(CalibrationLevel.CALIBRATED.value))
+
+        # Define the productID, dataProductType and calibrationLevel
+        # Axes are always in the order X, Y, Freq, Pol
+        # but may be degenerate with length 1.  Only compute the 
+        # dataProductType for science data.
+        if product in ['reduced', 'cube']:
+            if (header['NAXIS'] == 3 or
+                (header['NAXIS'] == 4 and header['NAXIS4'] == 1)):
+                if (header['NAXIS1'] == 1 and 
+                    header['NAXIS2'] == 1):
+                    dataProductType = 'spectrum'
+                elif header['NAXIS3'] == 1:
+                    dataProductType = 'image'
+                else:
+                    dataProductType = 'cube'
+            else:
+                # getting here is normally an error in data engineering, 
+                # not a problem with the file
+                self.log.console('unrecognized data array structure' +
+                    ': NAXIS=' + str(header['NAXIS']) + ' ' +
+                    ' '.join([na + '=' + str(header[na]) 
+                              for na in ['NAXIS' + str(n + 1) 
+                                         for n in range(header['NAXIS'])]]),
+                                logging.ERROR)
+                                                    
+            self.add_to_plane_dict('plane.dataProductType',
+                                   dataProductType)
+        # Provenance
+        if 'RECIPE' in header and header['RECIPE'] != pyfits.card.UNDEFINED:
+            self.add_to_plane_dict('provenance.name',
+                                   header['RECIPE'])
+            self.add_to_plane_dict('provenance.project',
+                                   'JCMT_STANDARD_PIPELINE')
+
+            if ('ENGVERS' in header and
+                header['ENGVERS'] != pyfits.card.UNDEFINED):
+                self.add_to_plane_dict('provenance.version',
+                                       header['ENGVERS'])
+
+            if ('PRODUCER' in header and
+                header['PRODUCER'] != pyfits.card.UNDEFINED):
+                self.add_to_plane_dict('provenance.producer',
+                                       header['PRODUCER'])
+
+            if ('DPRCINST' in header and
+                header['DPRCINST'] != pyfits.card.UNDEFINED):
+                self.add_to_plane_dict('provenance.runID',
+                                       str(header['DPRCINST']))
+
+            if ('DPDATE' in header and
+                header['DPDATE'] != pyfits.card.UNDEFINED):
+                self.add_to_plane_dict('provenance.lastExecuted',
+                                       header['DPDATE'])
+
+            # Translate the PRV1..PRV<PRVCNT> headers into plane URIs
+            self.log.file('Reading provenance')
+            if prvprocset:
+                for prvn in list(prvprocset):
+                    # check if we have just ingested this file
+                    prvnURI = self.fitsfileURI(self.archive,
+                                               prvn,
+                                               fits2caom2=False)
+                    (c, o, p) = self.findURI(prvnURI)
+                    if c:
+                        self.planeURI(c, o, p)
+                    else:
+                        self.log.console('for file_id = ' + file_id + 
+                                         ' processed file in provenance has not '
+                                         'yet been ingested:' + prvn,
+                                         logging.WARN)
+
+            if prvrawset:
+                for prvn in list(prvrawset):
+                    # check if the file is actually a raw file
+                    if header['BACKEND'] in ['ACSIS', 'DAS', 'AOS']:
+                        # if so, find the hybrid mode subsystem for this file.
+                        sqlcmd = '\n'.join(
+                            ['SELECT a.obsid,',
+                             '       min(a.subsysnr)',
+                             'FROM jcmtmd.dbo.ACSIS a',
+                             '    INNER JOIN (',
+                             '        SELECT aa.obsid,',
+                             '               aa.restfreq,',
+                             '               aa.iffreq,',
+                             '               aa.ifchansp',
+                             '        FROM jcmtmd.dbo.ACSIS aa',
+                             '             INNER JOIN jcmtmd.dbo.FILES f'
+                             '               ON f.obsid_subsysnr=aa.obsid_subsysnr',
+                             '        WHERE f.file_id="%s.sdf") s' % (prvn, ),
+                             '          ON a.obsid = s.obsid AND',
+                             '             a.restfreq=s.restfreq AND',
+                             '             a.iffreq=s.iffreq AND',
+                             '             a.ifchansp=s.ifchansp',
+                             'GROUP BY a.obsid,',
+                             '         a.restfreq,',
+                             '         a.iffreq,',
+                             '         a.ifchansp'])
+                    else:
+                        sqlcmd = '\n'.join([
+                            'SELECT s.obsid,',
+                            '       s.filter',
+                            'FROM jcmtmd.dbo.SCUBA2 s',
+                            '    INNER JOIN jcmtmd.dbo.FILES f',
+                            '        ON s.obsid_subsysnr=f.obsid_subsysnr',
+                            '            AND f.file_id = "%s.sdf"' % (prvn, )])
+                    result = self.conn.read(sqlcmd)
+                    if len(result):
+                        obsid, hybridnr = result[0]
+                        self.planeURI(self.collection,
+                                      obsid,
+                                      'raw_' + str(hybridnr))
+                    else:
+                        self.log.console('raw file in provenance not in '
+                                         'jcmtmd.dbo.FILES:' + prvn,
+                                         logging.WARN)
+                             
+        max_release_date_str = max_release_date.isoformat()
+        self.add_to_plane_dict('obs.metaRelease',
+                               max_release_date_str)
+        self.add_to_plane_dict('plane.metaRelease',
+                               max_release_date_str)
+        self.add_to_plane_dict('plane.dataRelease',
+                               max_release_date_str)
+        
+        # Chunk
+        if header['BACKEND'] in ('SCUBA-2',):
+            if ('FILTER' in header and
+                header['FILTER'] != pyfits.card.UNDEFINED):
+                self.add_to_plane_dict('bandpassName', str(header['FILTER']))
+        elif header['BACKEND'] in ('ACSIS',):
+            if ('MOLECULE' in header and
+                header['MOLECULE'] not in (pyfits.card.UNDEFINED, 'No Line')):
+                self.add_to_plane_dict('energy.transition.species',
+                                       header['MOLECULE'])
+                self.add_to_plane_dict('energy.transition.transition',
+                                       header['TRANSITI'])
+
+        if product in ['cube', 'reduced']:
+            primaryURI = self.fitsextensionURI(self.archive,
+                                               file_id,
+                                               [0])
+            if obs_type == 'science':
+                self.add_to_fitsuri_dict(primaryURI,
+                                         'part.productType', 
+                                         ProductType.SCIENCE.value)
+            else:
+                self.add_to_fitsuri_dict(primaryURI,
+                                         'part.productType', 
+                                         ProductType.CALIBRATION.value)
+
+            varianceURI = self.fitsextensionURI(self.archive,
+                                               file_id,
+                                               [1])
+            self.add_to_fitsuri_dict(varianceURI,
+                                     'part.productType',
+                                     ProductType.NOISE.value)
+
+#            ignore_wcs_URI = self.fitsextensionURI(self.archive,
+#                                               file_id,
+#                                               [(3, 999)])
+#            self.add_to_fitsuri_dict(ignore_wcs_URI,
+#                                     'BITPIX',
+#                                     '0')
+            
+            fileURI = self.fitsfileURI(self.archive,
+                                       file_id)
+            self.add_to_fitsuri_dict(fileURI,
+                                     'part.productType',
+                                     ProductType.AUXILIARY.value)
+
+            # Record times for science products
+            for key in sorted(obstimes, key=lambda t: t[1][0]):
+                self.add_to_fitsuri_custom_dict(fileURI,
+                                                key,
+                                                obstimes[key])
+
+        elif product in ['rsp', 'rimg']:
+            fileURI = self.fitsfileURI(self.archive,
+                                       file_id)
+            self.add_to_fitsuri_dict(fileURI,
+                                     'artifact.productType',
+                                     ProductType.PREVIEW.value)
+#            self.add_to_fitsuri_dict(fileURI,
+#                                     'BITPIX',
+#                                     '0')
+
+        else:
+            fileURI = self.fitsfileURI(self.archive,
+                                       file_id)
+            self.add_to_fitsuri_dict(fileURI,
+                                     'artifact.productType',
+                                     ProductType.AUXILIARY.value)
+#            self.add_to_fitsuri_dict(fileURI,
+#                                     'BITPIX',
+#                                     '0')
+
+    def build_fitsuri_custom(self,
+                             xmlfile,
+                             collection,
+                             observationID,
+                             planeID,
+                             fitsuri):
+        """
+        Customize the xml file with fitsuri-specific metadata.  For
+        jcmt2caom2proc, this comprises the time structure constructed from the
+        OBSID for simple observations or list of OBSn values for composite
+        observations.
+        
+        It has been found that fits2caom2 is generating false WCS structures 
+        for JCMT files and that these fluff up the xml file to the point that
+        fits2caom2 runs out of memory and crashes.  This is exacerbated by the
+        large number of files that can be present in a JCMT observation, 
+        especially multi-tiled obs products.  The kludge to work around this 
+        problem is to check whether each part has product_type == 
+        ProductType.SCIENCE, if so add the time to each chunk and if not
+        to DELETE ALL CHUNKS IN TH PART!!!
+        """
+        thisCustom = \
+            self.metadict[collection][observationID][planeID][fitsuri]['custom']
+        if thisCustom:
+            # if this dictionary is empty,skip processing
+            self.log.console('custom processing for ' + fitsuri,
+                             logging.DEBUG)
+            
+            observation = self.reader.read(xmlfile)
+            # Check whether this is a part-specific uri.  We are only interested
+            # in artifact-specific uri's.
+            if not fitsuri in observation.planes[planeID].artifacts:
+                self.log.console('skip custom processing because fitsuri does '
+                                 'not point to an artifact',
+                                 logging.DEBUG)
+                return
+            caomArtifact = observation.planes[planeID].artifacts[fitsuri]
+
+            for part in caomArtifact.parts:
+                thisPart = caomArtifact.parts[part]
+                if thisPart.product_type in [ProductType.SCIENCE,
+                                             ProductType.NOISE]:
+                    for chunk in thisPart.chunks:
+                        if chunk.position:
+                            # if the position WCS exists, add a time axis
+                            time_axis = CoordAxis1D(Axis('TIME', 'd'))
+                            if len(thisCustom) == 1:
+                                # time range
+                                for key in thisCustom:
+                                    date_start, date_end = thisCustom[key]
+                                    mjdstart = utc2mjd(date_start)
+                                    mjdend = utc2mjd(date_end)
+                                    self.log.console('time range = %f, %f' %
+                                                     (mjdstart, mjdend),
+                                                     logging.DEBUG)
+
+                                    time_axis.range = CoordRange1D(
+                                        RefCoord(0.5, mjdstart),
+                                        RefCoord(1.5, mjdend))
+
+                            elif len(thisCustom) > 1:
+                                # time
+                                time_axis.bounds = CoordBounds1D()
+                                for key in thisCustom:
+                                    date_start, date_end = thisCustom[key]
+                                    mjdstart = utc2mjd(date_start)
+                                    mjdend = utc2mjd(date_end)
+                                    self.log.console('time bounds = %f, %f' %
+                                                     (mjdstart, mjdend),
+                                                     logging.DEBUG)
+
+                                    time_axis.bounds.samples.append(
+                                        CoordRange1D(
+                                            RefCoord(0.5, mjdstart),
+                                            RefCoord(1.5, mjdend)))
+
+                            else:
+                                self.log.console('no time ranges defined '
+                                                 ' for ' + fitsuri.uri,
+                                                 logging.WARN)
+                            
+                            # if a temporalWCS already exists, use it but
+                            # replace the CoordAxis1D
+                            if chunk.time:
+                                chunk.time.axis = time_axis
+                                chunk.time.timesys = 'UTC'
+                            else:
+                                chunk.time = TemporalWCS(time_axis)
+                                chunk.time.timesys = 'UTC'
+                            self.log.console('temporal axis = ' + 
+                                             repr(chunk.time.axis.axis),
+                                             logging.DEBUG)
+                            self.log.console('temporal WCS = ' + str(chunk.time),
+                                             logging.DEBUG)
+                else:
+                    # If not science, delete all chunks
+                    # Once fits2caom2 is fixed, discard this clause
+                    for chunk in thisPart.chunks:
+                        thisPart.chunks.remove(chunk)
+                            
+
+
+            with open(xmlfile, 'w') as XMLFILE:
+                self.writer.write(observation, XMLFILE)
+
+
+    def check_acceptable_headers(self, head):
+        """
+        Check that every header is from the "acceptable" list, as a guard
+        against bad files.  Note that this does not check whether particular
+        keywords are present, only that the existing keywords are acceptable.
+        """
+
+        acceptable = [
+                      '',
+                    'AGENTID',
+                    'ALIGN_DX',
+                    'ALIGN_DY',
+                    'ALT-OBS',
+                    'AMEND',
+                    'AMSTART',
+                    'ARRAYID',
+                    'ASN_CADC',
+                    'ASN_ID',
+                    'ASN_PROJ',
+                    'ASN_TYPE',
+                    'ASN_UT',
+                    'ATEND',
+                    'ATSTART',
+                    'AZEND',
+                    'AZSTART',
+                    'BACKEND',
+                    'BANDWID',
+                    'BASEC1',
+                    'BASEC2',
+                    'BASETEMP',
+                    'BBHEAT',
+                    'BEDEGFAC',
+                    'BITPIX',
+                    'BKLEGTEN',
+                    'BKLEGTST',
+                    'BLANK',
+                    'BMAJ',
+                    'BMIN',
+                    'BOLODIST',
+                    'BPA',
+                    'BPEND',
+                    'BPSTART',
+                    'BSCALE',
+                    'BUNIT',
+                    'BWMODE',
+                    'BZERO',
+                    'CD1_1',
+                    'CD1_1A',
+                    'CD1_2',
+                    'CD1_2A',
+                    'CD2_1',
+                    'CD2_1A',
+                    'CD2_2',
+                    'CD2_2A',
+                    'CD3_3',
+                    'CD3_3A',
+                    'CD4_4',
+                    'CDELT3',
+                    'CHECKSUM',
+                    'CHOP_CRD',
+                    'CHOP_FRQ',
+                    'CHOP_PA',
+                    'CHOP_THR',
+                    'COMMENT',
+                    'CRPIX1',
+                    'CRPIX1A',
+                    'CRPIX2',
+                    'CRPIX2A',
+                    'CRPIX3',
+                    'CRPIX3A',
+                    'CRPIX4',
+                    'CRVAL1',
+                    'CRVAL1A',
+                    'CRVAL2',
+                    'CRVAL2A',
+                    'CRVAL3',
+                    'CRVAL3A',
+                    'CRVAL4',
+                    'CTYPE1',
+                    'CTYPE1A',
+                    'CTYPE2',
+                    'CTYPE2A',
+                    'CTYPE3',
+                    'CTYPE3A',
+                    'CUNIT1',
+                    'CUNIT1A',
+                    'CUNIT2',
+                    'CUNIT2A',
+                    'CUNIT3',
+                    'CUNIT3A',
+                    'DARKHEAT',
+                    'DATAMODE',
+                    'DATASUM',
+                    'DATE',
+                    'DATE-END',
+                    'DATE-OBS',
+                    'DAZ',
+                    'DEL',
+                    'DETBIAS',
+                    'DHSVER',
+                    'DOPPLER',
+                    'DPDATE',
+                    'DPRCINST',
+                    'DRGROUP',
+                    'DRMWGHTS',
+                    'DRRECIPE',
+                    'DUT1',
+                    'EFF_TIME',
+                    'ELEND',
+                    'ELSTART',
+                    'ENGVERS',
+                    'EQUINOX',
+                    'EQUINOXA',
+                    'ETAL',
+                    'EXP_TIME',
+                    'EXTEND',
+                    'EXTLEVEL',
+                    'EXTNAME',
+                    'EXTNAMEF',
+                    'EXTSHAPE',
+                    'EXTTYPE',
+                    'EXTVER',
+                    'FFT_WIN',
+                    'FILE_ID',
+                    'FILEID',
+                    'FILEPATH',
+                    'FILTER',
+                    'FLAT',
+                    'FOCAXIS',
+                    'FOCPOSN',
+                    'FOCSTEP',
+                    'FOCUS_DZ',
+                    'FREQ',
+                    'FREQ_THR',
+                    'FRLEGTEN',
+                    'FRLEGTST',
+                    'FRQIMGHI',
+                    'FRQIMGLO',
+                    'FRQSIGHI',
+                    'FRQSIGLO',
+                    'FTS_IN',
+                    'FTS_MODE',
+                    'FTS_SH8C',
+                    'FTS_SH8D',
+                    'FTS_CNTR',
+                    'GCOUNT',
+                    'HDSNAME',
+                    'HDSTYPE',
+                    'HDUCLAS1',
+                    'HDUCLAS2',
+                    'HISTORY',
+                    'HSTEND',
+                    'HSTSTART',
+                    'HUMEND',
+                    'HUMSTART',
+                    'IFCHANSP',
+                    'IFFREQ',
+                    'IMAGFREQ',
+                    'INBEAM',
+                    'INSTAP',
+                    'INSTAP_X',
+                    'INSTAP_Y',
+                    'INSTREAM',
+                    'INSTRUME',
+                    'INT_TIME',
+                    'JIGL_CNT',
+                    'JIGL_NAM',
+                    'JIG_CRD',
+                    'JIG_PA',
+                    'JIG_SCAL',
+                    'JOS_MIN',
+                    'JOS_MULT',
+                    'LABEL',
+                    'LAT',
+                    'LAT-OBS',
+                    'LBOUND1',
+                    'LBOUND2',
+                    'LBOUND3',
+                    'LOCL_CRD',
+                    'LOFREQE',
+                    'LOFREQS',
+                    'LONG',
+                    'LONG-OBS',
+                    'LONGSTRN',
+                    'LSTEND',
+                    'LSTSTART',
+                    'MAP_HGHT',
+                    'MAP_PA',
+                    'MAP_WDTH',
+                    'MAP_X',
+                    'MAP_Y',
+                    'MEDTSYS',
+                    'MIRPOS',
+                    'MIXSETP',
+                    'MJD-AVG',
+                    'MJD-END',
+                    'MJD-OBS',
+                    'MOLECULE',
+                    'MSBID',
+                    'MSBTID',
+                    'MSROOT',
+                    'MUXTEMP',
+                    'NAXIS',
+                    'NAXIS1',
+                    'NAXIS1A',
+                    'NAXIS2',
+                    'NAXIS2A',
+                    'NAXIS3',
+                    'NAXIS3A',
+                    'NAXIS4',
+                    'NBOLOEFF',
+                    'NCALSTEP',
+                    'NCHNSUBS',
+                    'NDRKSTEP',
+                    'NFOCSTEP',
+                    'NFREQSW',
+                    'NREFSTEP',
+                    'NSUBBAND',
+                    'NSUBSCAN',
+                    'NUMTILES',
+                    'NUM_CYC',
+                    'NUM_NODS',
+                    'N_MIX',
+                    'OBJECT',
+                    'OBSCNT',
+                    'OBSDEC',
+                    'OBSDECBL',
+                    'OBSDECBR',
+                    'OBSDECTL',
+                    'OBSDECTR',
+                    'OBSEND',
+                    'OBSGEO-X',
+                    'OBSGEO-Y',
+                    'OBSGEO-Z',
+                    'OBSID',
+                    'OBSIDSS',
+                    'OBSNUM',
+                    'OBSRA',
+                    'OBSRABL',
+                    'OBSRABR',
+                    'OBSRATL',
+                    'OBSRATR',
+                    'OBS_SB',
+                    'OBS_TYPE',
+                    'OCSCFG',
+                    'ORIGIN',
+                    'PCOUNT',
+                    'PIPEVERS',
+                    'PIXHEAT',
+                    'POLANLIN',
+                    'POLCALIN',
+                    'POLWAVIN',
+                    'POL_CONN',
+                    'POL_CRD',
+                    'POL_FAXS',
+                    'POL_MODE',
+                    'PROCVERS',
+                    'PRODUCER',
+                    'PRODUCT',
+                    'PROJECT',
+                    'PROJ_ID',
+                    'PRVCNT',
+                    'RADESYS',
+                    'RADESYSA',
+                    'RECIPE',
+                    'RECPTORS',
+                    'REFCHAN',
+                    'REFERENC',
+                    'REFRECEP',
+                    'RESTFRQ',
+                    'RESTFRQA',
+                    'RMTAGENT',
+                    'ROTAFREQ',
+                    'ROT_CRD',
+                    'ROT_PA',
+                    'SAM_MODE',
+                    'SB_MODE',
+                    'SCANDIR',
+                    'SCANVEL',
+                    'SCAN_CRD',
+                    'SCAN_DY',
+                    'SCAN_PA',
+                    'SCAN_PAT',
+                    'SCAN_VEL',
+                    'SCUPIXSZ',
+                    'SCUPROJ',
+                    'SEEDATEN',
+                    'SEEDATST',
+                    'SEEINGEN',
+                    'SEEINGST',
+                    'SEQCOUNT',
+                    'SEQEND',
+                    'SEQSTART',
+                    'SEQ_TYPE',
+                    'SHUTTER',
+                    'SIMPLE',
+                    'SIMULATE',
+                    'SIM_CORR',
+                    'SIM_FTS',
+                    'SIM_IF',
+                    'SIM_POL',
+                    'SIM_RTS',
+                    'SIM_SMU',
+                    'SIM_TCS',
+                    'SKYANG',
+                    'SKYREFX',
+                    'SKYREFY',
+                    'SPECSYS',
+                    'SPECSYSA',
+                    'SREFISA',
+                    'SREF1A',
+                    'SREF2A',
+                    'SSYSOBS',
+                    'SSYSSRC',
+                    'SSYSSRCA',
+                    'STANDARD',
+                    'STARTIDX',
+                    'STATUS',
+                    'STBETCAL',
+                    'STBETDRK',
+                    'STBETREF',
+                    'STEPDIST',
+                    'STEPTIME',
+                    'SUBARRAY',
+                    'SUBBANDS',
+                    'SUBREFP1',
+                    'SUBREFP2',
+                    'SUBSYSNR',
+                    'SURVEY',
+                    'SW_MODE',
+                    'SYSTEM',
+                    'TAU225EN',
+                    'TAU225ST',
+                    'TAUDATEN',
+                    'TAUDATST',
+                    'TAUSRC',
+                    'TELESCOP',
+                    'TEMPSCAL',
+                    'TFIELDS',
+                    'TILENUM',
+                    'TRACKSYS',
+                    'TRANSITI',
+                    'TSPEND',
+                    'TSPSTART',
+                    'UAZ',
+                    'UEL',
+                    'UTDATE',
+                    'VELOSYS',
+                    'VELOSYSA',
+                    'VERSION',
+                    'WAVELEN',
+                    'WCSNAME',
+                    'WCSNAMEA',
+                    'WNDDIREN',
+                    'WNDDIRST',
+                    'WNDSPDEN',
+                    'WNDSPDST',
+                    'WVMDATEN',
+                    'WVMDATST',
+                    'WVMTAUEN',
+                    'WVMTAUST',
+                    'XTENSION',
+                    'ZSOURCE',
+                    'ZSOURCEA']
+        headercount = {'PRV': 'PRVCNT',
+                       'OBS': 'OBSCNT',
+                        'FILE_': 'OBSCNT', # Arbitrary number, but seems OK
+                        'TCOMM': 'TFIELDS',
+                        'TDIM': 'TFIELDS',
+                        'TDISP': 'TFIELDS',
+                        'TFORM': 'TFIELDS',
+                        'TNULL': 'TFIELDS',
+                        'TTYPE': 'TFIELDS'
+                        }
+
+        someBAD = False
+        for key in head:
+            keywordBAD = True
+            if key in acceptable:
+                keywordBAD = False
+            else:
+                # check if the key is a numbered header
+                 m = re.match(r'^(?P<prefix>[A-Z]+)(?P<number>[1-9][0-9]*)$',
+                              key)
+                 if m:
+                     pn = m.groupdict()
+                     if pn["prefix"] in headercount:
+                         n = int(pn["number"])
+                         if 0 < n and n <= head[headercount[pn["prefix"]]]:
+                             keywordBAD = False
+            if keywordBAD:
+                someBAD = True
+                self.log.console('Bad keyword: ' + key,
+                                 logging.WARN)
+
+        return someBAD
+
+#************************************************************************
+# if run as a main program, create an instance and exit
+#************************************************************************
+if __name__ == '__main__':
+    myjcmt2caom2 = jcmt2caom2.stdpipe()
+    myjcmt2caom2.run()

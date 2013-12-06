@@ -1,0 +1,230 @@
+#!/usr/bin/env python2.7
+#/*+
+#************************************************************************
+#****  C A N A D I A N   A S T R O N O M Y   D A T A   C E N T R E  *****
+#*
+#* (c) 2013.                  (c) 2013.
+#* National Research Council        Conseil national de recherches
+#* Ottawa, Canada, K1A 0R6         Ottawa, Canada, K1A 0R6
+#* All rights reserved            Tous droits reserves
+#*
+#* NRC disclaims any warranties,    Le CNRC denie toute garantie
+#* expressed, implied, or statu-    enoncee, implicite ou legale,
+#* tory, of any kind with respect    de quelque nature que se soit,
+#* to the software, including        concernant le logiciel, y com-
+#* without limitation any war-        pris sans restriction toute
+#* ranty of merchantability or        garantie de valeur marchande
+#* fitness for a particular pur-    ou de pertinence pour un usage
+#* pose.  NRC shall not be liable    particulier.  Le CNRC ne
+#* in any event for any damages,    pourra en aucun cas etre tenu
+#* whether direct or indirect,        responsable de tout dommage,
+#* special or general, consequen-    direct ou indirect, particul-
+#* tial or incidental, arising        ier ou general, accessoire ou
+#* from the use of the software.    fortuit, resultant de l'utili-
+#*                     sation du logiciel.
+#*
+#************************************************************************
+#*
+#*   Script Name:    rawutdate
+#*
+#*   Purpose:
+#*    Ingest all raw data listed in jcmtmd.dbo.COMMON for a range of 
+#*    utdates.
+#*
+#* usage: recipe_ad [-h] [--log LOG] [--debug] [--script SCRIPT] --begin BEGIN
+#*                  [--end END]
+#*
+#* optional arguments:
+#*   -h, --help       show this help message and exit
+#*   --log LOG        (optional) name of log file
+#*   --debug, -d      run ingestion commands in debug mode
+#*   --script SCRIPT  store commands to a script instead of running
+#*   --begin BEGIN    ingest raw data with utdate >= this date
+#*   --end END        (optional) ingest raw data with utdate <= this date
+#*
+#*
+#****  C A N A D I A N   A S T R O N O M Y   D A T A   C E N T R E  *****
+#************************************************************************
+#-*/
+
+import argparse
+import commands
+import datetime
+import logging
+import os.path
+import re
+import stat
+import sys
+
+from tools4caom2.logger import logger
+from tools4caom2.database import database
+from tools4caom2.database import connection
+from tools4caom2.gridengine import gridengine
+
+def run():
+    """
+    Ingest raw JCMT observation from a range of UTDATE's.
+    This is just a high-level script to run jcmt2caom2raw many times.  
+    
+    Examples:
+    rawutdate --debug --start=20100123 --end=20100131
+    """
+    ap = argparse.ArgumentParser('rawutdate')
+    ap.add_argument('--log',
+                    default='rawutdate.log',
+                    help='(optional) name of log file')
+    ap.add_argument('--debug', '-d',
+                    default=False,
+                    action='store_const',
+                    const=True,
+                    help='run ingestion commands in debug mode')
+    ap.add_argument('--stop_on_error', '-s',
+                    action='store_const',
+                    dest='stop',
+                    default=False,
+                    const=True,
+                    help='stop processing on the first error reported by '
+                         'jcmt2caom2raw; if not set, report the error and '
+                         'retain the xml file but continue '
+                         'processing with the next observation')
+    ap.add_argument('--script',
+                    help='store commands to a script instead of running')
+    ap.add_argument('--begin',
+                    required=True,
+                    help='ingest raw data with utdate >= this date')
+    ap.add_argument('--end',
+                    help='(optional) ingest raw data with utdate <= this date')
+    ap.add_argument('--qsub',
+                    action='store_const',
+                    default=False,
+                    const=True,
+                    help='submit jobs to gridengine, one utdate for each job')
+    a = ap.parse_args()
+
+    loglevel = logging.INFO        
+    if a.debug:
+        loglevel = logging.DEBUG
+    log = logger(a.log, loglevel)
+    
+    if not a.end:
+        a.end = a.begin
+    
+    mygridengine = gridengine(log)
+    
+    # rawdict will record the obsid and quality of each raw observation
+    # as a tuple, keyed by UTDATE/OBSNUM
+    retvals = None
+    
+    # Find all the observations on the requested UTDATE and their quality
+    log.console('UTDATE in [' + a.begin + ', ' + a.end + ']')
+    
+    retvals = None
+    if a.qsub:
+        with connection('SYBASE', 'jcmtmd', log) as db:
+            sqlcmd = '\n'.join([
+                'SELECT c.utdate',
+                'FROM jcmtmd.dbo.COMMON c',
+                '    LEFT JOIN jcmt2.dbo.caom2_Observation co',
+                '        ON c.obsid=co.observationID',
+                '    LEFT JOIN jcmt2.dbo.caom2_Plane cp',
+                '        ON co.obsID=cp.obsID',
+                '            AND substring(cp.productID,1,3) = "raw"',
+                'WHERE c.utdate >= %s AND c.utdate <= %s' % (a.begin, a.end),
+                'GROUP BY c.utdate',
+                'HAVING count(cp.planeID) = 0',
+                'ORDER BY c.utdate'])
+            retvals = db.read(sqlcmd)
+            
+        if retvals:
+            for utd, in retvals:
+                utdate = str(utd)
+                dirpath = os.path.dirname(
+                            os.path.abspath(
+                                os.path.expanduser(
+                                    os.path.expandvars(a.log))))
+                logpath = os.path.join(dirpath, 
+                                       'raw_' + utdate + '.log')
+                cshpath = os.path.join(dirpath, 
+                                       'raw_' + utdate + '.csh')
+
+                cmd = 'jcmtrawwrap'
+                if a.debug:
+                    cmd += ' --debug' 
+                cmd += ' --begin=' + utdate
+                cmd += ' --log=' + logpath
+                mygridengine.submit(cmd, cshpath, logpath)
+
+    else:
+        with connection('SYBASE', 'jcmtmd', log) as db:
+            sqlcmd = '\n'.join([
+                'SELECT s.utdate,',
+                '       s.obsnum,',
+                '       s.obsid,',
+                '       s.quality',
+                'FROM (SELECT c.utdate, ',
+                '             c.obsnum,',
+                '             c.obsid,',
+                '             isnull(ool.commentstatus, 0) as quality,',
+                '             isnull(ool.commentdate, "1990-01-01 00:00:00") as qdate',
+                '      FROM jcmtmd.dbo.COMMON c',
+                '          LEFT JOIN jcmtmd.dbo.ompobslog ool',
+                '              ON c.obsid=ool.obsid',
+                '      WHERE c.utdate>=' + a.begin,
+                '            AND c.utdate <= ' + a.end + ') s',
+                'GROUP BY s.utdate, s.obsnum, s.obsid',
+                'HAVING s.qdate=max(s.qdate)'])
+                        
+            retvals = db.read(sqlcmd)
+
+        rawdict = {}
+        if retvals:
+            for utd, obsnum, obsid, quality in retvals:
+                key = '%d%-05d' % (utd, obsnum)
+                if key not in rawdict:
+                    rawdict[key] = (obsid, quality)
+        else:
+            print 'no observations found for utdate=' + a.utdate
+        
+        SCRIPT = None
+        if rawdict:
+            if a.debug:
+                debugflag = ' --debug'
+            else:
+                debugflag = ' --verbose'
+
+            if a.script:
+                scriptpath = os.path.abspath(a.script)
+                SCRIPT = open(scriptpath, 'w')
+                print >>SCRIPT, 'date'
+            
+            for key in sorted(rawdict.keys()):
+                obsid, quality = rawdict[key]
+                quality = int(quality)
+                if quality < 3:
+                    if quality > 0:
+                        log.console('ingesting obsid = ' + obsid + \
+                                    ' has quality = %d' % (quality, ),
+                                    logging.WARN)
+                    cmd = 'jcmt2caom2raw %s --key=%s --log=%s' % \
+                        (debugflag, obsid, a.log)
+                    log.console('PROGRESS: ' + cmd)
+                    if SCRIPT:
+                        print >>SCRIPT, cmd
+                    else:
+                        status, output = commands.getstatusoutput(cmd)
+                        if status:
+                            if a.stop:
+                                self.log.console(output, logging.ERROR)
+                            else:
+                                log.console('REPORT ERROR BUT CONTINUE: ' +
+                                            'status=' + str(status) + ' :' +
+                                            output, logging.WARN)
+                else:
+                    log.console('skipping obsid = ' + obsid + \
+                                ' because it has quality = %d' %(quality, ),
+                                logging.WARN)
+        else:
+            log.console('WARNING: no raw data found for '
+                        'utdate in [%s, %s]' % (a.begin, a.end))
+        if SCRIPT:
+            print >>SCRIPT, 'date'
