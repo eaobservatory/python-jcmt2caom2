@@ -1,57 +1,4 @@
 #!/usr/bin/env python2.7
-#/*+
-#************************************************************************
-#****  C A N A D I A N   A S T R O N O M Y   D A T A   C E N T R E  *****
-#*
-#* (c) 2003.                (c) 2003.
-#* National Research Council        Conseil national de recherches
-#* Ottawa, Canada, K1A 0R6         Ottawa, Canada, K1A 0R6
-#* All rights reserved            Tous droits reserves
-#*                     
-#* NRC disclaims any warranties,    Le CNRC denie toute garantie
-#* expressed, implied, or statu-    enoncee, implicite ou legale,
-#* tory, of any kind with respect    de quelque nature que se soit,
-#* to the software, including        concernant le logiciel, y com-
-#* without limitation any war-        pris sans restriction toute
-#* ranty of merchantability or        garantie de valeur marchande
-#* fitness for a particular pur-    ou de pertinence pour un usage
-#* pose.  NRC shall not be liable    particulier.  Le CNRC ne
-#* in any event for any damages,    pourra en aucun cas etre tenu
-#* whether direct or indirect,        responsable de tout dommage,
-#* special or general, consequen-    direct ou indirect, particul-
-#* tial or incidental, arising        ier ou general, accessoire ou
-#* from the use of the software.    fortuit, resultant de l'utili-
-#*                     sation du logiciel.
-#*
-#************************************************************************
-#*
-#*   Script Name:    jcmt2mon
-#*
-#*   Purpose:
-#*    Counts number of correct CAOM-2 observations, planes, artifacts, etc.
-#*
-#*   usage: jcmt2mon [options]
-#*   
-#*   options:
-#*     -h, --help              show this help message and exit
-#*     -D, --DEVSYBASE 
-#*     -a DAY, --after=DAY
-#*     -b DAY, --before=DAY  
-#*     -d DAY, --day=DAY       DAY  <  19800000 means days before today, \
-#*                             DAY > 19800000 means UT date YYYYMMMDD
-#*     -w WEEK, --week=WEEK    WEEK <  19800000 means weeks before now, \
-#*                             WEEK > 19800000 means week containing UT date
-#*                             Weeks run Sunday-Saturday
-#*     -l PATH, --logdir PATH  path from . to store log files. \
-#*                             if not specified, logs will not be stored.
-#*
-#*   Programmer        : Russell O. Redman
-#*
-#*   Modification History:
-#*
-#****  C A N A D I A N   A S T R O N O M Y   D A T A   C E N T R E  *****
-#************************************************************************
-#-*/
 
 #################################
 # Import required Python modules
@@ -130,14 +77,17 @@ def bigint( x):
 # configuration structures
 ####################################
 backend = {'ACSIS'  : 'ACSIS',
+           'DAS' : 'DAS',
            'SCUBA2' : 'SCUBA-2'}
 
 productList = {'ACSIS'  : ['cube', 'reduced', 'rimg', 'rsp'],
+               'DAS'  : ['cube', 'reduced', 'rimg', 'rsp'],
                'SCUBA2' : ['reduced'] }
                
 associationList = ['obs', 'nit', 'pro', 'pub']
 
 inst_abbrev = {'ACSIS' : 'h',
+               'DAS' : 'a',
                'SCUBA2' : 's'}
 
 thumbnail = ['64', '256', '1024']
@@ -327,6 +277,52 @@ class mon(object):
         """
         Run queries to verify the state of raw data ingestions
         """
+        sqlcmd = '\n'.join([
+            'SELECT',
+            '    t.present,',
+            '    t.qa,',
+            '    count(t.obsid) as num',
+            'FROM (',
+            '    SELECT',
+            '        s.qa,',
+            '        CASE WHEN s.obsid=co.observationID THEN 1',
+            '             ELSE 0',
+            '        END as present,',
+            '        s.obsid',
+            '    FROM (',
+            '        SELECT',
+            '            c.obsid,',
+            '            ISNULL(ool.commentstatus, 0) as qa',
+            '        FROM jcmtmd.dbo.COMMON c',
+            '            LEFT JOIN jcmtmd.dbo.ompobslog ool',
+            '                ON c.obsid=ool.obsid',
+            '        WHERE',
+            '            ool.obsactive = 1'])
+        
+        if self.date:
+            sqlcmd += '\n            AND c.utdate=' + self.date
+        else:
+            if self.begin:
+                sqlcmd += '\n            AND c.utdate >= ' + self.begin
+            if self.end:
+                sqlcmd += '\n            AND c.utdate <= ' + self.end
+                
+        sqlcmd = '\n'.join([sqlcmd,
+            '        GROUP BY c.obsid',
+            '        HAVING ool.commentdate=max(ool.commentdate)',
+            '        ) s',
+            '        LEFT JOIN jcmt.dbo.caom2_Observation co',
+            '            ON s.obsid=co.observationID',
+            '    ) t',
+            'GROUP BY t.present, t.qa',
+            'ORDER BY t.present, t.qa',
+            ])
+        self.print_query_table(
+            'QACOUNT: Observations counted by quality',
+            'present qa      count',
+            '%7d %2d %10d',
+            sqlcmd)
+
         sqlcmd = '\n'.join([
             'SELECT',
             '    t.present,',

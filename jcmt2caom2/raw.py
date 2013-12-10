@@ -103,6 +103,10 @@ from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.mjd import utc2mjd
 from tools4caom2.logger import logger
 
+from jcmt2caom2.jsa.quality import JCMT_QA
+from jcmt2caom2.jsa.quality import JSA_QA
+from jcmt2caom2.jsa.quality import quality
+
 from jcmt2caom2 import __version__
 
 __doc__ = """
@@ -428,8 +432,8 @@ class raw(object):
 
     def get_quality(self, obsid):
         """
-        Get the quality assessment for this proposal, with a default value
-        of 0 = GOOD if no assessment has been entered yet.
+        Get the JSA quality assessment for this proposal, with a default value
+        of JSA_QA.GOOD if no assessment has been entered yet.
 
         Arguments:
         obsid: the observation identifier in COMMON for the observation
@@ -444,11 +448,11 @@ class raw(object):
             'HAVING commentdate=max(commentdate)'])
         answer = self.conn.read(sqlcmd)
 
-        results = {'quality': 0}
+        results = {'quality': quality(JCMT_QA.GOOD, self.log)}
         if len(answer):
-            results['quality'] = answer[0][0]
-            self.log.file('For %s status = %d from ompobslog' %
-                          (obsid, answer[0][0]))
+            results['quality'] = quality(answer[0][0], self.log)
+            self.log.file('For %s JSA_QA = %s from ompobslog' %
+                          (obsid, results['quality'].jsa_name()))
         return results
 
     def get_files(self, obsid):
@@ -490,6 +494,10 @@ class raw(object):
         Arguments:
         common      dictionary containing fields common to the observation
         subsystem   dictionary containing fields from ACSIS or SCUBA2
+        
+        Returns:
+        True if observation is OK
+        False if observation should be skipped
         """
         #-----------------------------------------------------------------
         # Validity checking for raw ACSIS and SCUBA-2 data
@@ -506,10 +514,12 @@ class raw(object):
 
         # do not create an observation of the quality assessment is JUNK
         # this is not an error, but log a warning
-        if common['quality'] >= QA.JUNK:
+        if common['quality'].jsa_value() == JSA_QA.JUNK:
             self.log.console('Observation ' + self.obsid +
                              ' is being skipped because it has a quality'
-                             ' assessment of JUNK')
+                             ' assessment of JUNK',
+                             logging.WARN)
+            return False
 
         if common['obs_type'] in ('phase', 'ramp'):
             # do not ingest observations with bogus obs_type
@@ -518,6 +528,9 @@ class raw(object):
                              ' is being skipped because obs_type = ' +
                              common['obs_type'],
                              logging.WARN)
+            return False
+        
+        # Get here if no error or warnings are issued
         return True
 
     def build_observation(self,
@@ -961,7 +974,7 @@ class raw(object):
 
                 check_status = self.check_observation(common, subsystem)
                 if self.check:
-                    return check_status
+                    return
 
                 # get the list of files for this observation
                 files = self.get_files(self.obsid)
