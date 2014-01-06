@@ -1,68 +1,15 @@
 #!/usr/bin/env python2.7
-#/*+
-#************************************************************************
-#****  C A N A D I A N   A S T R O N O M Y   D A T A   C E N T R E  *****
-#*
-#* (c) 2012.                  (c) 2012.
-#* National Research Council        Conseil national de recherches
-#* Ottawa, Canada, K1A 0R6         Ottawa, Canada, K1A 0R6
-#* All rights reserved            Tous droits reserves
-#*
-#* NRC disclaims any warranties,    Le CNRC denie toute garantie
-#* expressed, implied, or statu-    enoncee, implicite ou legale,
-#* tory, of any kind with respect    de quelque nature que se soit,
-#* to the software, including        concernant le logiciel, y com-
-#* without limitation any war-        pris sans restriction toute
-#* ranty of merchantability or        garantie de valeur marchande
-#* fitness for a particular pur-    ou de pertinence pour un usage
-#* pose.  NRC shall not be liable    particulier.  Le CNRC ne
-#* in any event for any damages,    pourra en aucun cas etre tenu
-#* whether direct or indirect,        responsable de tout dommage,
-#* special or general, consequen-    direct ou indirect, particul-
-#* tial or incidental, arising        ier ou general, accessoire ou
-#* from the use of the software.    fortuit, resultant de l'utili-
-#*                     sation du logiciel.
-#*
-#************************************************************************
-#*
-#*   Script Name:    jcmtraw2caom2.py
-#*
-#*   Purpose:
-#*    Ingest raw jcmt data into CAOM 2.0 using pyCAOM2
-#*
-#+ Usage: jcmtraw2caom2.py [options]
-#+
-#+ Options:
-#+ Options:
-#+  -h, --help            show this help message and exit
-#+  --observationID
-#+  --outdir=OUTDIR       output directory, (default = current directory
-#+  --log=LOG             (optional) name of the log file
-#+  --quiet               (optional) only show error messages
-#+  --verbose             (optional) show warning and error messages
-#+  --debug               (optional) show all messages
-#*
-#*  SVN Fields:
-#*    $Revision: 1068 $
-#*    $Date: 2012-10-30 16:33:14 -0700 (Tue, 30 Oct 2012) $
-#*    $Author: redman $
-#*
-#*
-#****  C A N A D I A N   A S T R O N O M Y   D A T A   C E N T R E  *****
-#************************************************************************
-#-*/
 
 __author__ = "Russell O. Redman"
 
 import argparse
 import errno
-from datetime import datetime
 import logging
 import math
 import os.path
 import re
-import shutil
-import time
+import sys
+import traceback
 
 from caom2.xml.caom2_observation_reader import ObservationReader
 from caom2.xml.caom2_observation_writer import ObservationWriter
@@ -107,6 +54,9 @@ from jcmt2caom2.jsa.quality import JCMT_QA
 from jcmt2caom2.jsa.quality import JSA_QA
 from jcmt2caom2.jsa.quality import quality
 
+from jcmt2caom2.jsa.intent import intent
+from jcmt2caom2.jsa.target_name import target_name
+
 from jcmt2caom2 import __version__
 
 __doc__ = """
@@ -120,23 +70,14 @@ It therefore always reads the metadata from SYBASE.
 
 Version : """ + __version__.version
 
-class QA(object):
+class INGESTIBILITY(object):
     """
-    Defines Quality Assessment constants
-    GOOD         This data is good for all valid purposes
-    QUESTIONABLE This data failed some quality tests
-    BAD          This data failed important quality tests
-    JUNK         This data is not usable and should not be in the archive
-
-    To be used in forming composites, the standard data reduction pipeline
-    will reject data with QA != GOOD.
+    Defines ingestion constants
     """
-
     GOOD = 0
-    QUESTIONABLE = 1
-    BAD = 2
-    JUNK = 3
-
+    BAD = 1
+    JUNK = 2
+    
 class raw(object):
     """
     Use pyCAOM2 to ingest raw JCMT raw data for a single observation using
@@ -242,10 +183,10 @@ class raw(object):
         self.server = 'SYBASE'
         self.database = None
         self.schema = None
-        self.check = None
+        self.checkmode = None
 
         self.logfile = ''
-        self.loglevel = logging.WARN
+        self.loglevel = logging.INFO
         self.log = None
 
         self.reader = ObservationReader(True)
@@ -279,16 +220,13 @@ class raw(object):
 
         ap.add_argument('-c', '--check',
                         action='store_const',
+                        dest='checkmode',
                         const=True,
                         default=False,
                         help='Check the validity of metadata for this'
                              ' observation and file, then exit')
         ap.add_argument('--log',
                         help='path to log file')
-        ap.add_argument('-v', '--verbose',
-                        dest='loglevel',
-                        action='store_const',
-                        const=logging.INFO)
         ap.add_argument('-d', '--debug',
                         dest='loglevel',
                         action='store_const',
@@ -313,7 +251,7 @@ class raw(object):
         if args.loglevel:
             self.loglevel = args.loglevel
 
-        self.check = args.check
+        self.checkmode = args.checkmode
 
     def setup_logger(self,
                      logfile='',
@@ -348,14 +286,15 @@ class raw(object):
         Arguments:
         <None>
         """
-        self.log.console('\n'.join(['obsid = ' + self.obsid,
+        for line in ['obsid = ' + self.obsid,
                                     'server = ' + self.server,
                                     'database = ' + self.database,
                                     'schema = ' + self.schema,
                                     'outdir = ' + self.outdir,
-                                    'log = ' + self.logfile,
                                     'loglevel = %d' % self.loglevel,
-                                    'check = ' + str(self.check)]))
+                                    'checkmode = ' + str(self.checkmode)]:
+            self.log.file(line)
+        self.log.console('Logfile = ' + self.logfile)
 
     # Some custom read queries for particular applications
     def check_obsid(self):
@@ -365,6 +304,9 @@ class raw(object):
 
         Arguments:
         <None>
+        
+        Returns:
+        1 if the observation exists in COMMON else 0
         """
         sqlcmd = '\n'.join(['SELECT',
                             '    count(obsid)',
@@ -437,6 +379,10 @@ class raw(object):
 
         Arguments:
         obsid: the observation identifier in COMMON for the observation
+        
+        Returns:
+        a one-entry dictionary with the key 'quality' and a JSA quality
+             as the value
         """
         sqlcmd = '\n'.join([
             'SELECT ',
@@ -444,6 +390,7 @@ class raw(object):
             'FROM jcmtmd.dbo.ompobslog',
             'WHERE obsid="%s"' % (obsid,),
             '    AND obsactive=1',
+            '    AND commentstatus <= %d' % (JCMT_QA.JUNK),
             'GROUP BY obsid',
             'HAVING commentdate=max(commentdate)'])
         answer = self.conn.read(sqlcmd)
@@ -496,31 +443,26 @@ class raw(object):
         subsystem   dictionary containing fields from ACSIS or SCUBA2
         
         Returns:
-        True if observation is OK
-        False if observation should be skipped
+         0 if observation is OK
+         1 if observation is JUNK
+        -1 if observation should be skipped
         """
         #-----------------------------------------------------------------
         # Validity checking for raw ACSIS and SCUBA-2 data
         #-----------------------------------------------------------------
         # Check that mandatory fields do not have NULL values
         nullvalues = []
+        ingestibility = INGESTIBILITY.GOOD
+        
         for field in raw.MANDATORY:
             if common[field] is None:
                 nullvalues.append(field)
         if nullvalues:
             self.log.console('The following mandatory fields are NULL:\n' +
-                             '\n'.join(sorted(nullvalues)))
-            return False
-
-        # do not create an observation of the quality assessment is JUNK
-        # this is not an error, but log a warning
-        if common['quality'].jsa_value() == JSA_QA.JUNK:
-            self.log.console('Observation ' + self.obsid +
-                             ' is being skipped because it has a quality'
-                             ' assessment of JUNK',
+                             '\n'.join(sorted(nullvalues)),
                              logging.WARN)
-            return False
-
+            ingestibility = INGESTIBILITY.BAD
+            
         if common['obs_type'] in ('phase', 'ramp'):
             # do not ingest observations with bogus obs_type
             # this is not an error, but log a warning
@@ -528,10 +470,18 @@ class raw(object):
                              ' is being skipped because obs_type = ' +
                              common['obs_type'],
                              logging.WARN)
-            return False
+            ingestibility = INGESTIBILITY.BAD
         
-        # Get here if no error or warnings are issued
-        return True
+        # JUNK status trumps BAD, because a JUNK observation must be removed
+        # from CAOM-2 if present, whereas a bad observation just cannot be
+        # ingested.
+        if common['quality'].jsa_value() == JSA_QA.JUNK:
+            self.log.console('JUNK QUALITY ASSESSMENT for ' + self.obsid +
+                             ' prevents it from being ingested in CAOM-2',
+                             logging.WARN)
+            ingestibility = INGESTIBILITY.JUNK
+
+        return ingestibility
 
     def build_observation(self,
                           observation,
@@ -554,7 +504,8 @@ class raw(object):
         #------------------------------------------------------------
         collection = "JCMT"
         observationID = self.obsid
-        self.log.console('observationID = ' + self.obsid)
+        self.log.console('PROGRESS: build observationID = ' + self.obsid,
+                         logging.DEBUG)
 
         if observation is None:
             observation = SimpleObservation(collection,
@@ -577,10 +528,9 @@ class raw(object):
             observation.obs_type = common['obs_type']
 
         # set the observation intent
-        if common['obs_type'] == 'science':
-            observation.intent = ObservationIntentType.SCIENCE
-        else:
-            observation.intent = ObservationIntentType.CALIBRATION
+        observation.intent = intent(common['obs_type'],
+                                    common['backend'],
+                                    common['sam_mode'])
 
         proposal = Proposal(common['project'])
         if common['pi'] is not None:
@@ -695,7 +645,7 @@ class raw(object):
             beamsize = 4.787e-6 * 850.0
         observation.instrument = instrument
 
-        targetname = common['object'].lower()
+        targetname = target_name(common['object'])
         target = Target(targetname)
         if common['standard'] is not None:
             target.standard = True if common['standard'] else False
@@ -909,82 +859,91 @@ class raw(object):
 
         return observation
 
-    def run(self):
+    def ingest(self):
         """
-        Fetch metadata, build a CAOM-2 object, and push it into the repository
+        Do the ingestion.
+        First do all the checks,
+        then build the caom2 structure,
+        and persist to an xml file that is sent to the repository.
+        
+        Arguments:
+        <none>
         """
-        with logger(self.logfile, loglevel = self.loglevel).record() \
-            as self.log:
-            
-            self.logCommandLineSwitches()
-            with connection(self.server,
-                            self.database,
-                            self.log) as self.conn:
+        # Check that this is a valid observation
+        if not self.check_obsid():
+            self.log.console('There is no observation with '
+                             'obsid = %s' % (self.obsid,),
+                             logging.ERROR)
 
-                # Check that this is a valid observation
-                # This generates a warning rather than an error, but
-                # further processing requires a real observation.
-                if not self.check_obsid():
-                    self.log.console('There is no observation with '
-                                     'obsid = %s' % (self.obsid,),
-                                     logging.WARNING)
-                    return
+        # get the dictionary of common metadata
+        common = self.query_table('COMMON',
+                                  raw.COMMON)
+        if len(common):
+            common = common[0]
 
-                # get the dictionary of common metadata
-                common = self.query_table('COMMON',
-                                          raw.COMMON)
-                if len(common):
-                    common = common[0]
+        # Append the proposal metadata
+        proposal = self.get_proposal(self.obsid)
+        if proposal:
+            common.update(proposal)
 
-                # Append the proposal metadata
-                proposal = self.get_proposal(self.obsid)
-                if proposal:
-                    common.update(proposal)
+        # Append the quality assessment
+        quality = self.get_quality(self.obsid)
+        if quality:
+            common.update(quality)
 
-                # Append the quality assessment
-                quality = self.get_quality(self.obsid)
-                if quality:
-                    common.update(quality)
+        # get a list of rows for the subsystems in this observation
+        backend = common['backend']
+        if backend in ['ACSIS', 'DAS', 'AOSC']:
+            subsystemlist = self.query_table('ACSIS',
+                                             raw.ACSIS)
+            # Convert the list of rows into a dictionary
+            subsystem = {}
+            for row in subsystemlist:
+                subsysnr = row.pop('subsysnr')
+                subsystem[subsysnr] = row
 
-                # get a list of rows for the subsystems in this observation
-                backend = common['backend']
-                if backend in ['ACSIS', 'DAS', 'AOSC']:
-                    subsystemlist = self.query_table('ACSIS',
-                                                     raw.ACSIS)
-                    # Convert the list of rows into a dictionary
-                    subsystem = {}
-                    for row in subsystemlist:
-                        subsysnr = row.pop('subsysnr')
-                        subsystem[subsysnr] = row
+        elif backend == 'SCUBA-2':
+            subsystemlist = self.query_table('SCUBA2',
+                                             raw.SCUBA2)
+            # Convert the list of rows into a dictionary
+            subsystem = {}
+            for row in subsystemlist:
+                subsysnr = int(row['filter'])
+                subsystem[subsysnr] = row
 
-                elif backend == 'SCUBA-2':
-                    subsystemlist = self.query_table('SCUBA2',
-                                                     raw.SCUBA2)
-                    # Convert the list of rows into a dictionary
-                    subsystem = {}
-                    for row in subsystemlist:
-                        subsysnr = int(row['filter'])
-                        subsystem[subsysnr] = row
+        else:
+            self.log.console('backend = "%s" is not one of '
+                           '["ACSIS",  "DAS",  "AOSC",  "SCUBA",  '
+                           '"SCUBA-2"]',
+                           logging.WARN)
 
-                else:
-                    self.log.console('backend = "%s" is not one of '
-                                   '["ACSIS",  "DAS",  "AOSC",  "SCUBA",  '
-                                   '"SCUBA-2"]',
-                                   logging.ERROR)
+        ingestibility = self.check_observation(common, subsystem)
+        if ingestibility == INGESTIBILITY.BAD:
+            self.log.console('SERIOUS ERRORS were found in ' + self.obsid,
+                             logging.ERROR)
+        if self.checkmode:
+            if ingestibility == INGESTIBILITY.GOOD:
+                self.log.console('SUCCESS: Observation ' + self.obsid + 
+                                 ' is ready for ingestion')
+            # running in checkmode will NOT remove JUNK observations, 
+            # and does NOT check whether they are currently in CAOM-2,
+            # but will report that they are junk.
+            return
+        
 
-                check_status = self.check_observation(common, subsystem)
-                if self.check:
-                    return
+        if self.loglevel == logging.DEBUG:
+            repository = Repository(self.outdir, self.log)
+        else:
+            repository = Repository(self.outdir, self.log, debug=False)
 
-                # get the list of files for this observation
-                files = self.get_files(self.obsid)
+        uri = 'caom:JCMT/' + common['obsid']
+        if ingestibility == INGESTIBILITY.JUNK:
+            self.log.console('     Remove JUNK observation ' + self.obsid)
+            repository.remove(uri)
+        else:
+            # get the list of files for this observation
+            files = self.get_files(self.obsid)
 
-            if self.loglevel == logging.DEBUG:
-                repository = Repository(self.outdir, self.log)
-            else:
-                repository = Repository(self.outdir, self.log, debug=False)
-
-            uri = 'caom:JCMT/' + common['obsid']
             with repository.process(uri) as xmlfile:
                 orig_xmlfile = xmlfile
                 observation = None
@@ -999,8 +958,27 @@ class raw(object):
 
                 with open(xmlfile, 'w') as XMLFILE:
                     self.writer.write(observation, XMLFILE)
-            
-            # if execution reaches here, the ingestion was successful, 
-            # so, if not in debug mode, delete the log file
-            # if self.loglevel != logging.DEBUG:
-            #    os.remove(self.logfile)
+
+            self.log.console('SUCCESS: Observation ' + self.obsid + 
+                 ' has been ingested')
+
+
+    def run(self):
+        """
+        Fetch metadata, build a CAOM-2 object, and push it into the repository
+        """
+        self.parse_command_line()
+        self.setup_logger()
+        
+        with logger(self.logfile, 
+                    loglevel = self.loglevel).record() as self.log:
+            try:
+                self.logCommandLineSwitches()
+                with connection(self.server,
+                                self.database,
+                                self.log) as self.conn:
+                    self.ingest()
+            except Exception as e:
+                # Be sure that every error message is logged
+                self.log.console('ERROR: ' + traceback.format_exc(),
+                                 logging.ERROR)

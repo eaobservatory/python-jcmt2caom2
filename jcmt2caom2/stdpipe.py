@@ -95,6 +95,8 @@ from tools4caom2.ingest2caom2 import ingest2caom2
 from tools4caom2.timezone import UTC
 from tools4caom2.mjd import utc2mjd
 
+from jcmt2caom2.jsa.intent import intent
+from jcmt2caom2.jsa.target_name import target_name
 
 # from caom2.caom2_enums import CalibrationLevel
 # from caom2.caom2_enums import DataProductType
@@ -591,7 +593,7 @@ class stdpipe(ingest2caom2):
                         else:
                             # There are many files with bad provenance.
                             # This should be an error, but it is prudent
-                            # to report it as a warning untill all of the
+                            # to report it as a warning until all of the
                             # otherwise valid recipes have been fixed.
                             self.log.console('In file "' + file_id + '", ' +
                                              prvkey + ' = ' + prvn + ' is '
@@ -650,6 +652,10 @@ class stdpipe(ingest2caom2):
                 self.add_to_plane_dict('proposal.title',
                                        answer[0][1])
 
+        # Target
+        self.add_to_plane_dict('target.name', 
+                               target_name(header['OBJECT']))
+        
         # Instrument
         keywords = []
 
@@ -721,10 +727,10 @@ class stdpipe(ingest2caom2):
         obs_type = None
         if 'OBS_TYPE' in header and header['OBS_TYPE'] != pyfits.card.UNDEFINED:
             obs_type = header['OBS_TYPE'].strip()
-            if obs_type == "science":
-                self.add_to_plane_dict('obs.intent', 'science')
-            else:
-                self.add_to_plane_dict('obs.intent', 'calibration')
+            self.add_to_plane_dict('obs.intent',
+                                   intent(obs_type,
+                                          header['BACKEND'],
+                                          header['SAM_MODE']).value)
 
             if ('SAM_MODE' in header and
                 header['SAM_MODE'] != pyfits.card.UNDEFINED):

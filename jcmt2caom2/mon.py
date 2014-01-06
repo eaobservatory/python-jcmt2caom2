@@ -263,7 +263,7 @@ class mon(object):
         self.log.console('%-20s = %s' % ('datestring', self.datestring))
         self.log.console('%-20s = %s' % ('server', self.server))
 
-    def print_query_table(label, header, format, sqlcmd):
+    def print_query_table(self, label, header, format, sqlcmd):
         """
         Query the database and print the results as a table
         """
@@ -297,7 +297,8 @@ class mon(object):
             '            LEFT JOIN jcmtmd.dbo.ompobslog ool',
             '                ON c.obsid=ool.obsid',
             '        WHERE',
-            '            ool.obsactive = 1'])
+            '            ool.obsactive = 1',
+            '            AND ool.commentstatus <= 4',])
         
         if self.date:
             sqlcmd += '\n            AND c.utdate=' + self.date
@@ -324,10 +325,10 @@ class mon(object):
             sqlcmd)
 
         sqlcmd = '\n'.join([
-            'SELECT',
+            'SELECT' + self.topclause,
             '    t.present,',
             '    t.qa,',
-            '    count(t.obsid) as num',
+            '    t.obsid',
             'FROM (',
             '    SELECT',
             '        s.qa,',
@@ -343,7 +344,8 @@ class mon(object):
             '            LEFT JOIN jcmtmd.dbo.ompobslog ool',
             '                ON c.obsid=ool.obsid',
             '        WHERE',
-            '            ool.obsactive = 1'])
+            '            ool.obsactive = 1',
+            '            AND ool.commentstatus <= 4'])
         
         if self.date:
             sqlcmd += '\n            AND c.utdate=' + self.date
@@ -364,9 +366,9 @@ class mon(object):
             'ORDER BY t.present, t.qa',
             ])
         self.print_query_table(
-            'QACOUNT: Observations counted by quality',
-            'present qa      count',
-            '%7d %2d %10d',
+            'QACOUNT: Observations listed by presence, quality',
+            'present qa      obsid',
+            '%7d %2d %40s',
             sqlcmd)
 
     def analyze_proc_data(self):
