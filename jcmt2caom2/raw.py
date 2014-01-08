@@ -56,6 +56,7 @@ from jcmt2caom2.jsa.quality import quality
 
 from jcmt2caom2.jsa.intent import intent
 from jcmt2caom2.jsa.target_name import target_name
+from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 
 from jcmt2caom2 import __version__
 
@@ -480,6 +481,17 @@ class raw(object):
                              ' prevents it from being ingested in CAOM-2',
                              logging.WARN)
             ingestibility = INGESTIBILITY.JUNK
+        
+        # Check observation-level mandatory headers with restricted values
+        # by creating the instrument keyword list
+        someBad, keyword_list = instrument_keywords('raw', 
+                                                    keyword_dict, 
+                                                    self.log)
+        if someBad:
+            ingestibility = INGESTIBILITY.JUNK
+            self.instrument_keywords = []
+        else:
+            self.instrument_keywords = keyword_list            
 
         return ingestibility
 

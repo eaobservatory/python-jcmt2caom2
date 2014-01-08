@@ -406,13 +406,10 @@ class stdpipe(ingest2caom2):
 
         if not backendBAD:
             # Only do thse tests if the backend is OK
-            if header['BACKEND'] == 'ACSIS':
+            if header['BACKEND'] in ('ACSIS', 'DAS', 'AOS-C'):
                 someBAD |= self.check_values('INBEAM', header,
                     [pyfits.card.UNDEFINED,
                      'POL'])
-
-                someBAD |= self.check_values('INSTRUME', header,
-                    ['HARP', 'RxA3', 'RxWB', 'RxWD2'])
 
                 someBAD |= self.check_values('OBS_TYPE', header,
                     ['pointing', 'science', 'focus', 'skydip'])
@@ -420,27 +417,11 @@ class stdpipe(ingest2caom2):
                 someBAD |= self.check_values('SAM_MODE', header,
                     ['jiggle', 'grid', 'raster', 'scan'])
 
-                someBAD |= self.check_values('SB_MODE', header,
-                    ['DSB', 'SSB'])
-
-                someBAD |= self.check_values('OBS_SB', header,
-                    ['LSB', 'USB'])
-
                 someBAD |= self.check_values('SURVEY', header,
                     [pyfits.card.UNDEFINED,
                      'GBS', 'NGS', 'SLS'])
 
-                someBAD |= self.check_values('SW_MODE', header,
-                    ['chop', 'freqsw', 'none', 'pssw'])
-
             elif header['BACKEND'] == 'SCUBA-2':
-                someBAD |= self.check_values('INBEAM', header,
-                    [pyfits.card.UNDEFINED,
-                     'POL', 'fts2', 'shutter'])
-
-                someBAD |= self.check_values('INSTRUME', header,
-                    ['SCUBA-2'])
-
                 someBAD |= self.check_values('OBS_TYPE', header,
                     ['pointing', 'science', 'focus', 'skydip',
                      'flatfield', 'setup', 'noise'])
@@ -452,8 +433,37 @@ class stdpipe(ingest2caom2):
                     [pyfits.card.UNDEFINED,
                      'CLS', 'DDS', 'GBS', 'JPS', 'NGS', 'SASSY'])
 
-                someBAD |= self.check_values('SW_MODE', header,
-                    ['none', 'self'])
+            # Check some more detailed values by building instrument_keywords
+            keyword_dict = {}
+            if ('INSTRUME' in header and 
+                header['INSTRUME'] != pyfits.card.UNDEFINED):
+                keyword_dict['frontend'] = header['INSTRUME']
+            
+            if ('BACKEND' in header and 
+                header['BACKEND'] != pyfits.card.UNDEFINED):
+                keyword_dict['backend'] = header['BACKEND']
+            
+            if ('SW_MODE' in header and 
+                header['SW_MODE'] != pyfits.card.UNDEFINED):
+                keyword_dict['switching_mode'] = header['SW_MODE']
+
+            if ('INBEAM' in header and 
+                header['INBEAM'] != pyfits.card.UNDEFINED):
+                keyword_dict['inbeam'] = header['INBEAM']
+            
+            if common['backend'] in ('ACSIS', 'DAS', 'AOS-C'):
+                if ('OBS_SB' in header and 
+                    header['OBS_SB'] != pyfits.card.UNDEFINED):
+                    keyword_dict['sideband'] = header['OBS_SB']
+                
+                if ('SB_MODE' in header and 
+                    header['SB_MODE'] != pyfits.card.UNDEFINED):
+                    keyword_dict['sieband_filter'] = header['SB_MODE']
+            
+            thisBad, keyword_list = instrument_keywords('stdpipe',
+                                                        keyword_dict,
+                                                        self.log)
+            self.instrument_keywords = ' '.join(keyword_list)
             
             # verify membership headers are real observations
             max_release_date = None
@@ -653,7 +663,7 @@ class stdpipe(ingest2caom2):
                                        answer[0][1])
 
         # Target
-        self.add_to_plane_dict('target.name', 
+        self.add_to_plane_dict('Observation.target.name', 
                                target_name(header['OBJECT']))
         
         # Instrument
