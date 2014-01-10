@@ -208,15 +208,22 @@ class stdpipe(ingest2caom2):
         # Log level for validity checking
         self.validitylevel = logging.ERROR
 
-        # Append another argument to the list of command line switches
+        # Append additional arguments to the list of command line switches
         self.arg.add_argument('--check',
                               action='store_true',
                               help='Only do the validity tests for a FITS file')
+        self.arg.add_argument('--collection',
+                              choices=('JCMT', 'SANDBOX'),
+                              default='JCMT',
+                              help='collection to use for ingestion')
 
         # get xml file reader and writer, to allow insertion of the
         # time structures for chunks with WCS
         self.reader = ObservationReader(True)
         self.writer = ObservationWriter()
+        
+        self.member_cache = {}
+        self.provenance_cache = {}
 
     #************************************************************************
     # Include the custome command line switch in the log
@@ -232,8 +239,10 @@ class stdpipe(ingest2caom2):
 
         if self.switches.check:
             self.validitylevel = logging.WARN
+        self.collection = self.switches.collection
 
         self.log.console('check           = ' + str(self.switches.check))
+        self.log.console('collection      = ' + str(self.switches.collection))
         self.log.console('')
 
     #************************************************************************
@@ -487,47 +496,55 @@ class stdpipe(ingest2caom2):
                         # computed.
                         obskey = 'OBS' + str(i + 1)
                         obsn = header[obskey]
-                        sqlcmd = """
-                                 SELECT distinct f.obsid,
-                                                 c.release_date,
-                                                 c.date_obs,
-                                                 c.date_end
-                                 FROM jcmtmd.dbo.FILES f
-                                    inner join jcmtmd.dbo.COMMON c
-                                         on f.obsid=c.obsid
-                                 WHERE f.obsid_subsysnr = '%s'
-                                 """ % (obsn,)
-                        result = self.conn.read(sqlcmd)
-                        if len(result):
-                            obsid, release_date, date_obs, date_end = result[0]
-
-                            # record the time interval
-                            if ((algorithm != 'exposure'
-                                 or obsid == self.observationID)
-                                and obsid not in obstimes):
-                                    obstimes[obsid] = (date_obs, date_end)
-
-# Check whether out-of-observation OBSn headers are just recording the mask
-#                            if algorithm != 'exposure':
-#                                if obsid != self.observationID:
-#                                    self.log.console(
-#                                        obskey + ' => ' + obsid +
-#                                        ' which is not in ' +
-#                                        self.observationID,
-#                                        logging.WARN)
-#                                    someBAD = True
-
-                            if max_release_date:
-                                if max_release_date < release_date:
-                                    max_release_date = release_date
-                            else:
-                                max_release_date = release_date
-
+                        obsid = None
+                        
+                        if obsn in self.member_cache:
+                            obsid, release_date, date_obs, date_end = \
+                                self.member_cache[obsn]
                         else:
-                            self.log.console('Member key ' + obsn + ' is '
-                                             'not in jcmtmd.dbo.FILES',
-                                             logging.WARN)
-                            someBAD = True
+                            sqlcmd = """
+                                     SELECT distinct f.obsid,
+                                                     c.release_date,
+                                                     c.date_obs,
+                                                     c.date_end
+                                     FROM jcmtmd.dbo.FILES f
+                                        inner join jcmtmd.dbo.COMMON c
+                                             on f.obsid=c.obsid
+                                     WHERE f.obsid_subsysnr = '%s'
+                                     """ % (obsn,)
+                            result = self.conn.read(sqlcmd)
+                            if len(result):
+                                obsid, release_date, date_obs, date_end = \
+                                    result[0]
+                                self.member_cache[obsn] = \
+                                    (obsid, release_date, date_obs, date_end)
+
+                            else:
+                                self.log.console('Member key ' + obsn + ' is '
+                                                 'not in jcmtmd.dbo.FILES',
+                                                 logging.WARN)
+                                someBAD = True
+                            
+                            if obsid:
+                                # record the time interval
+                                if ((algorithm != 'exposure'
+                                     or obsid == self.observationID)
+                                    and obsid not in obstimes):
+                                        obstimes[obsid] = (date_obs, date_end)
+
+                                if max_release_date:
+                                    if max_release_date < release_date:
+                                        max_release_date = release_date
+                                else:
+                                    max_release_date = release_date
+                            
+                                # Also cache the productID's for each file
+                                fdict = raw_product_id(backend,
+                                                       'prod',
+                                                       obsid,
+                                                       self.conn,
+                                                       self.log)
+                                self.provenance_cache.update(fdict)
 
             if algorithm != 'exposure' and not obstimes:
                 # It is an error if a composite has no members
@@ -553,65 +570,62 @@ class stdpipe(ingest2caom2):
                 'PRVCNT' in header and
                 header['PRVCNT'] != pyfits.card.UNDEFINED):
 
-                prvcnt = int(header['PRVCNT'])
+                prvcnt = max(int(header['PRVCNT']), 0)
                 self.log.file('PRVCNT = ' + str(prvcnt))
-                if prvcnt > 0:
-                    for i in range(prvcnt):
-                        # Verify that files in provenance are being ingested
-                        # or have already been ingested.
-                        prvkey = 'PRV' + str(i + 1)
-                        prvn = header[prvkey]
-                        self.log.file(prvkey + ' = ' + prvn)
-                        if (re.match(stdpipe.proc_acsis_regex, prvn) or
-                            re.match(stdpipe.proc_scuba2_regex, prvn)):
-                            # Does this look like a processed file?
-                            # An existing problem is that some files include 
-                            # themselves in their provenance, but are otherwise
-                            # OK.
-                            if prvn == file_id:
-                                self.log.console(
-                                    'file_id = ' + file_id + ' includes itself'
-                                    ' in its provenance as ' + prvkey,
-                                    logging.WARN)
-                                continue
-                            prvprocset.add(prvn)
+                for i in range(prvcnt):
+                    # Verify that files in provenance are being ingested
+                    # or have already been ingested.
+                    prvkey = 'PRV' + str(i + 1)
+                    prvn = header[prvkey]
+                    self.log.file(prvkey + ' = ' + prvn)
+                    if (re.match(stdpipe.proc_acsis_regex, prvn) or
+                        re.match(stdpipe.proc_scuba2_regex, prvn)):
+                        # Does this look like a processed file?
+                        # An existing problem is that some files include 
+                        # themselves in their provenance, but are otherwise
+                        # OK.
+                        if prvn == file_id:
+                            # add a warning and skip this entry
+                            self.log.console(
+                                'file_id = ' + file_id + ' includes itself'
+                                ' in its provenance as ' + prvkey,
+                                logging.WARN)
+                            continue
+                        prvprocset.add(prvn)
 
-                        elif (re.match(stdpipe.raw_acsis_regex, prvn) or
-                              re.match(stdpipe.raw_scuba2_regex, prvn)):
-                            # Does it look like a raw file?
-                            if algorithm == 'exposure':
-                                sqlcmd = """
-                                         SELECT obsid
-                                         FROM jcmtmd.dbo.FILES
-                                         WHERE file_id = '%s.sdf'
-                                         """ % (prvn,)
-                                result = self.conn.read(sqlcmd)
-                                if len(result):
-                                    obsid = result[0][0]
-                                    if obsid != self.observationID:
-                                        continue
-                            # Add the file if this is NOT an exposure,
-                            # or if it is and the file is part of the same exposure
-                            prvrawset.add(prvn)
-# Code to complain
-#                                        self.log.console(
-#                                            prvkey + ' => ' + obsid +
-#                                            ' which is not in ' +
-#                                            self.observationID,
-#                                            logging.WARN)
-#                                        someBAD = True
+                    elif (re.match(stdpipe.raw_acsis_regex, prvn) or
+                          re.match(stdpipe.raw_scuba2_regex, prvn)):
+                        # Does it look like a raw file?
+                        if algorithm == 'exposure':
+                            if prvn in self.provenance_cache:
+                                prv_obsID, prv_prodID = \
+                                    self.provenance_cache[prvn]
+                                if prv_obsID != self.observationID:
+                                    continue
                         else:
-                            # There are many files with bad provenance.
-                            # This should be an error, but it is prudent
-                            # to report it as a warning until all of the
-                            # otherwise valid recipes have been fixed.
-                            self.log.console('In file "' + file_id + '", ' +
-                                             prvkey + ' = ' + prvn + ' is '
-                                             'neither processed nor raw',
-                                             logging.WARN)
-                            # Remove the comment character to make this 
-                            # conditiuon an error.
-                            # someBAD = True
+                            self.log.console('provenance and membership headers'
+                                             ' list inconsistent raw data:' +
+                                             prvn + ' is not in ' +
+                                             'provenance_cache constructed from'
+                                             ' membership',
+                                             logging.ERROR)
+                            
+                        # Add the file if this is NOT an exposure,
+                        # or if it is and the file is part of the same exposure
+                        prvrawset.add(prvn)
+
+                    else:
+                        # There are many files with bad provenance.
+                        # This should be an error, but it is prudent
+                        # to report it as a warning until all of the
+                        # otherwise valid recipes have been fixed.
+                        self.log.console('In file "' + file_id + '", ' +
+                                         prvkey + ' = ' + prvn + ' is '
+                                         'neither processed nor raw',
+                                         logging.WARN)
+                        # Remove the comment character to make this 
+                        # conditiuon an error.
+                        # someBAD = True
 
         # Report any problems that have been encountered, including
         # the file name
@@ -667,44 +681,11 @@ class stdpipe(ingest2caom2):
                                target_name(header['OBJECT']))
         
         # Instrument
-        keywords = []
-
         if 'BACKEND' in header and header['BACKEND'] != pyfits.card.UNDEFINED:
             instrument = header['BACKEND'].upper()
             self.add_to_plane_dict('instrument.name', instrument)
-            for key in ('INSTRUME', 'SW_MODE', 'INBEAM'):
-                if (key in header and header[key] != pyfits.card.UNDEFINED):
-                    keywords.append(header[key].upper())
-
-            if instrument in ('ACSIS', 'DAS', 'AOS-C'):
-                if algorithm == 'exposure':
-                    # Is this a hybrid-mode observation? 
-                    sqlcmd = '\n'.join(
-                        ['SELECT count(a.subsysnr)',
-                         'FROM jcmtmd.dbo.ACSIS a',
-                         'WHERE a.obsid="%s"' % (header['OBSID'], ),
-                         'GROUP BY a.obsid,',
-                         '         a.restfreq,',
-                         '         a.iffreq,',
-                         '         a.ifchansp'])
-                    result = self.conn.read(sqlcmd)
-                    if len(result):
-                        for cnt, in result:
-                            if cnt > 1:
-                                keywords.append('HYBRID')
-                                break
-                    else:
-                        self.log.console('Could not find OBSID for' +
-                                         file_id,
-                                         logging.ERROR)
-
-                for key in ('OBS_SB', 'SB_MODE'):
-                    if (key in header and
-                        header[key] != pyfits.card.UNDEFINED):
-                        keywords.append(header[key].upper())
-
             self.add_to_plane_dict('instrument.keywords',
-                                   ' '.join(keywords))
+                                   self.instrument_keywords)
 
         # Environment
         if 'SEEINGST' in header and header['SEEINGST'] != pyfits.card.UNDEFINED:
@@ -878,48 +859,11 @@ class stdpipe(ingest2caom2):
 
             if prvrawset:
                 for prvn in list(prvrawset):
-                    # check if the file is actually a raw file
-                    if header['BACKEND'] in ['ACSIS', 'DAS', 'AOS']:
-                        # if so, find the hybrid mode subsystem for this file.
-                        sqlcmd = '\n'.join(
-                            ['SELECT a.obsid,',
-                             '       min(a.subsysnr)',
-                             'FROM jcmtmd.dbo.ACSIS a',
-                             '    INNER JOIN (',
-                             '        SELECT aa.obsid,',
-                             '               aa.restfreq,',
-                             '               aa.iffreq,',
-                             '               aa.ifchansp',
-                             '        FROM jcmtmd.dbo.ACSIS aa',
-                             '             INNER JOIN jcmtmd.dbo.FILES f'
-                             '               ON f.obsid_subsysnr=aa.obsid_subsysnr',
-                             '        WHERE f.file_id="%s.sdf") s' % (prvn, ),
-                             '          ON a.obsid = s.obsid AND',
-                             '             a.restfreq=s.restfreq AND',
-                             '             a.iffreq=s.iffreq AND',
-                             '             a.ifchansp=s.ifchansp',
-                             'GROUP BY a.obsid,',
-                             '         a.restfreq,',
-                             '         a.iffreq,',
-                             '         a.ifchansp'])
-                    else:
-                        sqlcmd = '\n'.join([
-                            'SELECT s.obsid,',
-                            '       s.filter',
-                            'FROM jcmtmd.dbo.SCUBA2 s',
-                            '    INNER JOIN jcmtmd.dbo.FILES f',
-                            '        ON s.obsid_subsysnr=f.obsid_subsysnr',
-                            '            AND f.file_id = "%s.sdf"' % (prvn, )])
-                    result = self.conn.read(sqlcmd)
-                    if len(result):
-                        obsid, hybridnr = result[0]
-                        self.planeURI(self.collection,
-                                      obsid,
-                                      'raw_' + str(hybridnr))
-                    else:
-                        self.log.console('raw file in provenance not in '
-                                         'jcmtmd.dbo.FILES:' + prvn,
-                                         logging.WARN)
+                    # prvn only added to prvrawset if it is in provenance_cache
+                    prv_obsID, prv_prodID = self.provenance_cache[prvn]
+                    self.planeURI(self.collection,
+                                  prv_obsID,
+                                  prv_prodID)
                              
         max_release_date_str = max_release_date.isoformat()
         self.add_to_plane_dict('obs.metaRelease',

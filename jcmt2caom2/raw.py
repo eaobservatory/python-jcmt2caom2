@@ -57,6 +57,7 @@ from jcmt2caom2.jsa.quality import quality
 from jcmt2caom2.jsa.intent import intent
 from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
+from jcmt2caom2.jsa.raw_product_id import raw_product_id
 
 from jcmt2caom2 import __version__
 
@@ -184,6 +185,9 @@ class raw(object):
         self.server = 'SYBASE'
         self.database = None
         self.schema = None
+        
+        self.collection = None
+        
         self.checkmode = None
 
         self.logfile = ''
@@ -219,6 +223,11 @@ class raw(object):
                         default='dbo',
                         help='database schema to use')
 
+        ap.add_argument('--collection',
+                        choices=('JCMT', 'SANDBOX'),
+                        default='JCMT',
+                        help='collection to use for ingestion')
+
         ap.add_argument('-c', '--check',
                         action='store_const',
                         dest='checkmode',
@@ -238,6 +247,8 @@ class raw(object):
         self.server = args.server
         self.database = args.database
         self.schema = args.schema
+        
+        self.collection = args.collection
 
         if args.outdir:
             self.outdir = os.path.abspath(
@@ -484,6 +495,14 @@ class raw(object):
         
         # Check observation-level mandatory headers with restricted values
         # by creating the instrument keyword list
+        keyword_dict = {}
+        keyword_dict['frontend'] = common['instrume']
+        keyword_dict['backend'] = common['backend']
+        keyword_dict['switching_mode'] = common['sw_mode']
+        keyword_dict['inbeam'] = common['inbeam']
+        if common['backend'] in ('ACSIS', 'DAS', 'AOS-C'):
+            keyword_dict['sideband'] = common['obs_sb']
+            keyword_dict['sieband_mode'] = common['sb_mode']
         someBad, keyword_list = instrument_keywords('raw', 
                                                     keyword_dict, 
                                                     self.log)
@@ -514,7 +533,7 @@ class raw(object):
         # Since we are dealing with raw data, the algorithm = "exposure"
         # by default, a change in notation for the JCMT.
         #------------------------------------------------------------
-        collection = "JCMT"
+        collection = self.collection
         observationID = self.obsid
         self.log.console('PROGRESS: build observationID = ' + self.obsid,
                          logging.DEBUG)
@@ -569,10 +588,7 @@ class raw(object):
 
         backend = common['backend'].upper()
         instrument = Instrument(backend)
-        instrument.keywords.append(common['instrume'].upper())
-        instrument.keywords.append(common['sw_mode'].upper())
-        if common['inbeam'] is not None:
-            instrument.keywords.append(common['inbeam'].upper())
+        instrument.keywords = self.instrument_keywords
 
         if backend in ['ACSIS', 'DAS', 'AOSC']:
             keys = sorted(subsystem.keys())
@@ -594,8 +610,6 @@ class raw(object):
                 else:
                     hybrid[restfreq][iffreq][ifchansp]['hybrid'] = True
                     hybrid[restfreq][iffreq][ifchansp]['keys'].append(key)
-                    if 'HYBRID' not in instrument.keywords:
-                        instrument.keywords.append('HYBRID')
                 this_hybrid = hybrid[restfreq][iffreq][ifchansp]
 
                 if 'hybridnr' in this_hybrid:
@@ -636,12 +650,6 @@ class raw(object):
                     this_hybrid['freq_img_upper'] = \
                         subsystem[key]['freq_img_upper']
 
-            sideband = subsystem[keys[0]]['obs_sb'].upper()
-            instrument.keywords.append(sideband)
-
-            sideband_filter = subsystem[keys[0]]['sb_mode'].upper()
-            instrument.keywords.append(sideband_filter)
-            
             # Compute maximum beam size for this observation in degrees  
             # frequencies are in GHz
             # The scale factor is:
@@ -683,14 +691,7 @@ class raw(object):
         # to distinguish it from the string representation that will be
         # named subsysnr in this section
         for key in sorted(subsystem.keys()):
-            if backend in ['ACSIS', 'DAS', 'AOSC']:
-                restfreq = subsystem[key]['restfreq']
-                iffreq = subsystem[key]['iffreq']
-                ifchansp = subsystem[key]['ifchansp']
-                this_hybrid = hybrid[restfreq][iffreq][ifchansp]
-                productID = 'raw_' + str(this_hybrid['hybridnr'])
-            else:
-                productID = 'raw_' + str(key)
+            productID = self.productID_dict[str(key)]
             obsid_subsysnr = subsystem[key]['obsid_subsysnr']
 
             # This plane might already have been created in a hybrid-mode
@@ -730,75 +731,71 @@ class raw(object):
                 # Raw data does not have axes.
                 # bounds and ranges can be specified
 
-# Temporary kludge - code to handle 2D bounds has not been implemented,
-# and will be modified RSN to eliminate the requirement for arbitrary
-# "pixel coordinates".  For now, use a range instead of the proper bounds.
-#
-# Note also that for single spectra the bl and tr corners have the same
+# Note that for single spectra the bl and tr corners have the same
 # coordinates.  CAOM-2 does not accept a zero-area polygon, so pad the
 # coordinates by the beam size.
 
-#                # Position axis bounds are in ICRS
-#                # The precomputed bounding box can be represented as a polgon
-#                # it is still unclear what interpretation to put on the
-#                # "pixel" coordinates, except there is only one conceptual
-#                # pixel so the range should be [0.5, 1.5]
-#                if (common['obsrabl'] == common['obsratr'] and
-#                    common['obsdecbl'] == common[obsdectr']):
-#                    # bounding "box" is a point, so insert a circle 
-#                    bounding_box = CoordCircle2D(Coord2D(
-#                        RefCoord(0.5, common['obsratl']),
-#                        RefCoord(0.5, common['obsdectl'])),
-#                        beamsize)
-#                else:
-#                    bounding_box = CoordPolygon2D()
-#                    bounding_box.vertices.append(Coord2D(
-#                        RefCoord(0.5, common['obsratl']),
-#                        RefCoord(0.5, common['obsdectl'])))
-#                    bounding_box.vertices.append(Coord2D(
-#                        RefCoord(0.5, common['obsratr']),
-#                        RefCoord(1.5, common['obsdectr'])))
-#                    bounding_box.vertices.append(Coord2D(
-#                        RefCoord(1.5, common['obsrabr']),
-#                        RefCoord(1.5, common['obsdecbr'])))
-#                    bounding_box.vertices.append(Coord2D(
-#                        RefCoord(1.5, common['obsrabl']),
-#                        RefCoord(0.5, common['obsdecbl'])))
-                if common['obsratl']:
-                    # only insert a position range if it is not null
-                    ra_range = [common['obsratl'],
-                                common['obsratr'],
-                                common['obsrabr'],
-                                common['obsrabl']]
-                    dec_range = [common['obsdectl'],
-                                 common['obsdectr'],
-                                 common['obsdecbr'],
-                                 common['obsdecbl']]
-                    ra_min = min(ra_range)
-                    ra_max = max(ra_range)
-                    if ra_min < 90.0 and ra_max > 270.0:
-                        ra_save = ra_min
-                        ra_min = ra_max
-                        ra_max = ra_save
-                    dec_min = min(dec_range)
-                    dec_max = max(dec_range)
-                    
-                    meandec = (dec_min + dec_max)/2.0
-                    ddec = beamsize/7200.0
-                    dra = ddec/math.cos(math.pi * meandec / 180.0)
-                    
-                    range2d = CoordRange2D(
-                        Coord2D(
-                            RefCoord(0.5, ra_min - dra),
-                            RefCoord(0.5, dec_min - ddec)),
-                        Coord2D(
-                            RefCoord(1.5, ra_max + dra),
-                            RefCoord(1.5, dec_max + ddec)))
+                # Position axis bounds are in ICRS
+                # The precomputed bounding box can be represented as a polgon
+                # it is still unclear what interpretation to put on the
+                # "pixel" coordinates, except there is only one conceptual
+                # pixel so the range should be [0.5, 1.5]
+                if (common['obsrabl'] == common['obsratr'] and
+                    common['obsdecbl'] == common[obsdectr']):
+                    # bounding "box" is a point, so insert a circle 
+                    bounding_box = CoordCircle2D(Coord2D(
+                        RefCoord(0.5, common['obsratl']),
+                        RefCoord(0.5, common['obsdectl'])),
+                        beamsize)
+                else:
+                    bounding_box = CoordPolygon2D()
+                    bounding_box.vertices.append(Coord2D(
+                        RefCoord(0.5, common['obsratl']),
+                        RefCoord(0.5, common['obsdectl'])))
+                    bounding_box.vertices.append(Coord2D(
+                        RefCoord(0.5, common['obsratr']),
+                        RefCoord(1.5, common['obsdectr'])))
+                    bounding_box.vertices.append(Coord2D(
+                        RefCoord(1.5, common['obsrabr']),
+                        RefCoord(1.5, common['obsdecbr'])))
+                    bounding_box.vertices.append(Coord2D(
+                        RefCoord(1.5, common['obsrabl']),
+                        RefCoord(0.5, common['obsdecbl'])))
+#                if common['obsratl']:
+#                    # only insert a position range if it is not null
+#                    ra_range = [common['obsratl'],
+#                                common['obsratr'],
+#                                common['obsrabr'],
+#                                common['obsrabl']]
+#                    dec_range = [common['obsdectl'],
+#                                 common['obsdectr'],
+#                                 common['obsdecbr'],
+#                                 common['obsdecbl']]
+#                    ra_min = min(ra_range)
+#                    ra_max = max(ra_range)
+#                    if ra_min < 90.0 and ra_max > 270.0:
+#                        ra_save = ra_min
+#                        ra_min = ra_max
+#                        ra_max = ra_save
+#                    dec_min = min(dec_range)
+#                    dec_max = max(dec_range)
+#                    
+#                    meandec = (dec_min + dec_max)/2.0
+#                    ddec = beamsize/7200.0
+#                    dra = ddec/math.cos(math.pi * meandec / 180.0)
+#                    
+#                    range2d = CoordRange2D(
+#                        Coord2D(
+#                            RefCoord(0.5, ra_min - dra),
+#                            RefCoord(0.5, dec_min - ddec)),
+#                        Coord2D(
+#                            RefCoord(1.5, ra_max + dra),
+#                            RefCoord(1.5, dec_max + ddec)))
 
                     spatial_axes = CoordAxis2D(Axis('RA', 'deg'),
                                                Axis('DEC', 'deg'))
-#                    spatial_axes.bounds = bounding_box
-                    spatial_axes.range = range2d
+                    spatial_axes.bounds = bounding_box
+#                    spatial_axes.range = range2d
 
                     chunk.position = SpatialWCS(spatial_axes)
                     chunk.position.coordsys = 'ICRS'
@@ -924,11 +921,19 @@ class raw(object):
                 subsystem[subsysnr] = row
 
         else:
-            self.log.console('backend = "%s" is not one of '
+            self.log.console('backend = "' + backend + '" is not one of '
                            '["ACSIS",  "DAS",  "AOSC",  "SCUBA",  '
                            '"SCUBA-2"]',
                            logging.WARN)
 
+        # somewhat repetitive, but custom SQL is useful
+        # get dictionary of productID's for each subsystem
+        self.productID_dict = raw_product_id(backend,
+                                             'raw',
+                                             self.obsid,
+                                             self.conn,
+                                             self.log)
+        
         ingestibility = self.check_observation(common, subsystem)
         if ingestibility == INGESTIBILITY.BAD:
             self.log.console('SERIOUS ERRORS were found in ' + self.obsid,
