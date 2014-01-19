@@ -26,8 +26,8 @@ def raw_product_id(backend, context, obsid, conn, log):
     if backend == 'SCUBA-2':
         subsysnr_dict = {'450': 'raw_450',
                          '850': 'raw_850'}
-        if context = 'prod':
-            sqlcmd = '\n'.join({
+        if context == 'prod':
+            sqlcmd = '\n'.join([
                      'SELECT substring(f.file_id, 1, len(f.file_id)-4),',
                      '       s.filter',
                      'FROM jcmtmd.dbo.FILES f',
@@ -47,7 +47,7 @@ def raw_product_id(backend, context, obsid, conn, log):
     else:
         subsysnr_dict = {}
         if backend == 'ACSIS':
-            sqlcmd = '\n'.join({
+            sqlcmd = '\n'.join([
                      'SELECT a.subsysnr, min(aa.subsysnr), count(aa.subsysnr)',
                      'FROM jcmtmd.dbo.ACSIS a',
                      '    INNER JOIN jcmtmd.dbo.ACSIS aa',
@@ -61,7 +61,7 @@ def raw_product_id(backend, context, obsid, conn, log):
             if result:
                 for subsysnr, specid, hybrid in result:
                     prefix = 'raw_'
-                    if hybrid:
+                    if int(hybrid) > 1:
                         prefix = 'raw_hybrid_'
                     subsysnr_dict[str(subsysnr)] = prefix + str(specid)
             else:
@@ -71,7 +71,7 @@ def raw_product_id(backend, context, obsid, conn, log):
             sqlcmd = """
                      SELECT a.subsysnr, a.specid
                      FROM jcmtmd.dbo.ACSIS a
-                     WHERE A.obsid = "%s"
+                     WHERE a.obsid = "%s"
                      """ % (obsid,)
             result = conn.read(sqlcmd)
             if result:
@@ -84,8 +84,8 @@ def raw_product_id(backend, context, obsid, conn, log):
             log.console('backend = ' + backend + ' is not supported',
                         logging.ERROR)
 
-        if context = 'prod':
-            sqlcmd = '\n'.join({
+        if context == 'prod':
+            sqlcmd = '\n'.join([
                      'SELECT substring(f.file_id, 1, len(f.file_id)-4),',
                      '       a.subsysnr',
                      'FROM jcmtmd.dbo.FILES f',
@@ -98,12 +98,16 @@ def raw_product_id(backend, context, obsid, conn, log):
             if result:
                 for file_id, subsysnr in result:
                     fileid_dict[file_id] = (obsid, subsysnr_dict[str(subsysnr)])
+                    log.file('file_id metadata: ' + file_id +
+                             ', ' + obsid +
+                             ', ' + subsysnr_dict[str(subsysnr)],
+                             logging.DEBUG)
             else:
                 log.console('no rows returned from FILES for obsid = ' + obsid,
                             logging.ERROR)
     
     if context == 'raw':
         return subsysnr_dict
-    elif context = 'prod':
+    elif context == 'prod':
         return fileid_dict
     

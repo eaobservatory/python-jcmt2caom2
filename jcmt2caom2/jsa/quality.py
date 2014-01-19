@@ -59,6 +59,9 @@ class quality(object):
             self.log.console('jcmt_value = %d must be in ' % (jcmt_value) +
                              repr(JSA_TRANS.keys()) ,
                              logging.ERROR)
+        self.log.file('jcmt_value = ' + str(self._jcmt_value) + 
+                      '  jsa_value = ' + str(self._jsa_value),
+                      logging.DEBUG)
         
     def jsa_value(self):
         """

@@ -14,24 +14,23 @@ class testIntent( unittest.TestCase):
     """
 
     def testIntent(self):
-        test_data = [['calibration', 'ACSIS',   'focus',    OIT.CALIBRATION],
-                     ['calibration', 'ACSIS',   'pointing', OIT.CALIBRATION],
-                     ['science',     'ACSIS',   'raster',   OIT.SCIENCE],
-                     ['calibration', 'DAS',     'focus',    OIT.CALIBRATION],
-                     ['calibration', 'DAS',     'pointing', OIT.CALIBRATION],
-                     ['science',     'DAS',     'raster',   OIT.SCIENCE],
-                     ['calibration', 'AOS-C',   'focus',    OIT.CALIBRATION],
-                     ['calibration', 'AOS-C',   'pointing', OIT.CALIBRATION],
-                     ['science',     'AOS-C',   'raster',   OIT.SCIENCE],
-                     ['calibration', 'SCUBA-2', 'focus',    OIT.CALIBRATION],
-                     ['calibration', 'SCUBA-2', 'pointing', OIT.SCIENCE],
-                     ['science',     'SCUBA-2', 'raster',   OIT.SCIENCE]]
+        test_data = [['focus',    'ACSIS',   OIT.CALIBRATION],
+                     ['pointing', 'ACSIS',   OIT.CALIBRATION],
+                     ['science',  'ACSIS',   OIT.SCIENCE],
+                     ['focus',    'DAS',     OIT.CALIBRATION],
+                     ['pointing', 'DAS',     OIT.CALIBRATION],
+                     ['science',  'DAS',     OIT.SCIENCE],
+                     ['focus',    'AOS-C',   OIT.CALIBRATION],
+                     ['pointing', 'AOS-C',   OIT.CALIBRATION],
+                     ['science',  'AOS-C',   OIT.SCIENCE],
+                     ['focus',    'SCUBA-2', OIT.CALIBRATION],
+                     ['pointing', 'SCUBA-2', OIT.SCIENCE],
+                     ['science',  'SCUBA-2', OIT.SCIENCE]]
         
-        for obs_type, backend, sam_mode, retval in test_data:
-            intentval = intent(obs_type, backend, sam_mode)
+        for obs_type, backend, retval in test_data:
+            intentval = intent(obs_type, backend)
             self.assertEqual(intentval, retval,
                              'The value returned from intent("' + obs_type +
                              '", "' + backend +
-                             '", "' + sam_mode +
                              '") was "' + str(intentval) +
                              '" but should have been "' + str(retval) + '"')

@@ -8,7 +8,7 @@ from caom2.caom2_enums import ObservationIntentType
 
 from jcmt2caom2.__version__ import version
 
-def intent(obs_type, backend, sam_mode):
+def intent(obs_type, backend):
     """
     Generates values for the CAOM-2 field Observation.intent.
     Mostly, if the JCMT designated an observation as 'calibration' or 'science'
@@ -26,23 +26,17 @@ def intent(obs_type, backend, sam_mode):
     
     Usage:
     For a raw observation:
-        myintent = intent(self.log)
-        observation.intent = myintent(common['obs_type'],
-                                      common['backend'],
-                                      common['sam_mode'])
+        observation.intent = intent(common['obs_type'],
+                                    common['backend'])
     For processed data:
-        myintent = intent(self.log)
         self.add_to_plane_dict('obs.intent', 
-                               myintent(header['OBS_TYPE'],
-                                        header['BACKEND'],
-                                        header['SAM_MODE']).value)
+                               intent(header['OBS_TYPE'],
+                                      header['BACKEND']).value)
     """
-    if obs_type == 'science':
-        intent_value = ObservationIntentType.SCIENCE
-    else: 
-        intent_value = ObservationIntentType.CALIBRATION
-    
-    if backend == 'SCUBA-2' and sam_mode == 'pointing':
+    intent_value = ObservationIntentType.CALIBRATION
+    if (obs_type == 'science' or
+        (obs_type == 'pointing' and backend == 'SCUBA-2')):
+
         intent_value = ObservationIntentType.SCIENCE
 
     return intent_value

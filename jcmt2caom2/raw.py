@@ -33,12 +33,13 @@ from caom2.wcs.caom2_spatial_wcs import SpatialWCS
 from caom2.wcs.caom2_coord_axis2d import CoordAxis2D
 from caom2.wcs.caom2_dimension2d import Dimension2D
 from caom2.wcs.caom2_coord_polygon2d import CoordPolygon2D
-from caom2.wcs.caom2_coord2d import Coord2D
+from caom2.wcs.caom2_value_coord2d import ValueCoord2D
 from caom2.wcs.caom2_ref_coord import RefCoord
 from caom2.wcs.caom2_spectral_wcs import SpectralWCS
 from caom2.wcs.caom2_coord_axis1d import CoordAxis1D
 from caom2.wcs.caom2_coord_error import CoordError
 from caom2.wcs.caom2_coord_bounds1d import CoordBounds1D
+from caom2.wcs.caom2_coord_circle2d import CoordCircle2D
 from caom2.wcs.caom2_coord_range1d import CoordRange1D
 from caom2.wcs.caom2_coord_range2d import CoordRange2D
 from caom2.wcs.caom2_temporal_wcs import TemporalWCS
@@ -410,8 +411,8 @@ class raw(object):
         results = {'quality': quality(JCMT_QA.GOOD, self.log)}
         if len(answer):
             results['quality'] = quality(answer[0][0], self.log)
-            self.log.file('For %s JSA_QA = %s from ompobslog' %
-                          (obsid, results['quality'].jsa_name()))
+        self.log.file('For %s JSA_QA = %s from ompobslog' %
+                      (obsid, results['quality'].jsa_name()))
         return results
 
     def get_files(self, obsid):
@@ -499,10 +500,14 @@ class raw(object):
         keyword_dict['frontend'] = common['instrume']
         keyword_dict['backend'] = common['backend']
         keyword_dict['switching_mode'] = common['sw_mode']
-        keyword_dict['inbeam'] = common['inbeam']
+        if common['inbeam']:
+            keyword_dict['inbeam'] = common['inbeam']
         if common['backend'] in ('ACSIS', 'DAS', 'AOS-C'):
-            keyword_dict['sideband'] = common['obs_sb']
-            keyword_dict['sieband_mode'] = common['sb_mode']
+            # Although stored in ACSIS, the sideband properties belong to the
+            # whole observation.  Fetch them using any subsysnr.
+            subsysnr = subsystem.keys()[0]
+            keyword_dict['sideband'] = subsystem[subsysnr]['obs_sb']
+            keyword_dict['sideband_filter'] = subsystem[subsysnr]['sb_mode']
         someBad, keyword_list = instrument_keywords('raw', 
                                                     keyword_dict, 
                                                     self.log)
@@ -560,8 +565,7 @@ class raw(object):
 
         # set the observation intent
         observation.intent = intent(common['obs_type'],
-                                    common['backend'],
-                                    common['sam_mode'])
+                                    common['backend'])
 
         proposal = Proposal(common['project'])
         if common['pi'] is not None:
@@ -588,7 +592,7 @@ class raw(object):
 
         backend = common['backend'].upper()
         instrument = Instrument(backend)
-        instrument.keywords = self.instrument_keywords
+        instrument.keywords.extend(self.instrument_keywords)
 
         if backend in ['ACSIS', 'DAS', 'AOSC']:
             keys = sorted(subsystem.keys())
@@ -713,7 +717,7 @@ class raw(object):
                 file_id = os.path.splitext(jcmt_file_id)[0]
                 uri = 'ad:JCMT/' + file_id
                 artifact = Artifact(uri)
-                if common['obs_type'] == 'science':
+                if observation.intent == ObservationIntentType.SCIENCE:
                     artifact.product_type = ProductType.SCIENCE
                 else:
                     artifact.product_type = ProductType.CALIBRATION
@@ -741,26 +745,26 @@ class raw(object):
                 # "pixel" coordinates, except there is only one conceptual
                 # pixel so the range should be [0.5, 1.5]
                 if (common['obsrabl'] == common['obsratr'] and
-                    common['obsdecbl'] == common[obsdectr']):
+                    common['obsdecbl'] == common['obsdectr']):
                     # bounding "box" is a point, so insert a circle 
-                    bounding_box = CoordCircle2D(Coord2D(
-                        RefCoord(0.5, common['obsratl']),
-                        RefCoord(0.5, common['obsdectl'])),
+                    bounding_box = CoordCircle2D(ValueCoord2D(
+                        common['obsratl'],
+                        common['obsdectl']),
                         beamsize)
                 else:
                     bounding_box = CoordPolygon2D()
-                    bounding_box.vertices.append(Coord2D(
-                        RefCoord(0.5, common['obsratl']),
-                        RefCoord(0.5, common['obsdectl'])))
-                    bounding_box.vertices.append(Coord2D(
-                        RefCoord(0.5, common['obsratr']),
-                        RefCoord(1.5, common['obsdectr'])))
-                    bounding_box.vertices.append(Coord2D(
-                        RefCoord(1.5, common['obsrabr']),
-                        RefCoord(1.5, common['obsdecbr'])))
-                    bounding_box.vertices.append(Coord2D(
-                        RefCoord(1.5, common['obsrabl']),
-                        RefCoord(0.5, common['obsdecbl'])))
+                    bounding_box.vertices.append(ValueCoord2D(
+                        common['obsratl'],
+                        common['obsdectl']))
+                    bounding_box.vertices.append(ValueCoord2D(
+                        common['obsratr'],
+                        common['obsdectr']))
+                    bounding_box.vertices.append(ValueCoord2D(
+                        common['obsrabr'],
+                        common['obsdecbr']))
+                    bounding_box.vertices.append(ValueCoord2D(
+                        common['obsrabl'],
+                        common['obsdecbl']))
 #                if common['obsratl']:
 #                    # only insert a position range if it is not null
 #                    ra_range = [common['obsratl'],
@@ -953,7 +957,7 @@ class raw(object):
         else:
             repository = Repository(self.outdir, self.log, debug=False)
 
-        uri = 'caom:JCMT/' + common['obsid']
+        uri = 'caom:' + self.collection + '/' + common['obsid']
         if ingestibility == INGESTIBILITY.JUNK:
             self.log.console('     Remove JUNK observation ' + self.obsid)
             repository.remove(uri)

@@ -89,14 +89,20 @@ from caom2.wcs.caom2_coord_range1d import CoordRange1D
 from caom2.wcs.caom2_ref_coord import RefCoord
 from caom2.wcs.caom2_temporal_wcs import TemporalWCS
 from caom2.caom2_enums import ProductType
+from caom2.caom2_simple_observation import SimpleObservation as SimpleObservation
 
 from tools4caom2.database import database
 from tools4caom2.ingest2caom2 import ingest2caom2
+from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.timezone import UTC
 from tools4caom2.mjd import utc2mjd
 
 from jcmt2caom2.jsa.intent import intent
 from jcmt2caom2.jsa.target_name import target_name
+from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
+from jcmt2caom2.jsa.raw_product_id import raw_product_id
+
+import __version__
 
 # from caom2.caom2_enums import CalibrationLevel
 # from caom2.caom2_enums import DataProductType
@@ -224,6 +230,9 @@ class stdpipe(ingest2caom2):
         
         self.member_cache = {}
         self.provenance_cache = {}
+        self.remove_dict = {}
+        self.remove_id = []
+        self.repository = None
 
     #************************************************************************
     # Include the custome command line switch in the log
@@ -235,15 +244,15 @@ class stdpipe(ingest2caom2):
         Arguments:
         <none>
         """
+        self.log.file('jcmt2caom2version    = ' + __version__.version)
         ingest2caom2.logCommandLineSwitches(self)
 
         if self.switches.check:
             self.validitylevel = logging.WARN
-        self.collection = self.switches.collection
 
-        self.log.console('check           = ' + str(self.switches.check))
-        self.log.console('collection      = ' + str(self.switches.collection))
-        self.log.console('')
+        self.log.file('check                = ' + str(self.switches.check))
+        self.log.file('collection           = ' + self.switches.collection)
+        self.log.file('')
 
     #************************************************************************
     # Connect to the database for JCMT-specific metadata
@@ -315,6 +324,49 @@ class stdpipe(ingest2caom2):
                 bad = True
         return bad
 
+    # Discover observations and planes to remove
+    def build_remove_dict(self, run_id):
+        """
+        If identity_instance_id has not already been checked, read back a
+        complete list of existing collections, observations and planes, 
+        which will be deleted if they are not replaced or updated by the 
+        current recipe instance.
+        
+        Arguments:
+        identity_instance_id: a bigint to be compared with 
+                              Plane.provenance_runID
+        """
+        if run_id not in self.remove_id:
+            self.remove_id.append(run_id)
+            dbsch = '.'.join([self.database, self.schema])
+            sqlcmd = '\n'.join([
+                'SELECT',
+                '    o.collection,',
+                '    o.observationID,',
+                '    p.productID,',
+                '    CASE WHEN p.provenance_runID="' + run_id + \
+                    '" THEN 1 ELSE 0 END',
+                'FROM',
+                '    ' + dbsch + '.caom2_Observation o'
+                '        INNER JOIN ' + dbsch + '.caom2_Plane p',
+                '            ON o.obsID=p.obsID',
+                'WHERE',
+                '    o.obsID in (SELECT pp.obsID',
+                '                FROM caom2_Plane pp'
+                '                WHERE p.provenance_runID = "' + run_id + '")',
+                'ORDER BY o.collection, o.observationID, p.productID'])
+            result = self.conn.read(sqlcmd)
+            if result:
+                for coll, obsid, prodid, eq in result:
+                    # Ignore entries in other collections
+                    if coll == self.collection:
+                        if coll not in self.remove_dict:
+                            self.remove_dict[coll] = {}
+                        if obsid not in self.remove_dict[coll]:
+                            self.remove_dict[coll][obsid] = {}
+                        if prodid not in self.remove_dict[coll][obsid]:
+                            self.remove_dict[coll][obsid][prodid] = int(eq)
+
     #************************************************************************
     # archive-specific structures to write override files
     #************************************************************************
@@ -326,6 +378,13 @@ class stdpipe(ingest2caom2):
                observationID
                productID
         '''
+        if self.repository is None:
+            # note that this is similar to the repository in ingest2caom2, but 
+            # that is not made a part of the structure - probably should be 
+            self.repository = Repository(self.outdir, 
+                                         self.log, 
+                                         debug=self.debug,
+                                         backoff=[10.0, 20.0, 40.0, 80.0])
 
         self.log.file('Entering build_dict')
         if 'file_id' not in header:
@@ -333,7 +392,7 @@ class stdpipe(ingest2caom2):
                              logging.ERROR)
         file_id = header['file_id']
 
-        self.log.console('Starting ' + file_id)
+        self.log.file('Starting ' + file_id)
         # Doing all the required checks here simplifies the code
         # farther down and ensures error reporting of these basic problems
         # even if the ingestion fails before reaching the place where the
@@ -389,7 +448,7 @@ class stdpipe(ingest2caom2):
         self.log.console('algorithm.name = ' + algorithm,
                          logging.DEBUG)
 
-        if header['BACKEND'] in ('SCUBA-2',):
+        if header['BACKEND'].strip() in ('SCUBA-2',):
             someBAD |= self.check_missing('FILTER', header)
         else:
             # ACSIS-like files must define the SUBSYSNR
@@ -415,7 +474,8 @@ class stdpipe(ingest2caom2):
 
         if not backendBAD:
             # Only do thse tests if the backend is OK
-            if header['BACKEND'] in ('ACSIS', 'DAS', 'AOS-C'):
+            backend = header['BACKEND'].upper().strip()
+            if backend in ('ACSIS', 'DAS', 'AOS-C'):
                 someBAD |= self.check_values('INBEAM', header,
                     [pyfits.card.UNDEFINED,
                      'POL'])
@@ -430,7 +490,7 @@ class stdpipe(ingest2caom2):
                     [pyfits.card.UNDEFINED,
                      'GBS', 'NGS', 'SLS'])
 
-            elif header['BACKEND'] == 'SCUBA-2':
+            elif backend == 'SCUBA-2':
                 someBAD |= self.check_values('OBS_TYPE', header,
                     ['pointing', 'science', 'focus', 'skydip',
                      'flatfield', 'setup', 'noise'])
@@ -448,9 +508,7 @@ class stdpipe(ingest2caom2):
                 header['INSTRUME'] != pyfits.card.UNDEFINED):
                 keyword_dict['frontend'] = header['INSTRUME']
             
-            if ('BACKEND' in header and 
-                header['BACKEND'] != pyfits.card.UNDEFINED):
-                keyword_dict['backend'] = header['BACKEND']
+            keyword_dict['backend'] = backend
             
             if ('SW_MODE' in header and 
                 header['SW_MODE'] != pyfits.card.UNDEFINED):
@@ -460,14 +518,14 @@ class stdpipe(ingest2caom2):
                 header['INBEAM'] != pyfits.card.UNDEFINED):
                 keyword_dict['inbeam'] = header['INBEAM']
             
-            if common['backend'] in ('ACSIS', 'DAS', 'AOS-C'):
+            if backend in ('ACSIS', 'DAS', 'AOS-C'):
                 if ('OBS_SB' in header and 
                     header['OBS_SB'] != pyfits.card.UNDEFINED):
                     keyword_dict['sideband'] = header['OBS_SB']
                 
                 if ('SB_MODE' in header and 
                     header['SB_MODE'] != pyfits.card.UNDEFINED):
-                    keyword_dict['sieband_filter'] = header['SB_MODE']
+                    keyword_dict['sideband_filter'] = header['SB_MODE']
             
             thisBad, keyword_list = instrument_keywords('stdpipe',
                                                         keyword_dict,
@@ -501,6 +559,9 @@ class stdpipe(ingest2caom2):
                         if obsn in self.member_cache:
                             obsid, release_date, date_obs, date_end = \
                                 self.member_cache[obsn]
+                            self.log.file('fetch member metadata from cache '
+                                          'for ' + obsn,
+                                          logging.DEBUG)
                         else:
                             sqlcmd = """
                                      SELECT distinct f.obsid,
@@ -516,28 +577,14 @@ class stdpipe(ingest2caom2):
                             if len(result):
                                 obsid, release_date, date_obs, date_end = \
                                     result[0]
+                                
+                                # cache the membership metadata
                                 self.member_cache[obsn] = \
                                     (obsid, release_date, date_obs, date_end)
-
-                            else:
-                                self.log.console('Member key ' + obsn + ' is '
-                                                 'not in jcmtmd.dbo.FILES',
-                                                 logging.WARN)
-                                someBAD = True
-                            
-                            if obsid:
-                                # record the time interval
-                                if ((algorithm != 'exposure'
-                                     or obsid == self.observationID)
-                                    and obsid not in obstimes):
-                                        obstimes[obsid] = (date_obs, date_end)
-
-                                if max_release_date:
-                                    if max_release_date < release_date:
-                                        max_release_date = release_date
-                                else:
-                                    max_release_date = release_date
-                            
+                                self.log.file('cache member metadata '
+                                              'for ' + obsn,
+                                              logging.DEBUG)
+                                    
                                 # Also cache the productID's for each file
                                 fdict = raw_product_id(backend,
                                                        'prod',
@@ -545,7 +592,29 @@ class stdpipe(ingest2caom2):
                                                        self.conn,
                                                        self.log)
                                 self.provenance_cache.update(fdict)
+                                self.log.file('cache provenance metadata '
+                                              'for ' + obsn,
+                                              logging.DEBUG)
 
+                            else:
+                                self.log.console('Member key ' + obsn + ' is '
+                                                 'not in jcmtmd.dbo.FILES',
+                                                 logging.WARN)
+                                someBAD = True
+                            
+                        if obsid:
+                            # record the time interval
+                            if ((algorithm != 'exposure'
+                                 or obsid == self.observationID)
+                                and obsid not in obstimes):
+                                    obstimes[obsid] = (date_obs, date_end)
+
+                            if max_release_date:
+                                if max_release_date < release_date:
+                                    max_release_date = release_date
+                            else:
+                                max_release_date = release_date
+                        
             if algorithm != 'exposure' and not obstimes:
                 # It is an error if a composite has no members
                 self.log.console('No members in a composite '
@@ -565,6 +634,8 @@ class stdpipe(ingest2caom2):
             self.log.file('Reading provenance')
             prvprocset = set()
             prvrawset = set()
+            self.log.file('provenance_cache: ' + repr(self.provenance_cache),
+                                                      logging.DEBUG)
 
             if (product not in ('rimg', 'rsp') and
                 'PRVCNT' in header and
@@ -600,15 +671,19 @@ class stdpipe(ingest2caom2):
                             if prvn in self.provenance_cache:
                                 prv_obsID, prv_prodID = \
                                     self.provenance_cache[prvn]
+                                self.log.file('fetch provenance metadata '
+                                              'from cache for ' + prvn,
+                                              logging.DEBUG)
                                 if prv_obsID != self.observationID:
                                     continue
-                        else:
-                            self.log.console('provenance and membership headers'
-                                             ' list inconsistent raw data:' +
-                                             prvn + ' is not in ' +
-                                             'provenance_cache constructed from'
-                                             ' membership',
-                                             logging.ERROR)
+                            else:
+                                self.log.console('provenance and membership '
+                                                 'headers list inconsistent '
+                                                 'raw data:' +
+                                                 prvn + ' is not in ' +
+                                                 'provenance_cache constructed '
+                                                 'from membership',
+                                                 logging.ERROR)
                             
                         # Add the file if this is NOT an exposure,
                         # or if it is and the file is part of the same exposure
@@ -645,8 +720,8 @@ class stdpipe(ingest2caom2):
         # Only get here if NOT in check mode
         # Begin real ingestion
         #----------------------------------------------------------------------
-        self.collection = 'JCMT'
-
+        self.collection = self.switches.collection
+        
         # Determine whether this is a simple or composite observation
         self.add_to_plane_dict('algorithm.name', algorithm)
         if algorithm != 'exposure':
@@ -682,7 +757,7 @@ class stdpipe(ingest2caom2):
         
         # Instrument
         if 'BACKEND' in header and header['BACKEND'] != pyfits.card.UNDEFINED:
-            instrument = header['BACKEND'].upper()
+            instrument = header['BACKEND'].upper().strip()
             self.add_to_plane_dict('instrument.name', instrument)
             self.add_to_plane_dict('instrument.keywords',
                                    self.instrument_keywords)
@@ -718,10 +793,8 @@ class stdpipe(ingest2caom2):
         obs_type = None
         if 'OBS_TYPE' in header and header['OBS_TYPE'] != pyfits.card.UNDEFINED:
             obs_type = header['OBS_TYPE'].strip()
-            self.add_to_plane_dict('obs.intent',
-                                   intent(obs_type,
-                                          header['BACKEND'],
-                                          header['SAM_MODE']).value)
+            intent_val = intent(obs_type, header['BACKEND']).value
+            self.add_to_plane_dict('obs.intent', intent_val)
 
             if ('SAM_MODE' in header and
                 header['SAM_MODE'] != pyfits.card.UNDEFINED):
@@ -774,7 +847,7 @@ class stdpipe(ingest2caom2):
                 if len(result):
                     self.productID = 'cube_%d' % result[0]
                 else:
-                    self.log.console('Could not generate productID for' +
+                    self.log.console('Could not generate productID for ' +
                                      file_id,
                                      logging.ERROR)
             else:
@@ -834,6 +907,7 @@ class stdpipe(ingest2caom2):
                 header['DPRCINST'] != pyfits.card.UNDEFINED):
                 self.add_to_plane_dict('provenance.runID',
                                        str(header['DPRCINST']))
+                self.build_remove_dict(str(header['DPRCINST']))
 
             if ('DPDATE' in header and
                 header['DPDATE'] != pyfits.card.UNDEFINED):
@@ -890,7 +964,7 @@ class stdpipe(ingest2caom2):
             primaryURI = self.fitsextensionURI(self.archive,
                                                file_id,
                                                [0])
-            if obs_type == 'science':
+            if intent_val == 'science':
                 self.add_to_fitsuri_dict(primaryURI,
                                          'part.productType', 
                                          ProductType.SCIENCE.value)
@@ -981,75 +1055,196 @@ class stdpipe(ingest2caom2):
                                  'not point to an artifact',
                                  logging.DEBUG)
                 return
-            caomArtifact = observation.planes[planeID].artifacts[fitsuri]
+            if (observation.algorithm != SimpleObservation._ALGORITHM and
+                len(observation.members) > 1):
+                # single exposure products have DATE-OBS and DATE-END, 
+                # and are handled correctly by fits2caom2
+                caomArtifact = observation.planes[planeID].artifacts[fitsuri]
 
-            for part in caomArtifact.parts:
-                thisPart = caomArtifact.parts[part]
-                if thisPart.product_type in [ProductType.SCIENCE,
-                                             ProductType.NOISE]:
-                    for chunk in thisPart.chunks:
-                        if chunk.position:
-                            # if the position WCS exists, add a time axis
-                            time_axis = CoordAxis1D(Axis('TIME', 'd'))
-                            if len(thisCustom) == 1:
-                                # time range
-                                for key in thisCustom:
-                                    date_start, date_end = thisCustom[key]
-                                    mjdstart = utc2mjd(date_start)
-                                    mjdend = utc2mjd(date_end)
-                                    self.log.console('time range = %f, %f' %
-                                                     (mjdstart, mjdend),
-                                                     logging.DEBUG)
+                for part in caomArtifact.parts:
+                    thisPart = caomArtifact.parts[part]
+                    if thisPart.product_type in [ProductType.SCIENCE,
+                                                 ProductType.NOISE]:
+                        for chunk in thisPart.chunks:
+                            if chunk.position:
+                                # if the position WCS exists, add a time axis
+                                time_axis = CoordAxis1D(Axis('TIME', 'd'))
+#                                if len(thisCustom) == 1:
+#                                    # time range
+#                                    for key in thisCustom:
+#                                        date_start, date_end = thisCustom[key]
+#                                        mjdstart = utc2mjd(date_start)
+#                                        mjdend = utc2mjd(date_end)
+#                                        self.log.console(
+#                                            'time range = %f, %f' %
+#                                            (mjdstart, mjdend),
+#                                            logging.DEBUG)
+#
+#                                        time_axis.range = CoordRange1D(
+#                                            RefCoord(0.5, mjdstart),
+#                                            RefCoord(1.5, mjdend))
+#
+#                                elif len(thisCustom) > 1:
+                                if len(thisCustom):
+                                    # time
+                                    time_axis.bounds = CoordBounds1D()
+                                    for key in thisCustom:
+                                        date_start, date_end = thisCustom[key]
+                                        mjdstart = utc2mjd(date_start)
+                                        mjdend = utc2mjd(date_end)
+                                        self.log.console(
+                                            'time bounds = %f, %f' %
+                                            (mjdstart, mjdend),
+                                            logging.DEBUG)
 
-                                    time_axis.range = CoordRange1D(
-                                        RefCoord(0.5, mjdstart),
-                                        RefCoord(1.5, mjdend))
+                                        time_axis.bounds.samples.append(
+                                            CoordRange1D(
+                                                RefCoord(0.5, mjdstart),
+                                                RefCoord(1.5, mjdend)))
 
-                            elif len(thisCustom) > 1:
-                                # time
-                                time_axis.bounds = CoordBounds1D()
-                                for key in thisCustom:
-                                    date_start, date_end = thisCustom[key]
-                                    mjdstart = utc2mjd(date_start)
-                                    mjdend = utc2mjd(date_end)
-                                    self.log.console('time bounds = %f, %f' %
-                                                     (mjdstart, mjdend),
-                                                     logging.DEBUG)
+                                else:
+                                    self.log.console('no time ranges defined '
+                                                     ' for ' + fitsuri.uri,
+                                                     logging.WARN)
+                                
+                                # if a temporalWCS already exists, use it but
+                                # replace the CoordAxis1D
+                                if chunk.time:
+                                    chunk.time.axis = time_axis
+                                    chunk.time.timesys = 'UTC'
+                                else:
+                                    chunk.time = TemporalWCS(time_axis)
+                                    chunk.time.timesys = 'UTC'
+                                self.log.console('temporal axis = ' + 
+                                                 repr(chunk.time.axis.axis),
+                                                 logging.DEBUG)
+                                self.log.console('temporal WCS = ' + 
+                                                 str(chunk.time),
+                                                 logging.DEBUG)
+    #                else:
+                        # If not science, delete all chunks
+                        # Once fits2caom2 is fixed, discard this clause
+    #                    for chunk in thisPart.chunks:
+    #                        thisPart.chunks.remove(chunk)
 
-                                    time_axis.bounds.samples.append(
-                                        CoordRange1D(
-                                            RefCoord(0.5, mjdstart),
-                                            RefCoord(1.5, mjdend)))
-
-                            else:
-                                self.log.console('no time ranges defined '
-                                                 ' for ' + fitsuri.uri,
-                                                 logging.WARN)
-                            
-                            # if a temporalWCS already exists, use it but
-                            # replace the CoordAxis1D
-                            if chunk.time:
-                                chunk.time.axis = time_axis
-                                chunk.time.timesys = 'UTC'
-                            else:
-                                chunk.time = TemporalWCS(time_axis)
-                                chunk.time.timesys = 'UTC'
-                            self.log.console('temporal axis = ' + 
-                                             repr(chunk.time.axis.axis),
-                                             logging.DEBUG)
-                            self.log.console('temporal WCS = ' + str(chunk.time),
-                                             logging.DEBUG)
-                else:
-                    # If not science, delete all chunks
-                    # Once fits2caom2 is fixed, discard this clause
-                    for chunk in thisPart.chunks:
-                        thisPart.chunks.remove(chunk)
-                            
+                with open(xmlfile, 'w') as XMLFILE:
+                    self.writer.write(observation, XMLFILE)
 
 
-            with open(xmlfile, 'w') as XMLFILE:
-                self.writer.write(observation, XMLFILE)
+    def build_plane_custom(self,
+                           xmlfile,
+                           collection,
+                           observationID,
+                           productID):
+        """
+        Implement the cleanup of planes that are no longer generated by this 
+        recipe instance from observations that are.  It is only necessary to 
+        remove planes from the current observation that are not already being 
+        replaced by the new set of products.
+        
+        Arguments:
+        xmlfile: current xmlfile
+        collection: current collection
+        observationID: current observationID
+        productID: current productID NOT USED in this routine
+        """
+        if collection in self.remove_dict:
+            if observationID in self.remove_dict[collection]:
+                obs = self.reader.read(xmlfile)
+                for prod in obs.planes.keys():
+                    # logic is, this collection/observation/plane used to be
+                    # genrated by this recipe instance, but is not part of the
+                    # current ingestion and so is obsolete.
+                    if prod in self.remove_dict[collection][observationID] and\
+                        self.remove_dict[collection][observationID][prod] and\
+                        prod not in self.metadict[collection][observationID]:
+                        
+                        uri = self.planeURI(collection, 
+                                            observationID, 
+                                            prod,
+                                            input=False)
+                        self.log.console('CLEANUP: remove obsolete plane:' + 
+                                         uri,
+                                         logging.WARN)
+                        del obs.planes[prod]
+                        del self.remove_dict[collection][observationID][prod]
+                        
+                if not self.test:
+                    with open(xmlfile, 'w') as XMLFILE:
+                        self.writer.write(obs, XMLFILE)
 
+    def build_observation_custom(self,
+                                 xmlfile,
+                                 collection,
+                                 observationID):
+        """
+        Implement the cleanup of collections, observations, and planes that are 
+        no longer generated by this recipe instance.  It is only necessary to 
+        remove items that are not already being replaced by the new set of 
+        products.  At this level, remove all collection, observations and planes
+        from observations that are not generated by the current recipe instance. 
+        
+        Arguments:
+        xmlfile: current xmlfile NOT USED in this routine
+        collection: current collection NOT USED in this routine
+        observationID: current observationID NOT USED in this routine
+        """
+        # log the contents of remove_dict
+        for coll in self.remove_dict:
+            for obsid in self.remove_dict[coll].keys():
+                for prodid in self.remove_dict[coll][obsid].keys():
+                    self.log.file('remove_dict ' + coll + ': ' + obsid +
+                                  ': ' + prodid + '= ' + 
+                                  str(self.remove_dict[coll][obsid][prodid]))
+        
+        for coll in self.remove_dict:
+            if coll not in self.metadict:
+                # Nothing in the existing collection still exists
+                for obsid in self.remove_dict[coll].keys():
+                    uri = self.observationURI(coll, obsid, member=False)
+                    self.log.console('CLEANUP: remove ' + uri.uri)
+                    if not self.test:
+                        self.repository.remove(uri.uri)
+                    del self.remove_dict[coll][obsid]
+                del self.remove_dict[coll]
+            
+            else:
+                for obsid in self.remove_dict[coll].keys():
+                    uri = self.observationURI(coll, obsid, member=False)
+                    if obsid not in self.metadict[coll]:
+                        # Delete the whole observation or just some planes?
+                        same = 1
+                        for prodid in self.remove_dict[coll][obsid]:
+                            same *= self.remove_dict[coll][obsid][prodid]
+                        if same:
+                            # all planes come from the same recipe instance
+                            # so delete the whole observation
+                            self.log.console('CLEANUP: remove obsolete '
+                                             'observation: ' + uri.uri,
+                                             logging.WARN)
+                            if not self.test:
+                                self.repository.remove(uri.uri)
+                            del self.remove_dict[coll][obsid]
+                        else:
+                            with repository.process(uri) as badxmlfile:
+                                if os.path.exists(badxmlfile):
+                                    obs = self.reader.read(badxmlfile)
+                                    for prod in self.remove_dict[coll][obsid].keys():
+                                        if self.remove_dict[coll][obsid][prod]\
+                                            and prod in obs.planes:
+                                            uri = self.planeURI(coll, 
+                                                                obsid, 
+                                                                prod,
+                                                                input=False)
+                                            self.log.console('CLEANUP: remove '
+                                                'plane: ' + uri.uri,
+                                                logging.WARN)
+                                            
+                                            del obs.planes[prod]
+                                            del self.remove_dict[coll][obsid][prod]
+                                if not self.test:
+                                    with open(badxmlfile, 'w') as XMLFILE:
+                                        self.writer.write(observation, XMLFILE)
 
     def check_acceptable_headers(self, head):
         """
