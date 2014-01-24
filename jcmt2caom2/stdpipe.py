@@ -750,10 +750,6 @@ class stdpipe(ingest2caom2):
                                        answer[0][0])
                 self.add_to_plane_dict('proposal.title',
                                        answer[0][1])
-
-        # Target
-        self.add_to_plane_dict('Observation.target.name', 
-                               target_name(header['OBJECT']))
         
         # Instrument
         if 'BACKEND' in header and header['BACKEND'] != pyfits.card.UNDEFINED:
@@ -810,6 +806,42 @@ class stdpipe(ingest2caom2):
                     if obs_type not in ("phase", "ramp"):
                         self.add_to_plane_dict('OBSTYPE',
                                                obs_type)
+
+        # Target
+        if obs_type not in ('flatfield', 'noise', 'setup', 'skydip'):
+            if ('OBJECT' in header and 
+                    header['OBJECT'] != pyfits.card.UNDEFINED):
+                self.add_to_plane_dict('target.name',
+                                       header['OBJECT'])
+            
+            if ('STANDARD' in header 
+                and header['STANDARD'] != pyfits.card.UNDEFINED):
+                    if header['STANDARD']:
+                        self.add_to_plane_dict('target.standard', 'TRUE')
+                    else:
+                        self.add_to_plane_dict('target.standard', 'FALSE')
+
+            if 'OBSRA' in header and 'OBSDEC' in header:
+                if (header['OBSRA'] == pyfits.card.UNDEFINED
+                        or header['OBSDEC'] == pyfits.card.UNDEFINED):
+                    self.add_to_plane_dict('target.moving', 'TRUE')
+                else:
+                    self.add_to_plane_dict('target.moving', 'FALSE')
+                    self.add_to_plane_dict('target_position.cval1',
+                                           str(header['OBSRA']))
+                    self.add_to_plane_dict('target_position.cval2',
+                                           str(header['OBSDEC']))
+                    self.add_to_plane_dict('target_position.radesys',
+                                           'ICRS')
+                    self.add_to_plane_dict('target_position.equinox',
+                                           '2000.0')
+                    
+            if (backend != 'SCUBA-2'
+                and 'ZSOURCE' in header 
+                and header['ZSOURCE'] != pyfits.card.UNDEFINED):
+                
+                self.add_to_plane_dict('target.redshift',
+                                       str(header['ZSOURCE']))
 
         # Plane metadata
         product = header['PRODUCT']

@@ -22,12 +22,14 @@ from caom2.caom2_environment import Environment
 from caom2.caom2_instrument import Instrument
 from caom2.caom2_proposal import Proposal
 from caom2.caom2_target import Target
+from caom2.caom2_target_position import TargetPosition
 from caom2.caom2_telescope import Telescope
 from caom2.caom2_observation_uri import ObservationURI
 from caom2.caom2_plane import Plane
 from caom2.caom2_artifact import Artifact
 from caom2.caom2_part import Part
 from caom2.caom2_chunk import Chunk
+from caom2.types.caom2_point import Point
 from caom2.wcs.caom2_axis import Axis
 from caom2.wcs.caom2_spatial_wcs import SpatialWCS
 from caom2.wcs.caom2_coord_axis2d import CoordAxis2D
@@ -110,6 +112,7 @@ class raw(object):
               'inbeam',
               'instrume',
               'object',
+              'obsdec',
               'obsdecbl',
               'obsdecbr',
               'obsdectl',
@@ -119,6 +122,7 @@ class raw(object):
               'obsgeo_y',
               'obsgeo_z',
               'obsnum',
+              'obsra',
               'obsrabl',
               'obsrabr',
               'obsratl',
@@ -669,15 +673,33 @@ class raw(object):
             beamsize = 4.787e-6 * 850.0
         observation.instrument = instrument
 
-        targetname = target_name(common['object'])
-        target = Target(targetname)
-        if common['standard'] is not None:
-            target.standard = True if common['standard'] else False
-        if backend != 'SCUBA-2':
-            subsysnr = min(subsystem.keys())
-            if subsystem[subsysnr]['zsource'] is not None:
-                target.redshift = subsystem[subsysnr]['zsource']
-        observation.target = target
+        if (observation.obs_type 
+                not in ('flatfield', 'noise', 'setup', 'sydip')):
+            # The target is not significant for the excluded kinds of 
+            # observation, even if supplied in COMMON
+            targetname = target_name(common['object'])
+            target = Target(targetname)
+            
+            if common['obsra'] is None or common['obsdec'] is None:
+                target.moving = True
+                target_position = None
+            else:
+                target.moving = False
+                target_position = TargetPosition(Point(common['obsra'],
+                                                       common['obsdec']),
+                                                 'ICRS',
+                                                 2000.0)
+            observation.target_position = target_position
+            
+            if common['standard'] is not None:
+                target.standard = True if common['standard'] else False
+                
+            if backend != 'SCUBA-2':
+                subsysnr = min(subsystem.keys())
+                if subsystem[subsysnr]['zsource'] is not None:
+                    target.redshift = subsystem[subsysnr]['zsource']
+            
+            observation.target = target
 
         telescope = Telescope('JCMT')
         telescope.geo_location_x = common['obsgeo_x']
@@ -738,33 +760,33 @@ class raw(object):
 # Note that for single spectra the bl and tr corners have the same
 # coordinates.  CAOM-2 does not accept a zero-area polygon, so pad the
 # coordinates by the beam size.
-
-                # Position axis bounds are in ICRS
-                # The precomputed bounding box can be represented as a polgon
-                # it is still unclear what interpretation to put on the
-                # "pixel" coordinates, except there is only one conceptual
-                # pixel so the range should be [0.5, 1.5]
-                if (common['obsrabl'] == common['obsratr'] and
-                    common['obsdecbl'] == common['obsdectr']):
-                    # bounding "box" is a point, so insert a circle 
-                    bounding_box = CoordCircle2D(ValueCoord2D(
-                        common['obsratl'],
-                        common['obsdectl']),
-                        beamsize)
-                else:
-                    bounding_box = CoordPolygon2D()
-                    bounding_box.vertices.append(ValueCoord2D(
-                        common['obsratl'],
-                        common['obsdectl']))
-                    bounding_box.vertices.append(ValueCoord2D(
-                        common['obsratr'],
-                        common['obsdectr']))
-                    bounding_box.vertices.append(ValueCoord2D(
-                        common['obsrabr'],
-                        common['obsdecbr']))
-                    bounding_box.vertices.append(ValueCoord2D(
-                        common['obsrabl'],
-                        common['obsdecbl']))
+                if observation.obs_type in ('science', 'pointing', 'focus'):
+                    # Sky position makes no sense for other kinds of 
+                    # observations, even if supplied in COMMON
+                    
+                    # Position axis bounds are in ICRS
+                    # The precomputed bounding box can be represented as a polgon
+                    if (common['obsrabl'] == common['obsratr'] and
+                        common['obsdecbl'] == common['obsdectr']):
+                        # bounding "box" is a point, so insert a circle 
+                        bounding_box = CoordCircle2D(ValueCoord2D(
+                            common['obsratl'],
+                            common['obsdectl']),
+                            beamsize)
+                    else:
+                        bounding_box = CoordPolygon2D()
+                        bounding_box.vertices.append(ValueCoord2D(
+                            common['obsratl'],
+                            common['obsdectl']))
+                        bounding_box.vertices.append(ValueCoord2D(
+                            common['obsratr'],
+                            common['obsdectr']))
+                        bounding_box.vertices.append(ValueCoord2D(
+                            common['obsrabr'],
+                            common['obsdecbr']))
+                        bounding_box.vertices.append(ValueCoord2D(
+                            common['obsrabl'],
+                            common['obsdecbl']))
 #                if common['obsratl']:
 #                    # only insert a position range if it is not null
 #                    ra_range = [common['obsratl'],
@@ -796,14 +818,14 @@ class raw(object):
 #                            RefCoord(1.5, ra_max + dra),
 #                            RefCoord(1.5, dec_max + ddec)))
 
-                    spatial_axes = CoordAxis2D(Axis('RA', 'deg'),
-                                               Axis('DEC', 'deg'))
-                    spatial_axes.bounds = bounding_box
+                        spatial_axes = CoordAxis2D(Axis('RA', 'deg'),
+                                                   Axis('DEC', 'deg'))
+                        spatial_axes.bounds = bounding_box
 #                    spatial_axes.range = range2d
 
-                    chunk.position = SpatialWCS(spatial_axes)
-                    chunk.position.coordsys = 'ICRS'
-                    chunk.position.equinox = 2000.0
+                        chunk.position = SpatialWCS(spatial_axes)
+                        chunk.position.coordsys = 'ICRS'
+                        chunk.position.equinox = 2000.0
 
                 # energy range, which can contain two subranges in DSB
                 if backend == 'SCUBA-2':
