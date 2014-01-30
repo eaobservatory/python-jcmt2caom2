@@ -161,10 +161,7 @@ class raw(object):
               'wavelen',
               'bandwid')
 
-    MANDATORY = ('atstart',
-                 'backend',
-                 'elstart',
-                 'humstart',
+    MANDATORY = ('backend',
                  'obsgeo_x',
                  'obsgeo_y',
                  'obsgeo_z',
@@ -582,6 +579,7 @@ class raw(object):
 
         environment = Environment()
         if common['atstart'] is not None:
+            make_env = True
             environment.ambient_temp = common['atstart']
         if common['elstart'] is not None:
             environment.elevation = common['elstart']
@@ -760,7 +758,8 @@ class raw(object):
 # Note that for single spectra the bl and tr corners have the same
 # coordinates.  CAOM-2 does not accept a zero-area polygon, so pad the
 # coordinates by the beam size.
-                if observation.obs_type in ('science', 'pointing', 'focus'):
+                if (observation.obs_type in ('science', 'pointing', 'focus')
+                    and common['obsrabl'] is not None):
                     # Sky position makes no sense for other kinds of 
                     # observations, even if supplied in COMMON
                     
