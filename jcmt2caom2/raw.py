@@ -584,7 +584,12 @@ class raw(object):
         if common['elstart'] is not None:
             environment.elevation = common['elstart']
         if common['humstart'] is not None:
-            environment.humidity = common['humstart']
+            if common['humstart'] < 0.0:
+                environment.humidity = 0.0
+            elif common['humstart'] > 100.0:
+                environment.humidity = 100.0
+            else:
+                environment.humidity = common['humstart']
         if common['seeingst'] is not None:
             environment.seeing = common['seeingst']
         if common['tau225st'] is not None:
@@ -671,11 +676,13 @@ class raw(object):
             beamsize = 4.787e-6 * 850.0
         observation.instrument = instrument
 
-        if (observation.obs_type 
-                not in ('flatfield', 'noise', 'setup', 'sydip')):
+        if (observation.obs_type not in (
+                'flatfield', 'noise', 'setup', 'skydip')
+            and common['object']):
             # The target is not significant for the excluded kinds of 
             # observation, even if supplied in COMMON
-            targetname = target_name(common['object'])
+            if common['object']:
+                targetname = target_name(common['object'])
             target = Target(targetname)
             
             if common['obsra'] is None or common['obsdec'] is None:

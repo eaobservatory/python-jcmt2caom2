@@ -401,7 +401,7 @@ class stdpipe(ingest2caom2):
         someBAD = False
 
         # check that all headers are acceptable
-        someBAD |= self.check_acceptable_headers(header)
+        OK_IF_NOT = self.check_acceptable_headers(header)
 
         # Check that the mandatory file headers exist
         # it is not necessary to check here for keywords that have restricted
@@ -765,8 +765,14 @@ class stdpipe(ingest2caom2):
 
         if 'HUMSTART' in header and header['HUMSTART'] != pyfits.card.UNDEFINED:
             # Humity is reported in %, but should be scaled to [0.0, 1.0]
+            if header['HUMSTART'] < 0.0:
+                humidity = 0.0
+            elif header['HUMSTART'] > 100.0:
+                humidity = 100.0
+            else:
+                humidity = header['HUMSTART']
             self.add_to_plane_dict('environment.humidity',
-                                   '%f' % (header['HUMSTART'] / 100.0,))
+                                   '%f' % (humidity,))
 
         if 'ELSTART' in header and header['ELSTART'] != pyfits.card.UNDEFINED:
             self.add_to_plane_dict('environment.elevation',
@@ -817,9 +823,9 @@ class stdpipe(ingest2caom2):
             if ('STANDARD' in header 
                 and header['STANDARD'] != pyfits.card.UNDEFINED):
                     if header['STANDARD']:
-                        self.add_to_plane_dict('target.standard', 'TRUE')
+                        self.add_to_plane_dict('STANDARD', 'TRUE')
                     else:
-                        self.add_to_plane_dict('target.standard', 'FALSE')
+                        self.add_to_plane_dict('STANDARD', 'FALSE')
 
             if 'OBSRA' in header and 'OBSDEC' in header:
                 if (header['OBSRA'] == pyfits.card.UNDEFINED
@@ -1400,6 +1406,7 @@ class stdpipe(ingest2caom2):
                     'EXTSHAPE',
                     'EXTTYPE',
                     'EXTVER',
+                    'FCF',
                     'FFT_WIN',
                     'FILE_ID',
                     'FILEID',
