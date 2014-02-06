@@ -477,7 +477,7 @@ class raw(object):
                              logging.WARN)
             ingestibility = INGESTIBILITY.BAD
             
-        if common['obs_type'] in ('phase', 'ramp'):
+        if common['obs_type'] in ('phase', 'RAMP'):
             # do not ingest observations with bogus obs_type
             # this is not an error, but log a warning
             self.log.console('Observation ' + self.obsid +
@@ -765,7 +765,7 @@ class raw(object):
 # Note that for single spectra the bl and tr corners have the same
 # coordinates.  CAOM-2 does not accept a zero-area polygon, so pad the
 # coordinates by the beam size.
-                if (observation.obs_type in ('science', 'pointing', 'focus')
+                if (common['obs_type'] in ('science', 'pointing', 'focus')
                     and common['obsrabl'] is not None):
                     # Sky position makes no sense for other kinds of 
                     # observations, even if supplied in COMMON

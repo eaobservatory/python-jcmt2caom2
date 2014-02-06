@@ -831,6 +831,12 @@ class stdpipe(ingest2caom2):
                 if (header['OBSRA'] == pyfits.card.UNDEFINED
                         or header['OBSDEC'] == pyfits.card.UNDEFINED):
                     self.add_to_plane_dict('target.moving', 'TRUE')
+#                    if header['CTYPE1'][0:2] == 'OF':
+#                        # Offset coordinates, lie about the coordinate system
+#                        self.add_to_plane_dict('RADESYS', 'GAPPT')
+#                        self.add_to_plane_dict('CTYPE1', 'RA---TAN')
+#                        self.add_to_plane_dict('CTYPE2', 'DEC--TAN')
+
                 else:
                     self.add_to_plane_dict('target.moving', 'FALSE')
                     self.add_to_plane_dict('target_position.cval1',
