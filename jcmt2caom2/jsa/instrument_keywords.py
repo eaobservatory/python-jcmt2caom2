@@ -177,6 +177,12 @@ def instrument_keywords(strictness, keyword_dict, log):
                                 logging.WARN)
                     bad = True
 
+                if 'subsys_bwmode' in keyword_dict:
+                    log.console('subsys_bwmode is not permitted for ' + 
+                                backend, 
+                                logging.WARN)
+                    bad = True
+
             if 'switching_mode' not in keyword_dict and strictness == 'raw':
                 log.console('switching_mode is not defined', logging.WARN)
                 bad = True

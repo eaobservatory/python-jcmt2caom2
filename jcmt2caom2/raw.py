@@ -131,6 +131,7 @@ class raw(object):
               'project',
               'release_date',
               'sam_mode',
+              'scan_pat',
               'seeingst',
               'standard',
               'survey',
@@ -138,7 +139,8 @@ class raw(object):
               'tau225st')
 
     # Fields to extract from ACSIS
-    ACSIS = ('freq_sig_lower',
+    ACSIS = ('bwmode',
+             'freq_sig_lower',
              'freq_sig_upper',
              'freq_img_lower',
              'freq_img_upper',
@@ -501,6 +503,7 @@ class raw(object):
         keyword_dict['frontend'] = common['instrume']
         keyword_dict['backend'] = common['backend']
         keyword_dict['switching_mode'] = common['sw_mode']
+        keyword_dict['scan_pat'] = common['scan_pat']
         if common['inbeam']:
             keyword_dict['inbeam'] = common['inbeam']
         if common['backend'] in ('ACSIS', 'DAS', 'AOS-C'):
@@ -509,6 +512,7 @@ class raw(object):
             subsysnr = subsystem.keys()[0]
             keyword_dict['sideband'] = subsystem[subsysnr]['obs_sb']
             keyword_dict['sideband_filter'] = subsystem[subsysnr]['sb_mode']
+            keyword_dict['subsys_bwmode'] = subsystem[subsysnr]['bwmode']
         someBad, keyword_list = instrument_keywords('raw', 
                                                     keyword_dict, 
                                                     self.log)

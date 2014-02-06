@@ -518,6 +518,10 @@ class stdpipe(ingest2caom2):
                 header['INBEAM'] != pyfits.card.UNDEFINED):
                 keyword_dict['inbeam'] = header['INBEAM']
             
+            if ('SCAN_PAT' in header and 
+                header['SCAN_PAT'] != pyfits.card.UNDEFINED):
+                keyword_dict['scan_pat'] = header['SCAN_PAT']
+            
             if backend in ('ACSIS', 'DAS', 'AOS-C'):
                 if ('OBS_SB' in header and 
                     header['OBS_SB'] != pyfits.card.UNDEFINED):
@@ -526,6 +530,10 @@ class stdpipe(ingest2caom2):
                 if ('SB_MODE' in header and 
                     header['SB_MODE'] != pyfits.card.UNDEFINED):
                     keyword_dict['sideband_filter'] = header['SB_MODE']
+            
+                if ('BWMODE' in header and 
+                    header['BWMODE'] != pyfits.card.UNDEFINED):
+                    keyword_dict['subsys_bwmode'] = header['BWMODE']
             
             thisBad, keyword_list = instrument_keywords('stdpipe',
                                                         keyword_dict,
