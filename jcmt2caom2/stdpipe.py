@@ -520,7 +520,7 @@ class stdpipe(ingest2caom2):
             
             if ('SCAN_PAT' in header and 
                 header['SCAN_PAT'] != pyfits.card.UNDEFINED):
-                keyword_dict['scan_pat'] = header['SCAN_PAT']
+                keyword_dict['x_scan_pat'] = header['SCAN_PAT']
             
             if backend in ('ACSIS', 'DAS', 'AOS-C'):
                 if ('OBS_SB' in header and 
@@ -1003,7 +1003,8 @@ class stdpipe(ingest2caom2):
         if header['BACKEND'] in ('SCUBA-2',):
             if ('FILTER' in header and
                 header['FILTER'] != pyfits.card.UNDEFINED):
-                self.add_to_plane_dict('bandpassName', str(header['FILTER']))
+                self.add_to_plane_dict('bandpassName', 
+                                'SCUBA-2_' + str(header['FILTER']) + 'um')
         elif header['BACKEND'] in ('ACSIS',):
             if ('MOLECULE' in header and
                 header['MOLECULE'] not in (pyfits.card.UNDEFINED, 'No Line')):

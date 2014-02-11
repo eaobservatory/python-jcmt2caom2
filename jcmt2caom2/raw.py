@@ -144,6 +144,7 @@ class raw(object):
              'freq_sig_upper',
              'freq_img_lower',
              'freq_img_upper',
+             'ifchansp',
              'obsid_subsysnr',
              'molecule',
              'obs_sb',
@@ -503,7 +504,8 @@ class raw(object):
         keyword_dict['frontend'] = common['instrume']
         keyword_dict['backend'] = common['backend']
         keyword_dict['switching_mode'] = common['sw_mode']
-        keyword_dict['scan_pat'] = common['scan_pat']
+        if common['scan_pat']:
+            keyword_dict['x_scan_pat'] = common['scan_pat']
         if common['inbeam']:
             keyword_dict['inbeam'] = common['inbeam']
         if common['backend'] in ('ACSIS', 'DAS', 'AOS-C'):
@@ -610,28 +612,16 @@ class raw(object):
             hybrid = {}
             beamsize = 0.0
             for key in keys:
+                productID = self.productID_dict[str(key)]
                 restfreq = subsystem[key]['restfreq']
                 iffreq = subsystem[key]['iffreq']
                 ifchansp = subsystem[key]['ifchansp']
-                if restfreq not in hybrid:
-                    hybrid[restfreq] = {}
-                if iffreq not in hybrid[restfreq]:
-                    hybrid[restfreq][iffreq] = {}
-                if ifchansp not in hybrid[restfreq][iffreq]:
-                    hybrid[restfreq][iffreq][ifchansp] = {}
-                    hybrid[restfreq][iffreq][ifchansp]['keys'] = [key]
-                    hybrid[restfreq][iffreq][ifchansp]['hybrid'] = False
-
-                else:
-                    hybrid[restfreq][iffreq][ifchansp]['hybrid'] = True
-                    hybrid[restfreq][iffreq][ifchansp]['keys'].append(key)
-                this_hybrid = hybrid[restfreq][iffreq][ifchansp]
-
-                if 'hybridnr' in this_hybrid:
-                    this_hybrid['hybridnr'] = \
-                        min(key, this_hybrid['hybridnr'])
-                else:
-                    this_hybrid['hybridnr'] = key
+                if productID not in hybrid:
+                    hybrid[productID] = {}
+                    hybrid[productID]['restfreq'] = subsystem[key]['restfreq']
+                    hybrid[productID]['iffreq'] = subsystem[key]['iffreq']
+                    hybrid[productID]['ifchansp'] = subsystem[key]['ifchansp']
+                this_hybrid = hybrid[productID]
 
                 if 'freq_sig_lower' in this_hybrid:
                     this_hybrid['freq_sig_lower'] = \
@@ -665,13 +655,14 @@ class raw(object):
                     this_hybrid['freq_img_upper'] = \
                         subsystem[key]['freq_img_upper']
 
-            # Compute maximum beam size for this observation in degrees  
-            # frequencies are in GHz
-            # The scale factor is:
-            # 206264.8 ["/r] * sqrt(pi/2) * c [m GHz]/ 15 [m] 
-            meanfreq = (this_hybrid['freq_sig_lower'] + 
-                        this_hybrid['freq_sig_upper'])/2.0
-            beamsize = max(beamsize, 1.435 / meanfreq)
+                this_hybrid['meanfreq'] = (this_hybrid['freq_sig_lower'] + 
+                                           this_hybrid['freq_sig_upper'])/2.0
+
+                # Compute maximum beam size for this observation in degrees  
+                # frequencies are in GHz
+                # The scale factor is:
+                # 206264.8 ["/r] * sqrt(pi/2) * c [m GHz]/ 15 [m] 
+                beamsize = max(beamsize, 1.435 / this_hybrid['meanfreq'])
         else:
             # Compute beam size in degrees for 850 micron array
             # filter is in microns
@@ -731,17 +722,17 @@ class raw(object):
 
             # This plane might already have been created in a hybrid-mode
             # observation, use it if it exists
-            if productID in observation.planes:
+            if productID not in observation.planes:
+                observation.planes.add(Plane(productID))
                 plane = observation.planes[productID]
-            else:
-                plane = Plane(productID)
-
                 # set the release dates
                 plane.meta_release = common['release_date']
                 plane.data_release = common['release_date']
 
                 # all JCMT raw data is in a non-FITS format
                 plane.calibration_level = CalibrationLevel.RAW_INSTRUMENT
+            else:
+                plane = observation.planes[productID]
 
             # For JCMT raw data, all artifacts have the same WCS
             for jcmt_file_id in files[obsid_subsysnr]:
@@ -849,10 +840,13 @@ class raw(object):
                     spectral_axis = SpectralWCS(energy_axis, 'TOPOCENT')
                     spectral_axis.ssysobs = 'TOPOCENT'
                     spectral_axis.ssyssrc = 'TOPOCENT'
-                    spectral_axis.restwav = wavelength
-                    spectral_axis.bandpass_name = subsystem[key]['filter']
+                    spectral_axis.resolving_power = abs(wavelength / bandwidth)
+                    spectral_axis.bandpass_name = \
+                        'SCUBA-2_' + subsystem[key]['filter'] + 'um'
 
                 else:
+                    this_hybrid = hybrid[productID]
+                        
                     energy_axis = CoordAxis1D(Axis('FREQ', 'GHz'))
                     if subsystem[key]['sb_mode'] == 'DSB':
                         # These all correspond to "pixel" 1, so the pixel
@@ -875,6 +869,12 @@ class raw(object):
                     spectral_axis.ssyssrc = subsystem[key]['ssyssrc']
                     spectral_axis.restfrq = subsystem[key]['restfreq']
                     spectral_axis.zsource = subsystem[key]['zsource']
+
+                    meanfreq = float(this_hybrid['meanfreq'])
+                    ifchansp = float(this_hybrid['ifchansp'])
+                    spectral_axis.resolving_power = abs(1.0e9 * meanfreq / 
+                                                        ifchansp)
+
                     spectral_axis.transition = EnergyTransition(
                         subsystem[key]['molecule'],
                         subsystem[key]['transiti'])
@@ -899,8 +899,6 @@ class raw(object):
 
                 # and append the atrifact to the plane
                 plane.artifacts.add(artifact)
-
-            observation.planes.add(plane)
 
         return observation
 
