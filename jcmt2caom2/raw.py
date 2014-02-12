@@ -60,6 +60,7 @@ from jcmt2caom2.jsa.quality import quality
 from jcmt2caom2.jsa.intent import intent
 from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
+from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
 
 from jcmt2caom2 import __version__
@@ -501,8 +502,6 @@ class raw(object):
         # Check observation-level mandatory headers with restricted values
         # by creating the instrument keyword list
         keyword_dict = {}
-        keyword_dict['frontend'] = common['instrume']
-        keyword_dict['backend'] = common['backend']
         keyword_dict['switching_mode'] = common['sw_mode']
         if common['scan_pat']:
             keyword_dict['x_scan_pat'] = common['scan_pat']
@@ -516,6 +515,8 @@ class raw(object):
             keyword_dict['sideband_filter'] = subsystem[subsysnr]['sb_mode']
             keyword_dict['subsys_bwmode'] = subsystem[subsysnr]['bwmode']
         someBad, keyword_list = instrument_keywords('raw', 
+                                                    common['instrume'],
+                                                    common['backend'],
                                                     keyword_dict, 
                                                     self.log)
         if someBad:
@@ -603,8 +604,9 @@ class raw(object):
             environment.wavelength_tau = raw.SpeedOfLight/225.0e9
         observation.environment = environment
 
+        frontend = common['instrume'].upper()
         backend = common['backend'].upper()
-        instrument = Instrument(backend)
+        instrument = Instrument(instrument_name(frontend, backend, self.log))
         instrument.keywords.extend(self.instrument_keywords)
 
         if backend in ['ACSIS', 'DAS', 'AOSC']:
@@ -851,18 +853,22 @@ class raw(object):
                     if subsystem[key]['sb_mode'] == 'DSB':
                         # These all correspond to "pixel" 1, so the pixel
                         # coordinate runs from [0.5, 1.5]
+                        # Note that each artifact already records the frequency
+                        # bounds correctly for that data in that file.  The
+                        # aggregation to the plane will take care of overlapping
+                        # energy bounds.
                         freq_bounds = CoordBounds1D()
                         freq_bounds.samples.append(CoordRange1D(
-                            RefCoord(0.5, this_hybrid['freq_sig_lower']),
-                            RefCoord(1.5, this_hybrid['freq_sig_upper'])))
+                            RefCoord(0.5, subsystem[key]['freq_sig_lower']),
+                            RefCoord(1.5, subsystem[key]['freq_sig_upper'])))
                         freq_bounds.samples.append(CoordRange1D(
-                            RefCoord(0.5, this_hybrid['freq_img_lower']),
-                            RefCoord(1.5, this_hybrid['freq_img_upper'])))
+                            RefCoord(0.5, subsystem[key]['freq_img_lower']),
+                            RefCoord(1.5, subsystem[key]['freq_img_upper'])))
                         energy_axis.bounds = freq_bounds
                     else:
                         energy_axis.range = CoordRange1D(
-                            RefCoord(0.5, this_hybrid['freq_sig_lower']),
-                            RefCoord(1.5, this_hybrid['freq_sig_upper']))
+                            RefCoord(0.5, subsystem[key]['freq_sig_lower']),
+                            RefCoord(1.5, subsystem[key]['freq_sig_upper']))
 
                     spectral_axis = SpectralWCS(energy_axis, 'BARYCENT')
                     spectral_axis.ssysobs = subsystem[key]['ssysobs']

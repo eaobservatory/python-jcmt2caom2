@@ -100,6 +100,7 @@ from tools4caom2.mjd import utc2mjd
 from jcmt2caom2.jsa.intent import intent
 from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
+from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
 
 import __version__
@@ -473,7 +474,7 @@ class stdpipe(ingest2caom2):
         someBAD |= backendBAD
 
         if not backendBAD:
-            # Only do thse tests if the backend is OK
+            # Only do these tests if the backend is OK
             backend = header['BACKEND'].upper().strip()
             if backend in ('ACSIS', 'DAS', 'AOS-C'):
                 someBAD |= self.check_values('INBEAM', header,
@@ -502,14 +503,14 @@ class stdpipe(ingest2caom2):
                     [pyfits.card.UNDEFINED,
                      'CLS', 'DDS', 'GBS', 'JPS', 'NGS', 'SASSY'])
 
-            # Check some more detailed values by building instrument_keywords
-            keyword_dict = {}
             if ('INSTRUME' in header and 
                 header['INSTRUME'] != pyfits.card.UNDEFINED):
-                keyword_dict['frontend'] = header['INSTRUME']
+                frontend = header['INSTRUME']
+            else:
+                frontend = 'UNKNOWN'
             
-            keyword_dict['backend'] = backend
-            
+            # Check some more detailed values by building instrument_keywords
+            keyword_dict = {}
             if ('SW_MODE' in header and 
                 header['SW_MODE'] != pyfits.card.UNDEFINED):
                 keyword_dict['switching_mode'] = header['SW_MODE']
@@ -536,6 +537,8 @@ class stdpipe(ingest2caom2):
                     keyword_dict['subsys_bwmode'] = header['BWMODE']
             
             thisBad, keyword_list = instrument_keywords('stdpipe',
+                                                        frontend,
+                                                        backend,
                                                         keyword_dict,
                                                         self.log)
             self.instrument_keywords = ' '.join(keyword_list)
@@ -761,7 +764,9 @@ class stdpipe(ingest2caom2):
         
         # Instrument
         if 'BACKEND' in header and header['BACKEND'] != pyfits.card.UNDEFINED:
-            instrument = header['BACKEND'].upper().strip()
+            instrument = instrument_name(header['INSTRUME'],
+                                         header['BACKEND'],
+                                         self.log)
             self.add_to_plane_dict('instrument.name', instrument)
             self.add_to_plane_dict('instrument.keywords',
                                    self.instrument_keywords)
