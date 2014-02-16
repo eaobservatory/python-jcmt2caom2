@@ -16,126 +16,86 @@ class testInstrumentKeywords( unittest.TestCase):
         # self.log = logger(os.path.expanduser('~/temp.log'))
         fh, self.logfile = tempfile.mkstemp()
         os.close(fh)
-        self.log = logger(self.logfile)
+        self.log = logger(self.logfile, console_output=False)
     
     def tearDown(self):
         os.remove(self.logfile)
         
     def testInstrumentKeywords(self):
-        test_data = [[{'backend': 'ACSIS',
-                       'frontend': 'RxA3',
-                       'sideband': 'USB',
+        test_data = [['ACSIS',
+                      'RxA3',
+                      {'sideband': 'USB',
                        'sideband_filter': 'DSB',
                        'switching_mode': 'pssw'}, 
                       {'raw': False,
                        'stdpipe': False,
                        'external': False},
-                      ['RXA3', 'USB', 'DSB', 'PSSW']],
+                      ['USB', 'DSB', 'PSSW']],
                       
-                     [{'backend': 'ACSIS',
-                       'frontend': 'HARP',
-                       'sideband': ' LSB',
+                     ['ACSIS',
+                      'HARP',
+                      {'sideband': ' LSB',
                        'sideband_filter': 'SSB',
                        'switching_mode': 'pssw'}, 
                       {'raw': False,
                        'stdpipe': False,
-                       'external': False},
-                      ['HARP', 'LSB', 'SSB', 'PSSW']],
-
-                     [{'backend': 'SCUBA-2',
-                       'frontend': 'SCUBA-2',
-                       'inbeam': 'FTS',
-                       'switching_mode': 'self'}, 
-                      {'raw': False,
-                       'stdpipe': False,
-                       'external': False},
-                      ['SCUBA-2', 'FTS', 'SELF']],
-
-                     [{'backend': 'SCUBA-2',
-                       'frontend': 'SCUBA-2',
-                       'inbeam': 'POL FTS',
-                       'switching_mode': 'self'}, 
-                      {'raw': False,
-                       'stdpipe': False,
-                       'external': False},
-                      ['SCUBA-2', 'POL', 'FTS', 'SELF']],
-
-                     [{'backend': 'Scuba-2',
-                       'frontend': 'Scuba-2',
-                       'inbeam': 'SHUTTER',
-                       'switching_mode': 'self'}, 
-                      {'raw': False,
-                       'stdpipe': False,
-                       'external': False},
-                      ['SCUBA-2', 'SELF']],
-
-                     [{'backend': 'scuba-2',
-                       'frontend': 'scuba-2',
-                       'inbeam': 'shutter pol',
-                       'switching_mode': 'self'}, 
-                      {'raw': False,
-                       'stdpipe': False,
-                       'external': False},
-                      ['SCUBA-2', 'POL', 'SELF']],
-
-                     [# processed data can mix sidebands
-                      {'backend': 'ACSIS',
-                       'frontend': 'HARP',
-                       'sideband_filter': 'SSB',
-                       'switching_mode': 'pssw'}, 
-                      {'raw': True,
-                       'stdpipe': False,
-                       'external': False},
-                      ['HARP', 'SSB', 'PSSW']],
-
-                     [# Missing frontend
-                      {'backend': 'ACSIS',
-                       'sideband': ' LSB',
-                       'sideband_filter': 'SSB',
-                       'switching_mode': 'pssw'}, 
-                      {'raw': True,
-                       'stdpipe': True,
                        'external': False},
                       ['LSB', 'SSB', 'PSSW']],
 
-                     [# HARP cannot have been used with the DAS
-                      {'backend': 'DAS',
-                       'frontend': 'HARP',
-                       'sideband': ' LSB',
-                       'sideband_filter': 'SSB',
-                       'switching_mode': 'pssw'}, 
-                      {'raw': True,
-                       'stdpipe': True,
-                       'external': True},
-                      []],
+                     ['SCUBA-2',
+                      'SCUBA-2',
+                      {'inbeam': 'FTS',
+                       'switching_mode': 'self'}, 
+                      {'raw': False,
+                       'stdpipe': False,
+                       'external': False},
+                      ['FTS', 'SELF']],
 
-                     [# RXB cannot have been used with ACSIS
-                      {'backend': 'ACSIS',
-                       'frontend': 'RXB',
-                       'sideband': 'LSB',
-                       'sideband_filter': 'SSB',
+                     ['SCUBA-2',
+                      'SCUBA-2',
+                      {'inbeam': 'POL FTS',
+                       'switching_mode': 'self'}, 
+                      {'raw': False,
+                       'stdpipe': False,
+                       'external': False},
+                      ['POL', 'FTS', 'SELF']],
+
+                     ['SCUBA-2',
+                      'SCUBA-2',
+                      {'inbeam': 'SHUTTER',
+                       'switching_mode': 'self'}, 
+                      {'raw': False,
+                       'stdpipe': False,
+                       'external': False},
+                      ['SELF']],
+
+                     ['SCUBA-2',
+                      'SCUBA-2',
+                      {'inbeam': 'shutter pol',
+                       'switching_mode': 'self'}, 
+                      {'raw': False,
+                       'stdpipe': False,
+                       'external': False},
+                      ['POL', 'SELF']],
+
+                     [# processed data can mix sidebands
+                      'ACSIS',
+                      'HARP',
+                      {'sideband_filter': 'SSB',
                        'switching_mode': 'pssw'}, 
                       {'raw': True,
-                       'stdpipe': True,
-                       'external': True},
-                      []],
-                       
-                     [# Invalid frontend
-                      {'backend': 'ACSIS',
-                       'frontend': 'rxq',
-                       'sideband': 'LSB',
-                       'sideband_filter': 'SSB',
-                       'switching_mode': 'freqsw'},
-                      {'raw': True,
-                       'stdpipe': True,
-                       'external': True},
-                      []]]
+                       'stdpipe': False,
+                       'external': False},
+                      ['SSB', 'PSSW']]]
         
         for strictness in ('raw', 'stdpipe', 'external'):
-            for keyword_dict, strict_dict, retval in test_data:
+            for backend, frontend, keyword_dict, strict_dict, retval\
+                                                            in test_data:
                 status, keyword_list = instrument_keywords(strictness,
-                                                    keyword_dict,
-                                                    self.log)
+                                                           frontend,
+                                                           backend,
+                                                           keyword_dict,
+                                                           self.log)
                 if strict_dict[strictness]:
                     self.assertEqual(status, True,
                                  'The status returned from '

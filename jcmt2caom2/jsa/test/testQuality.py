@@ -14,7 +14,7 @@ class testJsaQA( unittest.TestCase):
         # self.log = logger(os.path.expanduser('~/temp.log'))
         fh, self.logfile = tempfile.mkstemp()
         os.close(fh)
-        self.log = logger(self.logfile)
+        self.log = logger(self.logfile, console_output=False)
     
     def tearDown(self):
         os.remove(self.logfile)
@@ -23,12 +23,16 @@ class testJsaQA( unittest.TestCase):
         """
         Test basic properties
         """
+        print '\n\n\n', type(logger.LoggerError('nn'))
+        
+        # Reject TIME GAP classification values
         self.assertEquals(len(q.JSA_NAMES), len(q.JSA_VALUES),
                           'lengths of JSA_VALUES and JSA_NAMES are different')
         self.assertEquals(len(q.JCMT_NAMES), len(q.JCMT_VALUES),
                           'lengths of JCMT_VALUES and JCMT_NAMES are different')
         
-        self.assertRaises(logger.LoggerError, q.quality, -1, self.log)
+        self.assertRaises(logger.LoggerError, 
+                          q.quality, -1, self.log)
         self.assertEquals(q.JSA_QA.GOOD,      
                           q.quality(  0, self.log).jsa_value())
         self.assertEquals(q.JSA_QA.FAILED_QA, 
@@ -39,12 +43,15 @@ class testJsaQA( unittest.TestCase):
                           q.quality(  3, self.log).jsa_value())
         self.assertEquals(q.JSA_QA.JUNK,      
                           q.quality(  4, self.log).jsa_value())
-        self.assertRaises(logger.LoggerError, q.quality,  5, self.log)
+        self.assertRaises(logger.LoggerError, 
+                          q.quality,  5, self.log)
         
-        # Reject TIME GAP classification values
-        self.assertRaises(logger.LoggerError, q.quality, 11, self.log)
-        self.assertRaises(logger.LoggerError, q.quality, 12, self.log)
-        self.assertRaises(logger.LoggerError, q.quality, 13, self.log)
+        self.assertRaises(logger.LoggerError, 
+                          q.quality, 11, self.log)
+        self.assertRaises(logger.LoggerError, 
+                          q.quality, 12, self.log)
+        self.assertRaises(logger.LoggerError, 
+                          q.quality, 13, self.log)
 
         self.assertEquals(
             q.JSA_QA.GOOD, 
