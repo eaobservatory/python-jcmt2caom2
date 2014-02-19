@@ -220,10 +220,10 @@ def run():
                     rawprod = 'zzzzzzzzz'
                     for in_uri in re.split(r'\s+', prov_inputs):
                         this_rawprod = re.split(r'/', in_uri)[2]
-                        if re.match(r'^raw_\d+$', this_rawprod):
+                        if re.match(r'^raw_(\w+_)?\d+$', this_rawprod):
                             if this_rawprod < rawprod:
                                 rawprod = this_rawprod
-                    if re.match(r'^raw_\d+$', rawprod):
+                    if re.match(r'^raw_(\w+_)?\d+$', rawprod):
                         uridict[obs][prod]['rawprod'] = rawprod
                 
                 if a.scuba2:
