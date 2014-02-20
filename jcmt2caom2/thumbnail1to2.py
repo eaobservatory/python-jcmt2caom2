@@ -23,173 +23,251 @@ def thumbnail_name(collection, observationID, productID, size):
                      'preview', 
                      size]) + '.png'
 
-def put(archive, stream, filename, log):
+class thumb1to2(object):
     """
-    Put a file into the archive
+    Transform CAOM-1 thumbnail images to the format and file naming conventions
+    required for CAOM-2, and optionally persist them into AD.
     """
-    adPutCmd = 'adPut -a ' + archive + ' -as ' + stream + ' ' + filename
-    log.console(adPutCmd)
-
-#    try:
-#        output = subprocess.check_output(
-#                    adPutCmd,
-#                    shell=True,
-#                    stderr=subprocess.STDOUT)
-#    except subprocess.CalledProcessError as e:
-#        if re.search(r'already exists', e.output):
-#            log.console('File already exists')
-#        else:
-#            raise
-    
-def run():
-    """
-    Convert thumbnail images from CAOM-1 to CAOM-2 format and naming 
-    conventions.  The selection of observations to convert can be made by
-    individual observation, for a single date, or for an inclusive range
-    of dates.
-    
-    The wrapper jcmt1to2thumbnail is equivalent to
-        python2.7 -m jcmt2caom2.thumbnail1to2 
+    def __init__(self):
+        """
+        Create a thumb1to2 object.
+        """
+        self.loglevel = logging.INFO
+        self.logname = None
+        self.logfile = None
+        self.log = None
         
-    Examples:
-    jcmt1to2thumbnails --obs=acsis_00037_20090327T062010
-    jcmt1to2thumbnails --utdate=20120103
-    jcmt1to2thumbnails --begin=20120101 --end=20120131
-    """
-    ap = argparse.ArgumentParser('thumbnail')
-    ap.add_argument('--log',
-                    default='thumbnail1to2.log',
-                    help='(optional) name of log file')
-    ap.add_argument('--debug', '-d', '-v',
-                    default=False,
-                    action='store_const',
-                    const=True,
-                    help='loglevel = debug')
-
-    ap.add_argument('--scuba2',
-                    action='store_true',
-                    help='serch for SCUBA-2 thumbnails rather tan heterodyne')
-
-    ap.add_argument('--obs',
-                    help='(optional) convert thumbnails for one observation')
-    ap.add_argument('--utdate',
-                    help='(optional) date to convert thumbnails')
-    ap.add_argument('--begin',
-                    help='(optional) beginning date to convert thumbnails')
-    ap.add_argument('--end',
-                    help='(optional) ending date to convert thumbnails')
-
-    ap.add_argument('--archive',
-                    default='JCMT',
-                    help='Archive within AD where thumbnail files are located')
-    ap.add_argument('--stream',
-                    default='product',
-                    help='Stream within the archive to put new thumbnail files')
-    
-    ap.add_argument('--qsub',
-                    action='store_const',
-                    default=False,
-                    const=True,
-                    help='submit jobs to gridengine, one utdate for each job')
-    a = ap.parse_args()
-
-    loglevel = logging.INFO        
-    if a.debug:
-        loglevel = logging.DEBUG
-    log = logger(a.log, loglevel)
+        self.obs = None
+        self.utdate = None
+        self.begin = None
+        self.end = None
         
-    mygridengine = gridengine(log)
+        self.scuba2 = False
+        self.debug = False
+        self.persist = False
+        self.qsub = False
     
-    retvals = None
-    
-    if a.obs:
-        log.console('observationID = ' + a.obs)
-    elif a.utdate:
-        log.console('UTDATE = ' + a.utdate)
-    elif a.begin and a.end:
-        log.console('UTDATE in [' + a.begin + ', ' + a.end + ']')
-    else:
-        log.console('Must set --obs or --utdate or both of --begin and --end',
-                    logging.ERROR)
+    def commandLineArguments(self):
+        """
+        Process command line arguments.
+        Usage:
+        One of 
+            --obs
+            --utdate
+            --begin=YYYYMMDD --end=YYYYMMDD
+        must be given or a tools4caom2.logger.logger.LoggerError will be raised.
+        
+        To use an externally defined log file give the file path as:
+            --log=LOGFILEPATH
+        Otherwise, a log file will be created in the logdir, which defaults to 
+        the current directory or may be specified with:
+            --logdir=LOGDIRECTORY
+        
+        The logic to find preview filenames is different for SCUBA-2 and ACSIS.
+        The argument
+            --scuba2
+        says to use the SCUBA-2 rules and ignore heterodyne previews.  
+        If omitted, heterodyne previews will be processed and SCUBA-2 previews 
+        will be ignored.
+        
+        
+        """
+        ap = argparse.ArgumentParser('thumbnail')
+        ap.add_argument('--obs',
+                        help='convert thumbnails for the specified '
+                             ' observation')
+        ap.add_argument('--utdate',
+                        help='date to convert thumbnails')
+        ap.add_argument('--begin',
+                        help='beginning date to convert thumbnails')
+        ap.add_argument('--end',
+                        help='ending date to convert thumbnails')
 
-    if a.qsub:
-        cmd = 'jcmt1to2thumbnail'
+        ap.add_argument('--scuba2',
+                        action='store_true',
+                        help='search for SCUBA-2 thumbnails rather than '
+                             'heterodyne')
+
+        ap.add_argument('--log',
+                        help='(optional) name of log file')
+        ap.add_argument('--logdir',
+                        default='.',
+                        help='(optional) name of directory to hold log files')
+
+        ap.add_argument('--pngdir',
+                        default='png',
+                        help='(optional) name of directory to hold png files')
+
+        ap.add_argument('--persist',
+                        action='store_true',
+                        help='persist thumbnails using dpCapture')
+        
+        ap.add_argument('--qsub',
+                        action='store_true',
+                        help='submit one utdate per job to gridengine')
+
+        ap.add_argument('--debug', '-d',
+                        action='store_true',
+                        help='set loglevel = debug')
+
+        a = ap.parse_args()
+
+        self.loglevel = logging.INFO        
         if a.debug:
-            cmd += ' --debug' 
+            self.debug = True
+            self.loglevel = logging.DEBUG
+        
+        logname = None
+        basename = 'thumbnail_'
+        
         if a.scuba2:
-            cmd += ' --scuba2'
-
-        dirpath = os.path.dirname(
-                    os.path.abspath(
-                        os.path.expanduser(
-                            os.path.expandvars(a.log))))
-
+            self.scuba2 = True
+            self.loglevel = logging.DEBUG
+            basename += 'scuba-2_'
+        
         if a.obs:
-            logpath = os.path.join(dirpath, 
-                                   'thumbnail_' + a.obs + '.log')
-            cshpath = os.path.join(dirpath, 
-                                   'thumbnail_' + a.obs + '.csh')
-
-            cmd += ' --obs=' + a.obs
-            cmd += ' --log=' + logpath
-            mygridengine.submit(cmd, cshpath, logpath)
-            
+            self.obs = a.obs
+            self.logname = basename + a.obs
         elif a.utdate:
-            logpath = os.path.join(dirpath, 
-                                   'thumbnail_' + a.utdate + '.log')
-            cshpath = os.path.join(dirpath, 
-                                   'thumbnail_' + a.utdate + '.csh')
-
-            cmd += ' --utdate=' + a.utdate
-            cmd += ' --log=' + logpath
-            mygridengine.submit(cmd, cshpath, logpath)
-            
+            self.utdate = a.utdate
+            self.logname = basename + a.utdate
         elif a.begin and a.end:
-            with connection('SYBASE', 'jcmtmd', log) as db:
-                sqlcmd = '\n'.join([
+            self.begin = a.begin
+            self.end = a.end
+            self.logname = basename + a.begin + '_' + a.end
+        else:
+            raise logger.LoggerError(
+                'Must set --obs or --utdate or both of --begin and --end')
+            
+        if a.log:
+            self.logfile = os.path.abspath(
+                                os.path.expanduser(
+                                    os.path.expandvars(self.a.log)))
+        else:
+            self.logdir = os.path.abspath(
+                                os.path.expanduser(
+                                    os.path.expandvars(a.logdir)))
+            self.logfile = os.path.join(self.logdir, self.logname + '.log')
+            
+        if a.persist:
+            self.persist = True
+
+        if a.qsub:
+            self.qsub = True
+
+        self.log = logger(self.logfile, loglevel=self.loglevel)
+        
+        self.pngdir = a.pngdir
+        
+        self.log.console('logfile = ' + self.logfile)
+        if self.obs:
+            self.log.file('obs =      ' + self.obs)
+        if self.utdate:
+            self.log.file('utdate =   ' + self.utdate)
+        if self.begin:
+            self.log.file('begin =    ' + self.begin)
+            self.log.file('end =      ' + self.end)
+        self.log.file('scuba2 =   ' + str(self.scuba2))
+        
+        if self.logdir:
+            self.log.file('logdir =   ' + str(self.loglevel))
+
+        self.log.file('pngdir =   ' + self.pngdir)
+        self.log.file('debug =    ' + str(self.debug))
+        self.log.file('persist =  ' + str(self.persist))
+        self.log.file('qsub =     ' + str(self.qsub))
+        
+    def submitToGridengine(self):
+        """
+        Create jobs to process one utdate at a time under gridengine.
+        """
+        mygridengine = gridengine(self.log)
+        
+        cmd = 'jcmt1to2thumbnails'
+        if self.debug:
+            cmd += ' --debug' 
+        if self.scuba2:
+            cmd += ' --scuba2'
+        if self.persist:
+            cmd += ' --persist'
+        if self.logdir:
+            cmd += (' --logdir=' + self.logdir)
+            dirpath = self.logdir
+        else:
+            cmd += (' --log=' + self.logfile)
+            dirpath = os.path.dirname(self.logfile)
+        cmd += ' --pngdir=' + self.pngdir
+
+        if self.obs:
+            cshpath = os.path.join(dirpath, self.logname + '.csh')
+            cmd += ' --obs=' + self.obs
+            mygridengine.submit(cmd, cshpath, self.logfile)
+            
+        elif self.utdate:
+            cshpath = os.path.join(dirpath, self.logname + '.csh')
+            cmd += ' --utdate=' + self.utdate
+            mygridengine.submit(cmd, cshpath, self.logfile)
+            
+        elif self.begin and self.end:
+            with connection('SYBASE', 'jcmtmd', self.log) as db:
+                sqllist = [
                     'SELECT c.utdate',
                     'FROM jcmtmd.dbo.COMMON c',
-                    'WHERE c.utdate >= %s AND c.utdate <= %s' % (a.begin, a.end),
+                    'WHERE c.utdate >= %s AND c.utdate <= %s' % (self.begin, self.end)]
+                if self.scuba2:
+                    sqllist.append('    AND c.backend = "SCUBA-2"')
+                else:
+                    sqllist.append('    AND c.backend != "SCUBA-2"')
+                sqllist.extend([
+                    'GROUP BY c.utdate',
                     'ORDER BY c.utdate'])
+                sqlcmd = '\n'.join(sqllist)
                 retvals = db.read(sqlcmd)
                 
             if retvals:
                 for utd, in retvals:
                     utdate = str(utd)
-                    logpath = os.path.join(dirpath, 
-                                           'thumbnail_' + utdate + '.log')
                     cshpath = os.path.join(dirpath, 
-                                           'thumbnail_' + utdate + '.csh')
-
+                                           'thumbnail_' + utdate,
+                                           '.csh')
                     thiscmd = cmd + ' --utdate=' + utdate
-                    cmd += ' --log=' + logpath
                     mygridengine.submit(thiscmd, cshpath, logpath)
-
-    else:
-        with connection('SYBASE', 'jcmt', log) as db:
+        
+    def convertThumbnails(self):
+        """
+        Read the CAOM-1 thumbnails from AD and reformat them with CAOM-2
+        file names.
+        """
+        # ensure that the pngdir exists and is empty
+        if os.path.exists(self.pngdir):
+            shutil.rmtree(self.pngdir)
+        os.mkdir(self.pngdir)
+        
+        with connection('SYBASE', 'jcmt', self.log) as db:
             sqllist = [
                 'SELECT o.observationID,',
                 '       o.algorithm_name,',
                 '       p.productID,',
                 '       p.provenance_inputs,',
+                '       p.provenance_runID,',
                 '       a.uri',
                 'FROM jcmt.dbo.caom2_Observation o',
                 '    INNER JOIN jcmt.dbo.caom2_Plane p on o.obsID=p.obsID',
                 '    INNER JOIN jcmt.dbo.caom2_Artifact a ON p.planeID=a.planeID',
                 'WHERE']
             
-            if a.obs:
-                sqllist.append('    o.observationID = "' + a.obs + '"')
+            if self.obs:
+                sqllist.append('    o.observationID = "' + self.obs + '"')
             else:
-                if a.utdate:
+                if self.utdate:
                     sqllist.append('    substring(a.uri, 14, 8) = "' + 
-                                   a.utdate + '"')
-                elif a.begin and a.end:
+                                   self.utdate + '"')
+                elif self.begin and self.end:
                     sqllist.extend(['    substring(a.uri, 14, 8) >= "' + 
-                                   a.begin + '"',
+                                   self.begin + '"',
                                    '    AND substring(a.uri, 14, 8) <= "' + 
-                                   a.end + '"'])
-            if a.scuba2:
+                                   self.end + '"'])
+            if self.scuba2:
                 sqllist.append('    AND a.uri like "ad:JCMT/jcmts%reduced%"')
             else:
                 sqllist.append('    AND a.productType = "preview"')
@@ -203,7 +281,7 @@ def run():
             oldprod = None
             uridict = {}
             
-            for obs, algorithm, prod, prov_inputs, uri in retvals:
+            for obs, algorithm, prod, prov_inputs, prov_runid, uri in retvals:
                 if obs not in uridict:
                     uridict[obs] = {}
                 
@@ -211,6 +289,7 @@ def run():
                 
                 if prod not in uridict[obs]:
                     uridict[obs][prod] = {}
+                uridict[obs][prod]['runid'] = prov_runid
                 
                 if simple:
                     # There should only be one input for a reduced plane in a
@@ -226,9 +305,9 @@ def run():
                     if re.match(r'^raw_(\w+_)?\d+$', rawprod):
                         uridict[obs][prod]['rawprod'] = rawprod
                 
-                if a.scuba2:
+                if self.scuba2:
                     if not re.search(r'reduced\d{3}', uri):
-                        log.console('SCUBA-2 file_id is not reduced',
+                        self.log.console('SCUBA-2 file_id is not reduced',
                                     logging.WARN)
                         continue
                     uridict[obs][prod]['reduced'] = \
@@ -240,60 +319,65 @@ def run():
                     elif re.search(r'rimg', uri):
                         uridict[obs][prod]['rimg'] = uri
             
-            log.file('uridict:', logging.DEBUG)
+            self.log.file('uridict:', logging.DEBUG)
             for obs in uridict:
-                log.file(obs, logging.DEBUG)
+                self.log.file(obs, logging.DEBUG)
                 for prod in uridict[obs]:
-                    log.file('    ' + prod, logging.DEBUG)
+                    self.log.file('    ' + prod, logging.DEBUG)
                     for key in uridict[obs][prod]:
-                        log.file('        ' + key + ': ' + 
+                        self.log.file('        ' + key + ': ' + 
                                  uridict[obs][prod][key],
                                  logging.DEBUG)
             
             adGet = 'adGet -a'
             for obs in uridict:
                 for prod in uridict[obs]:
-                    if not a.scuba2 and 'rsp' not in uridict[obs][prod]:
-                        log.console('skipping caom:' + obs + '/' + prod +
-                                    ' because no rsp image is available',
+                    if not self.scuba2 and 'rsp' not in uridict[obs][prod]:
+                        self.log.console('skipping caom:' + obs + '/' + prod +
+                                    ' because no rsp image was stored from'
+                                    ' recipe_instance_id = ' + 
+                                    uridict[obs][prod]['runid'],
                                     logging.WARN)
                         continue
                     
-                    for size in ('64', '256', '1024'):
-                        if a.scuba2:
+                    for size in ('256', '1024'):
+                        if self.scuba2:
                             storage, archive, file_id = \
                                 re.match(r'^(\w+):([A-Z]+)/([^\s]+)\s*$', 
                                          uridict[obs][prod]['reduced']).groups()
-                            reduced_id = (file_id +  '_' + size)
-                            reduced_png = reduced_id + '.png'
+                            old_id = (file_id +  '_' + size)
+                            old_png = reduced_id + '.png'
                             
-                            adGetCmd = ' '.join([adGet, archive, reduced_id])
+                            adGetCmd = ' '.join([adGet, archive, old_id])
                             try:
                                 output = subprocess.check_output(
                                             adGetCmd,
                                             shell=True,
                                             stderr=subprocess.STDOUT)
-                                log.file(output)
+                                self.log.file(output)
                             except subprocess.CalledProcessError as e:
-                                log.console('Could not get ' + reduced_id,
+                                self.log.console('Could not get ' + old_id +
+                                            ' from recipe_instance_id = ' +
+                                            uridict[obs][prod]['runid'],
                                             logging.WARN)
                                 continue
                             
-                            prod_thumb = thumbnail_name('JCMT',
-                                                        obs,
-                                                        prod,
-                                                        size)
-                            shutil.copyfile(reduced_png, prod_thumb)
-                            put(a.archive, a.stream, prod_thumb, log)
+                            reduced_png = thumbnail_name('JCMT',
+                                                         obs,
+                                                         prod,
+                                                         size)
+                            shutil.copyfile(old_png, 
+                                            os.path.join(self.pngdir,
+                                                         reduced_png))
                             
                             if 'rawprod' in uridict[obs][prod]:
                                 rawprod = uridict[obs][prod]['rawprod']
-                                raw_thumb = thumbnail_name('JCMT',
+                                raw_png = thumbnail_name('JCMT',
                                                            obs,
                                                            rawprod,
                                                            size)
-                                shutil.copyfile(reduced_png, raw_thumb)
-                                put(a.archive, a.stream, raw_thumb, log)
+                                shutil.copyfile(reduced_png, raw_png)
+                            os.remove(old_png)
                             
                         else:
                             # ACSIS-like heterodyne backends
@@ -309,12 +393,15 @@ def run():
                                             adGetCmd,
                                             shell=True,
                                             stderr=subprocess.STDOUT)
-                                log.file(output)
+                                self.log.file(output)
                             except subprocess.CalledProcessError as e:
-                                log.console('Could not get ' + rsp_id,
+                                self.log.console('Could not get ' + rsp_id +
+                                            ' from recipe_instance_id = ' +
+                                            uridict[obs][prod]['runid'],
                                             logging.WARN)
                                 continue
                             rsp_thumb = Image.open(rsp_png)
+                            os.remove(rsp_png)
 
                             nsize = int(size)
                             xysize = (2*nsize, nsize)
@@ -334,41 +421,67 @@ def run():
                                                 adGetCmd,
                                                 shell=True,
                                                 stderr=subprocess.STDOUT)
-                                    log.file(output)
+                                    self.log.file(output)
                                 except subprocess.CalledProcessError as e:
-                                    log.console('Could not get ' + rimg_id,
+                                    self.log.console('Could not get ' + rimg_id +
+                                                ' from recipe_instance_id = ' +
+                                                uridict[obs][prod]['runid'],
                                                 logging.WARN)
                                     continue
 
                                 rimg_thumb = Image.open(rimg_png)
+                                os.remove(rimg_png)
                                 thumb.paste(rimg_thumb, (nsize, 0))
                             
-                            reduced_png = thumbnail_name('JCMT',
-                                                         obs,
-                                                         prod,
-                                                         size)
+                            reduced_png = os.path.join(
+                                            self.pngdir,
+                                            thumbnail_name('JCMT',
+                                                           obs,
+                                                           prod,
+                                                           size))
                             thumb.save(reduced_png)
-                            put(a.archive, a.stream, reduced_png, log)
 
                             if 'rawprod' in uridict[obs][prod]:
                                 rawprod = uridict[obs][prod]['rawprod']
-                                raw_png = thumbnail_name('JCMT',
-                                                         obs,
-                                                         rawprod,
-                                                         size)
+                                raw_png = os.path.join(
+                                                self.pngdir,
+                                                thumbnail_name('JCMT',
+                                                               obs,
+                                                               rawprod,
+                                                               size))
                                 shutil.copyfile(reduced_png, raw_png)
-                                put(a.archive, a.stream, raw_png, log)
                     
                                 cubeprod = re.sub(r'^reduced_(\d+)$', 
                                                   r'cube_\1', 
                                                   prod)
-                                cube_png = thumbnail_name('JCMT',
-                                                           obs,
-                                                           cubeprod,
-                                                           size)
+                                cube_png = os.path.join(
+                                                self.pngdir,
+                                                thumbnail_name('JCMT',
+                                                               obs,
+                                                               cubeprod,
+                                                               size))
                                 shutil.copyfile(reduced_png, cube_png)
-                                put(a.archive, a.stream, cube_png, log)
 
-                    
-                        
+    def run(self):
+        """
+        Organize the conversion of thumbnails 
+        """
+        self.commandLineArguments()
+        if self.qsub:
+            self.submitToGridengine()
+        else:
+            self.convertThumbnails()
+            if self.persist:
+                os.chdir(self.pngdir)
+                cmdlist = ['dpCapture', '-persist', '-archive=JCMT']
+                try:
+                    output = subprocess.check_output(
+                                cmdlist,
+                                shell=True,
+                                stderr=subprocess.STDOUT)
+                except subprocess.CalledProcessError as e:
+                    output = e.output
+                self.log.file(output)
+                os.chdir('../')
+                
 
