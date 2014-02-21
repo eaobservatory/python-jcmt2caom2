@@ -8,12 +8,10 @@ if sys.version_info[0] > 2:
     sys.exit(-1)
 
 setup(name="jcmt2caom2",
-      version='1.1.0',
+      version='1.1.1',
       description='Ingest JCMT data into CAOM-2',
       author='Russell Redman',
       author_email='russell.o.redman@gmail.com',
-      data_files=[('scripts', ['scripts/jcmt2caom2raw', 
-                               'scripts/jcmt2caom2proc'])],
       packages=find_packages(exclude=['*.test']),
       provides=['jcmt2caom2'],
       install_requires=['distribute'],

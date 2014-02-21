@@ -139,12 +139,23 @@ class stdpipe(ingest2caom2):
         
 
         # set default locations for the config files, if they can be found
+        if not os.path.isdir(self.configpath):
+            raise RuntimeError('The config directory ' + self.configpath +
+                               ' does not exist')
+
         configpath = os.path.join(self.configpath, 'jcmt_stdpipe.config')
         if os.path.exists(configpath):
             self.config = configpath
+        else:
+            raise RuntimeError('The config file ' + configpath +
+                               ' does not exist')
+
         defaultpath = os.path.join(self.configpath, 'jcmt_stdpipe.default')
         if os.path.exists(defaultpath):
             self.default = defaultpath
+        else:
+            raise RuntimeError('The default file ' + defaultpath +
+                               ' does not exist')
 
         # set the JCMT comparison function
         self.cmpfunc = jcmtcmp
