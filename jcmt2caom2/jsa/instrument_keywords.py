@@ -134,7 +134,7 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict, log):
                 sideband_filter = \
                     keyword_dict['sideband_filter'].strip().upper()
                 if sideband_filter not in permitted[myBackend]['sideband_filter']:
-                    log.console('sideband_filter ' + sideband_fileter + 
+                    log.console('sideband_filter ' + sideband_filter + 
                                 ' is not in the list permited '
                                 'for ' +
                                 backend + ': ' +
