@@ -26,10 +26,11 @@ def run():
     ap.add_argument('--log',
                     default='rawutdate.log',
                     help='(optional) name of log file')
+    ap.add_argument('--sharelog',
+                    action='store_true',
+                    help='share the same log file for all ingestions')
     ap.add_argument('--debug', '-d',
-                    default=False,
-                    action='store_const',
-                    const=True,
+                    action='store_true',
                     help='run ingestion commands in debug mode')
     ap.add_argument('--stop_on_error', '-s',
                     action='store_const',
@@ -103,6 +104,8 @@ def run():
                 cmd = 'jcmtrawwrap'
                 if a.debug:
                     cmd += ' --debug' 
+                if a.sharelog:
+                    cmd += ' --sharelog'
                 cmd += ' --begin=' + utdate
                 cmd += ' --log=' + logpath
                 mygridengine.submit(cmd, cshpath, logpath)
@@ -143,7 +146,12 @@ def run():
             if a.debug:
                 debugflag = ' --debug'
             else:
-                debugflag = ' --verbose'
+                debugflag = ''
+            
+            if a.sharelog:
+                logflag = ' --log=' + a.log
+            else:
+                logflag = ''
 
             if a.script:
                 scriptpath = os.path.abspath(a.script)
@@ -153,13 +161,13 @@ def run():
             for key in sorted(rawdict.keys()):
                 obsid, quality = rawdict[key]
                 quality = int(quality)
-                if quality < 3:
+                if quality <= 3:
                     if quality > 0:
                         log.console('ingesting obsid = ' + obsid + \
                                     ' has quality = %d' % (quality, ),
                                     logging.WARN)
-                    cmd = 'jcmt2caom2raw %s --key=%s --log=%s' % \
-                        (debugflag, obsid, a.log)
+                    cmd = 'jcmt2caom2raw%s --key=%s%s' % \
+                        (debugflag, obsid, logflag)
                     log.console('PROGRESS: ' + cmd)
                     if SCRIPT:
                         print >>SCRIPT, cmd

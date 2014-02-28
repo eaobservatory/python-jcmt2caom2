@@ -19,6 +19,7 @@ import smtplib
 
 from tools4caom2.logger import logger
 from tools4caom2.database import database
+from tools4caom2.database import connection
 
 from jcmt2caom2.__version__ import version
   
@@ -111,12 +112,14 @@ class mon(object):
         self.nowiso = self.now.isoformat()
         self.nowday = re.sub(r'-', '', self.nowiso[:10])
         self.nowsuffix = re.sub(r':', '-', self.nowiso)
+        self.skip_processed = False
                 
         self.begin = None
         self.end = None
         self.date = None
         self.datestring = ''
         self.topclause = ''
+        self.fileString = ''
         
         self.server = 'SYBASE'
         
@@ -269,9 +272,12 @@ class mon(object):
         """
         answer = self.db.read(sqlcmd)
         self.log.console(label)
-        self.log.console(header)
-        for row in answer:
-            self.log.console(format % row)
+        if answer:
+            self.log.console(header)
+            for row in answer:
+                self.log.console(format % row)
+        else:
+            self.log.console('none')
 
     def analyze_raw_data(self):
         """
@@ -318,6 +324,7 @@ class mon(object):
             'GROUP BY t.present, t.qa',
             'ORDER BY t.present, t.qa',
             ])
+
         self.print_query_table(
             'QACOUNT: Observations counted by quality',
             'present qa      count',
@@ -354,7 +361,7 @@ class mon(object):
                 sqlcmd += '\n            AND c.utdate >= ' + self.begin
             if self.end:
                 sqlcmd += '\n            AND c.utdate <= ' + self.end
-                
+                            
         sqlcmd = '\n'.join([sqlcmd,
             '        GROUP BY c.obsid',
             '        HAVING ool.commentdate=max(ool.commentdate)',
@@ -371,11 +378,145 @@ class mon(object):
             '%7d %2d %40s',
             sqlcmd)
 
+        # file queries need the file_id without the .sdf extension
+        fileSelect = [
+                '    (SELECT substring(f.file_id, 1, len(f.file_id)-4) as file_id',
+                '     FROM jcmtmd.dbo.FILES f',
+                '         INNER JOIN jcmtmd.dbo.COMMON c',
+                '             ON f.obsid=c.obsid']
+        whereClause = '     WHERE '
+        if self.date:
+            fileSelect.append(whereClause + 'c.utdate=' + self.date)
+            whereClause = '         AND '
+        else:
+            if self.begin:
+                dateClauses.append(whereClause + 'c.utdate >= ' + self.begin)
+                whereClause = '         AND '
+            if self.end:
+                dateClauses.append(whereClause + 'c.utdate <= ' + self.end)
+        fileSelect.append('    ) s')
+        self.fileString = '\n'.join(fileSelect)
+        
+        # Count raw data files
+        numFiles = 0
+        sqlcmd = '\n'.join([
+            'SELECT COUNT(s.file_id)',
+            'FROM',
+            self.fileString])
+        answer = self.db.read(sqlcmd)
+        if answer:
+            numFiles = answer[0][0]
+        
+        if numFiles == 0:
+            self.skip_processed = True
+
+        # Find files in FILES that are missing from AD
+        sqlcmd = '\n'.join([
+                    'SELECT s.file_id',
+                    'FROM',
+                    self.fileString,
+                    '    LEFT JOIN ad.dbo.mfs_files m',
+                    '        ON s.file_id = m.file_id',
+                    '            AND m.status = "C"',
+                    'WHERE m.file_id IS NULL',
+                    'ORDER BY s.file_id'])
+
+        answer = self.db.read(sqlcmd)
+        numMissing = 0
+        if answer:
+            numMissing = len(answer)
+            self.log.console('There are %d files in FILES that are missing from ad'
+                             % (numMissing,))
+            self.log.console('   - see the full list in ' + self.logfile)
+            for row in answer:
+                if len(row):
+                    self.log.file('file_id: ' + row[0])
+        else:
+            self.log.console('All files in FILES are in ad')
+
+        sqlcmd = '\n'.join([
+                     'SELECT s.file_id',
+                      'FROM',
+                      self.fileString,
+                      '    INNER JOIN ad.dbo.mfs_files m',
+                      '        ON s.file_id = m.file_id',
+                      '            AND m.status = "C"',
+                      '    LEFT JOIN jcmt.dbo.jcmt_received_new jrn',
+                      '        ON s.file_id=jrn.file_id',
+                      'WHERE ISNULL(jrn.received,"NULL")!="Y"',
+                      'GROUP BY s.file_id',
+                      'ORDER BY s.file_id'''])
+        
+        answer = self.db.read(sqlcmd)
+        numNotReceived = 0
+        if answer:
+            numNotReceived = len(answer)
+            self.log.console('There are %d files in FILES and ad that have not '
+                             'been received' % (numNotReceived,))
+            self.log.console('   - see the full list in ' + self.logfile)
+            for row in answer:
+                self.log.file('file_id: ' + row[0])
+        else:
+            self.log.console('All files in FILES and ad have been received')
+
+    
     def analyze_proc_data(self):
         """
         Run queries to verify the state of raw data ingestions
         """
-        pass
+        if self.skip_processed:
+            self.log.console('No raw data, so no recipe instances to check')
+        else:
+            # examine list of data reduction recipe instances
+            self.log.console( '---- STATE OF DATA REDUCTION ----')
+
+            numScienceRecipeInstances = 0
+            sqlcmd = '\n'.join([
+                            'SELECT DISTINCT',
+                            '   substring(dri.parameters, 8, ',
+                            '       charindex("\'",',
+                            '                 substring(dri.parameters,',
+                            '                 8, len(dri.parameters))) - 1),',
+                            '   dri.state,',
+                            '   dri.identity_instance_id,',
+                            '   dri.recipe_instance_id',
+                            'FROM',
+                            self.fileString,
+                            '    INNER JOIN data_proc.dbo.dp_file_input dfi',
+                            '        ON dfi.dp_input = "ad:JCMT/" + s.file_id',
+                            '    INNER JOIN data_proc.dbo.dp_recipe_instance dri',
+                            '        ON dfi.identity_instance_id=dri.identity_instance_id'])
+            
+            recipeInstances = self.db.read(sqlcmd)
+            recipeDict = {}
+            for mode, state, ii_id, ri_id in recipeInstances:
+                idinst = str(ii_id)
+                rcinst = str(ri_id)
+                if mode not in recipeDict:
+                    recipeDict[mode] = {}
+                if state not in recipeDict[mode]:
+                    recipeDict[mode][state] = {}
+                if idinst not in recipeDict[mode][state]:
+                    recipeDict[mode][state][idinst] = rcinst
+            
+            self.log.console('Count of all recipe instances = %d' % 
+                             (len(recipeInstances),))
+            
+            if recipeDict:
+                self.log.console('Count of recipe instances by mode and state:')
+                self.log.console('%-10s%-6s%-6s' % ('Mode', 'State', 'Count'))
+                for mode in sorted(recipeDict.keys()):
+                    for state in sorted(recipeDict[mode]):
+                        self.log.console('%-10s%-6s%6d' % 
+                                         (mode, 
+                                          state,
+                                          len(recipeDict[mode][state])))
+                        if state != 'Y':
+                            for idinst in sorted(recipeDict[mode][state]):
+                                self.log.console('        identity_instance_id = ' +
+                                                 idinst + '  recipe_instance_id = ' +
+                                                 recipeDict[mode][state][idinst])
+
 
     def run(self):
         """
@@ -387,13 +528,13 @@ class mon(object):
                     to=self.to,
                     subject=self.subject).record() as self.log:
             self.log_command_line_switches()
-            self.db = database(self.server, 'jcmt', self.log)
+            with connection(self.server, 'jcmt', self.log) as self.db:
             
-            self.log.console('\nAnalyzing raw data ingestions')
-            self.analyze_raw_data()
-            
-            self.log.console('\nAnalyzing processed data ingestions')
-            self.analyze_proc_data()
+                self.log.console('---- RAW DATA ----')
+                self.analyze_raw_data()
+                
+                self.log.console('---- PROCESSED DATA ----')
+                self.analyze_proc_data()
             
         
 
