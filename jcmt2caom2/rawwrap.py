@@ -65,10 +65,6 @@ def run():
     
     mygridengine = gridengine(log)
     
-    # rawdict will record the obsid and quality of each raw observation
-    # as a tuple, keyed by UTDATE/OBSNUM
-    retvals = None
-    
     # Find all the observations on the requested UTDATE and their quality
     log.console('UTDATE in [' + a.begin + ', ' + a.end + ']')
     
@@ -82,7 +78,7 @@ def run():
                 '        ON c.obsid=co.observationID',
                 '    LEFT JOIN jcmt2.dbo.caom2_Plane cp',
                 '        ON co.obsID=cp.obsID',
-                '            AND substring(cp.productID,1,3) = "raw"',
+                '            AND substring(cp.productID,1,3) like "raw%"',
                 'WHERE c.utdate >= %s AND c.utdate <= %s' % (a.begin, a.end),
                 'GROUP BY c.utdate',
                 'HAVING count(cp.planeID) = 0',
@@ -113,31 +109,21 @@ def run():
     else:
         with connection('SYBASE', 'jcmtmd', log) as db:
             sqlcmd = '\n'.join([
-                'SELECT s.utdate,',
-                '       s.obsnum,',
-                '       s.obsid,',
-                '       s.quality',
-                'FROM (SELECT c.utdate, ',
-                '             c.obsnum,',
-                '             c.obsid,',
-                '             isnull(ool.commentstatus, 0) as quality,',
-                '             isnull(ool.commentdate, "1990-01-01 00:00:00") as qdate',
-                '      FROM jcmtmd.dbo.COMMON c',
-                '          LEFT JOIN jcmtmd.dbo.ompobslog ool',
-                '              ON c.obsid=ool.obsid',
-                '      WHERE c.utdate>=' + a.begin,
-                '            AND c.utdate <= ' + a.end + ') s',
-                'GROUP BY s.utdate, s.obsnum, s.obsid',
-                'HAVING s.qdate=max(s.qdate)'])
+                'SELECT c.utdate,',
+                '       c.obsnum,',
+                '       c.obsid',
+                'FROM jcmtmd.dbo.COMMON c',
+                'WHERE c.utdate>=' + a.begin,
+                '      AND c.utdate <= ' + a.end])
                         
             retvals = db.read(sqlcmd)
 
         rawdict = {}
         if retvals:
-            for utd, obsnum, obsid, quality in retvals:
+            for utd, obsnum, obsid in retvals:
                 key = '%d%-05d' % (utd, obsnum)
                 if key not in rawdict:
-                    rawdict[key] = (obsid, quality)
+                    rawdict[key] = obsid
         else:
             print 'no observations found for utdate=' + a.utdate
         
@@ -159,31 +145,21 @@ def run():
                 print >>SCRIPT, 'date'
             
             for key in sorted(rawdict.keys()):
-                obsid, quality = rawdict[key]
-                quality = int(quality)
-                if quality <= 3:
-                    if quality > 0:
-                        log.console('ingesting obsid = ' + obsid + \
-                                    ' has quality = %d' % (quality, ),
-                                    logging.WARN)
-                    cmd = 'jcmt2caom2raw%s --key=%s%s' % \
-                        (debugflag, obsid, logflag)
-                    log.console('PROGRESS: ' + cmd)
-                    if SCRIPT:
-                        print >>SCRIPT, cmd
-                    else:
-                        status, output = commands.getstatusoutput(cmd)
-                        if status:
-                            if a.stop:
-                                self.log.console(output, logging.ERROR)
-                            else:
-                                log.console('REPORT ERROR BUT CONTINUE: ' +
-                                            'status=' + str(status) + ' :' +
-                                            output, logging.WARN)
+                obsid = rawdict[key]
+                cmd = 'jcmt2caom2raw%s --key=%s%s' % \
+                    (debugflag, obsid, logflag)
+                log.console('PROGRESS: ' + cmd)
+                if SCRIPT:
+                    print >>SCRIPT, cmd
                 else:
-                    log.console('skipping obsid = ' + obsid + \
-                                ' because it has quality = %d' %(quality, ),
-                                logging.WARN)
+                    status, output = commands.getstatusoutput(cmd)
+                    if status:
+                        if a.stop:
+                            self.log.console(output, logging.ERROR)
+                        else:
+                            log.console('REPORT ERROR BUT CONTINUE: ' +
+                                        'status=' + str(status) + ' :' +
+                                        output, logging.WARN)
         else:
             log.console('WARNING: no raw data found for '
                         'utdate in [%s, %s]' % (a.begin, a.end))
