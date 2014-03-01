@@ -133,14 +133,26 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict, log):
             if 'sideband_filter' in keyword_dict:
                 sideband_filter = \
                     keyword_dict['sideband_filter'].strip().upper()
-                if sideband_filter not in permitted[myBackend]['sideband_filter']:
-                    log.console('sideband_filter ' + sideband_filter + 
-                                ' is not in the list permited '
-                                'for ' +
-                                backend + ': ' +
-                                repr(permitted[myBackend]['sideband_filter']), 
-                                logging.WARN)
-                    bad = True
+                
+                # Sideband filter was not recorded before 1994-04-14 and is stored 
+                # as a blank '' in ACSIS for DAS and AOS-C data.  It can be 
+                # interpretted into DSB for every receiver except RXB3, where a 
+                # blank really means UNKNOWN, forcing the keyword to be omitted.
+                if sideband_filter == '' and frontend != 'RXB3':
+                    sideband_filter = 'DSB'
+                    keyword_dict['sideband_filter'] = sideband_filter
+                
+                elif sideband_filter == '' and frontend == 'RXB3':
+                    del keyword_dict['sideband_filter']
+                    
+                elif sideband_filter not in permitted[myBackend]['sideband_filter']:
+                        log.console('sideband_filter ' + sideband_filter + 
+                                    ' is not in the list permited '
+                                    'for ' +
+                                    backend + ': ' +
+                                    repr(permitted[myBackend]['sideband_filter']), 
+                                    logging.WARN)
+                        bad = True
         else:
             if 'sideband' in keyword_dict:
                 log.console('sideband is not permitted for ' + 
@@ -165,6 +177,11 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict, log):
             bad = True
         if 'switching_mode' in keyword_dict:
             switching_mode = keyword_dict['switching_mode'].strip().upper()
+            # DAS observations often have 'FREQ' instead of 'FREQSW'
+            if switching_mode == 'FREQ':
+                switching_mode = 'FREQSW'
+                keyword_dict['switching_mode'] = switching_mode
+        
             if switching_mode not in permitted[myBackend]['switching_mode']:
                 log.console('switching_mode ' + switching_mode +
                             ' is not in the list permited '

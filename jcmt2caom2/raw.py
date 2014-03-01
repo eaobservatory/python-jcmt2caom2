@@ -995,7 +995,8 @@ class raw(object):
 
         uri = 'caom:' + self.collection + '/' + common['obsid']
         if ingestibility == INGESTIBILITY.JUNK:
-            self.log.console('     Remove JUNK observation ' + self.obsid)
+            self.log.console('     Remove noningestible observation ' + 
+                             self.obsid)
             repository.remove(uri)
         else:
             # get the list of files for this observation
