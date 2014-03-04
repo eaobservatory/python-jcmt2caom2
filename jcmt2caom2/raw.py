@@ -995,7 +995,7 @@ class raw(object):
 
         uri = 'caom:' + self.collection + '/' + common['obsid']
         if ingestibility == INGESTIBILITY.JUNK:
-            self.log.console('     Remove noningestible observation ' + 
+            self.log.console('     Remove non-ingestible observation ' + 
                              self.obsid)
             repository.remove(uri)
         else:

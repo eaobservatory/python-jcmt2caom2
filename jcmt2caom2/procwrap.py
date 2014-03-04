@@ -20,6 +20,7 @@ def runcommand(identity_instance_id,
                debug,
                test,
                log,
+               keeplog,
                mygridengine):
     """
     Format the command to ingest one identity_instance_id and
@@ -44,12 +45,12 @@ def runcommand(identity_instance_id,
     proccmd += ' --outdir=${TMPDIR}'
     if debug:
         proccmd += ' --debug'
-    else:
-        proccmd += ' --verbose'
+    if keeplog:
+        proccmd += ' --keeplog'
     proccmd += ' --log=' + logfile
     proccmd += ' dp:' + identity_instance_id
     
-    log.console('PROGRESS: "%s"' % (rootfile,))
+    log.console('PROGRESS: "%s"' % (proccmd,))
     if qsub:
         cshfile = rootfile + '.csh'
         if not test:
@@ -85,6 +86,10 @@ def run():
     ap.add_argument('--log',
                     default='procrecipe.log',
                     help='(optional) name of log file')
+    ap.add_argument('--keeplog',
+                    action='store_true',
+                    help='Pass --keeplog switch to jcmt2caom2proc')
+    
     ap.add_argument('--qsub',
                     action='store_true',
                     help='rsubmit a job to gridengine for each recipe instance')
@@ -246,6 +251,7 @@ def run():
                                    a.debug,
                                    a.test,
                                    log,
+                                   a.keeplog,
                                    mygridengine)
             else:
                 log.console('no recipe instances for ' + str(id),
