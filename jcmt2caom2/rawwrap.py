@@ -26,12 +26,17 @@ def run():
     ap.add_argument('--log',
                     default='rawutdate.log',
                     help='(optional) name of log file')
+    ap.add_argument('--logdir',
+                    help='(optional) directory to hold log files')
     ap.add_argument('--sharelog',
                     action='store_true',
                     help='share the same log file for all ingestions')
     ap.add_argument('--debug', '-d',
                     action='store_true',
                     help='run ingestion commands in debug mode')
+    ap.add_argument('--force',
+                    action='store_true',
+                    help='ingest all observations, not just missing ones')
     ap.add_argument('--stop_on_error', '-s',
                     action='store_const',
                     dest='stop',
@@ -74,15 +79,21 @@ def run():
             sqlcmd = '\n'.join([
                 'SELECT c.utdate',
                 'FROM jcmtmd.dbo.COMMON c',
-                '    LEFT JOIN jcmt2.dbo.caom2_Observation co',
-                '        ON c.obsid=co.observationID',
-                '    LEFT JOIN jcmt2.dbo.caom2_Plane cp',
-                '        ON co.obsID=cp.obsID',
-                '            AND substring(cp.productID,1,3) like "raw%"',
+                '    LEFT JOIN jcmt.dbo.caom2_Observation co',
+                '        ON c.obsid=co.observationID'])
+            if not a.force:
+                sqlcmd = '\n'.join([
+                    sqlcmd,
+                    '    LEFT JOIN jcmt.dbo.caom2_Plane cp',
+                    '        ON co.obsID=cp.obsID',
+                    '            AND substring(cp.productID,1,3) like "raw%"'])
+            sqlcmd = '\n'.join([
+                sqlcmd,
                 'WHERE c.utdate >= %s AND c.utdate <= %s' % (a.begin, a.end),
-                'GROUP BY c.utdate',
-                'HAVING count(cp.planeID) = 0',
-                'ORDER BY c.utdate'])
+                'GROUP BY c.utdate'])
+            if not a.force:
+                sqlcmd += '\nHAVING count(cp.planeID) = 0'
+            sqlcmd += '\nORDER BY c.utdate'
             retvals = db.read(sqlcmd)
             
         if retvals:
@@ -100,10 +111,18 @@ def run():
                 cmd = 'jcmtrawwrap'
                 if a.debug:
                     cmd += ' --debug' 
+
+                cmd += ' --begin=' + utdate
+
+                cmd += ' --log=' + logpath
                 if a.sharelog:
                     cmd += ' --sharelog'
-                cmd += ' --begin=' + utdate
-                cmd += ' --log=' + logpath
+                else:
+                    if a.logdir:
+                        cmd += ' --logdir=' + a.logdir
+                    else:
+                        cmd += ' --logdir=' + dirpath
+                    
                 mygridengine.submit(cmd, cshpath, logpath)
 
     else:
@@ -134,10 +153,11 @@ def run():
             else:
                 debugflag = ''
             
+            logflag = ''
             if a.sharelog:
                 logflag = ' --log=' + a.log
-            else:
-                logflag = ''
+            elif a.logdir:
+                logflag = ' --logdir=' + a.logdir
 
             if a.script:
                 scriptpath = os.path.abspath(a.script)

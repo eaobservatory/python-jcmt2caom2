@@ -196,6 +196,7 @@ class raw(object):
         
         self.checkmode = None
 
+        self.logdir = ''
         self.logfile = ''
         self.loglevel = logging.INFO
         self.log = None
@@ -241,6 +242,8 @@ class raw(object):
                         default=False,
                         help='Check the validity of metadata for this'
                              ' observation and file, then exit')
+        ap.add_argument('--logdir',
+                        help='path to log file directory')
         ap.add_argument('--log',
                         help='path to log file')
         ap.add_argument('-d', '--debug',
@@ -261,6 +264,11 @@ class raw(object):
                               os.path.expanduser(
                                   os.path.expandvars(args.outdir)))
 
+        if args.logdir:
+            self.logdir = os.path.abspath(
+                               os.path.expanduser(
+                                   os.path.expandvars(args.logdir)))
+        
         if args.log:
             self.logfile = os.path.abspath(
                                os.path.expanduser(
@@ -271,9 +279,7 @@ class raw(object):
 
         self.checkmode = args.checkmode
 
-    def setup_logger(self,
-                     logfile='',
-                     loglevel=None):
+    def setup_logger(self):
         """
         Configure the logger
 
@@ -281,21 +287,22 @@ class raw(object):
         logfile:     log file name
         loglevel:    logging level for messages
         """
-        if logfile:
+        if self.logfile:
             self.logfile = os.path.abspath(
                                os.path.expanduser(
                                    os.path.expandvars(logfile)))
         else:
-            if not self.logfile:
-                defaultlogname = ('caom_JCMT_' + self.obsid + '.log')
-                self.logfile = os.path.abspath(
-                                   os.path.expanduser(
-                                       os.path.expandvars(
-                                          os.path.join(self.outdir,
-                                                       defaultlogname))))
-        if loglevel is not None:
-            self.loglevel = loglevel
-
+            defaultlogname = ('caom_JCMT_' + self.obsid + '.log')
+            if self.logdir:
+                if not os.path.isdir(self.logdir):
+                    raise RuntimeError('logdir = ' + self.logdir +
+                                       ' is not a directory')
+                defaultlogname = os.path.join(self.logdir, defaultlogname)
+            else:
+                defaultlogname = os.path.join(self.outdir, defaultlogname)
+            self.logfile = os.path.abspath(
+                               os.path.expanduser(
+                                   os.path.expandvars(defaultlogname)))
 
     def logCommandLineSwitches(self):
         """
