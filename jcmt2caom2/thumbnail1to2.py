@@ -1,17 +1,21 @@
 #!/usr/bin/env python2.7
 
 import argparse
+import getpass
 import logging
 from PIL import Image
 import os.path
 import re
 import shutil
 import subprocess
+from threading import Event
 
 from tools4caom2.logger import logger
 from tools4caom2.database import database
 from tools4caom2.database import connection
 from tools4caom2.gridengine import gridengine
+from tools4caom2.__version__ import version as tools4caom2version
+from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 def thumbnail_name(collection, observationID, productID, size):
     """
@@ -45,7 +49,11 @@ class thumb1to2(object):
         self.scuba2 = False
         self.debug = False
         self.persist = False
-        self.qsub = False
+        self.transdir = ''
+        self.transhost = ''
+        self.transcount = 0
+        self.transpause = 0.0
+        self.timer = Event()
     
     def commandLineArguments(self):
         """
@@ -96,16 +104,29 @@ class thumb1to2(object):
 
         ap.add_argument('--pngdir',
                         default='png',
-                        help='(optional) name of directory to hold png files')
+                        help='(optional) working directory for png files')
 
         ap.add_argument('--persist',
                         action='store_true',
-                        help='persist thumbnails using dpCapture')
+                        help='copy png files to e-transfer directory')
         
-        ap.add_argument('--qsub',
-                        action='store_true',
-                        help='submit one utdate per job to gridengine')
-
+        ap.add_argument('--user',
+                        help='username for copy to transfer directory')
+        ap.add_argument('--transdir',
+                        default='/staging/proc/cadcops/jcmtdp/pickup_lowpriority',
+                        help='host name for transfer directory')
+        ap.add_argument('--transhost',
+                        default='etranscache1',
+                        help='host name for transfer directory')
+        ap.add_argument('--transcount',
+                        type=int,
+                        default=100,
+                        help='number of files to ingest before pause')
+        ap.add_argument('--transpause',
+                        type=float,
+                        default=300.0,
+                        help='seconds to pause')
+        
         ap.add_argument('--debug', '-d',
                         action='store_true',
                         help='set loglevel = debug')
@@ -136,7 +157,7 @@ class thumb1to2(object):
             self.end = a.end
             self.logname = basename + a.begin + '_' + a.end
         else:
-            raise logger.LoggerError(
+            raise RuntimeError(
                 'Must set --obs or --utdate or both of --begin and --end')
             
         if a.log:
@@ -149,89 +170,51 @@ class thumb1to2(object):
                                     os.path.expandvars(a.logdir)))
             self.logfile = os.path.join(self.logdir, self.logname + '.log')
             
-        if a.persist:
-            self.persist = True
-
-        if a.qsub:
-            self.qsub = True
-
         self.log = logger(self.logfile, loglevel=self.loglevel)
         
-        self.pngdir = a.pngdir
+        self.pngdir = os.path.abspath(
+                        os.path.expanduser(
+                            os.path.expandvars(a.pngdir)))
+        if not os.path.isdir(self.pngdir):
+            self.log.console('png dir does not exist: ' + self.pngdir)
         
-        self.log.console('logfile = ' + self.logfile)
+        if a.persist:
+            self.persist = True
+            self.transdir = a.transdir
+            self.transhost = a.transhost
+            self.transcount = a.transcount
+            self.transpause = a.transpause
+            
+            if a.user:
+                self.user = a.user
+            else:
+                self.user = getpass.getuser()
+
+        self.log.console('logfile =     ' + self.logfile)
+        self.log.file('tools4caom2 = ' + 
+                      tools4caom2version)
+        self.log.file('jcmt2caom2  = ' + 
+                      jcmt2caom2version)
+        self.log.file('logdir =      ' + str(self.loglevel))
+        self.log.file('pngdir =      ' + self.pngdir)
+        
         if self.obs:
-            self.log.file('obs =      ' + self.obs)
+            self.log.file('obs =         ' + self.obs)
         if self.utdate:
-            self.log.file('utdate =   ' + self.utdate)
+            self.log.file('utdate =      ' + self.utdate)
         if self.begin:
-            self.log.file('begin =    ' + self.begin)
-            self.log.file('end =      ' + self.end)
-        self.log.file('scuba2 =   ' + str(self.scuba2))
+            self.log.file('begin =       ' + self.begin)
+            self.log.file('end =         ' + self.end)
+        self.log.file('scuba2 =      ' + str(self.scuba2))
         
-        if self.logdir:
-            self.log.file('logdir =   ' + str(self.loglevel))
-
-        self.log.file('pngdir =   ' + self.pngdir)
-        self.log.file('debug =    ' + str(self.debug))
-        self.log.file('persist =  ' + str(self.persist))
-        self.log.file('qsub =     ' + str(self.qsub))
-        
-    def submitToGridengine(self):
-        """
-        Create jobs to process one utdate at a time under gridengine.
-        """
-        mygridengine = gridengine(self.log)
-        
-        cmd = 'jcmt1to2thumbnails'
-        if self.debug:
-            cmd += ' --debug' 
-        if self.scuba2:
-            cmd += ' --scuba2'
+        self.log.file('debug =       ' + str(self.debug))
+        self.log.file('persist =     ' + str(self.persist))
         if self.persist:
-            cmd += ' --persist'
-        if self.logdir:
-            cmd += (' --logdir=' + self.logdir)
-            dirpath = self.logdir
-        else:
-            cmd += (' --log=' + self.logfile)
-            dirpath = os.path.dirname(self.logfile)
-        cmd += ' --pngdir=' + self.pngdir
-
-        if self.obs:
-            cshpath = os.path.join(dirpath, self.logname + '.csh')
-            cmd += ' --obs=' + self.obs
-            mygridengine.submit(cmd, cshpath, self.logfile)
-            
-        elif self.utdate:
-            cshpath = os.path.join(dirpath, self.logname + '.csh')
-            cmd += ' --utdate=' + self.utdate
-            mygridengine.submit(cmd, cshpath, self.logfile)
-            
-        elif self.begin and self.end:
-            with connection('SYBASE', 'jcmtmd', self.log) as db:
-                sqllist = [
-                    'SELECT c.utdate',
-                    'FROM jcmtmd.dbo.COMMON c',
-                    'WHERE c.utdate >= %s AND c.utdate <= %s' % (self.begin, self.end)]
-                if self.scuba2:
-                    sqllist.append('    AND c.backend = "SCUBA-2"')
-                else:
-                    sqllist.append('    AND c.backend != "SCUBA-2"')
-                sqllist.extend([
-                    'GROUP BY c.utdate',
-                    'ORDER BY c.utdate'])
-                sqlcmd = '\n'.join(sqllist)
-                retvals = db.read(sqlcmd)
-                
-            if retvals:
-                for utd, in retvals:
-                    utdate = str(utd)
-                    cshpath = os.path.join(dirpath, 
-                                           'thumbnail_' + utdate,
-                                           '.csh')
-                    thiscmd = cmd + ' --utdate=' + utdate
-                    mygridengine.submit(thiscmd, cshpath, logpath)
+            self.log.file('user     =    ' + str(self.user))
+            self.log.file('transdir  =   ' + str(self.transdir))
+            self.log.file('transhost  =  ' + str(self.transhost))
+            self.log.file('transcount  = ' + str(self.transcount))
+            self.log.file('transpause  = ' + str(self.transpause))
         
     def convertThumbnails(self):
         """
@@ -282,6 +265,19 @@ class thumb1to2(object):
             uridict = {}
             
             for obs, algorithm, prod, prov_inputs, prov_runid, uri in retvals:
+                self.log.file('observationID         = ' + obs)
+                self.log.file('  algorithm           = ' + algorithm)
+                self.log.file('  productID           = ' + prod)
+                if prov_inputs:
+                    self.log.file('    provenance_inputs = ' + prov_inputs,)
+                else:
+                    self.log.file('Cannot create image for raw plane because'
+                                  ' provenance_inputs = NULL for ' +
+                                  uri + ' from recipe instance ' + prov_runid,
+                                  logging.WARN)
+                self.log.file('    provenance_runID  = ' + prov_runid)
+                self.log.file('    artifact_uri      = ' + uri)
+                
                 if obs not in uridict:
                     uridict[obs] = {}
                 
@@ -297,13 +293,14 @@ class thumb1to2(object):
                     # more (bad hybrid processing) keep only the smallest
                     # matching a raw plane.
                     rawprod = 'zzzzzzzzz'
-                    for in_uri in re.split(r'\s+', prov_inputs):
-                        this_rawprod = re.split(r'/', in_uri)[2]
-                        if re.match(r'^raw_(\w+_)?\d+$', this_rawprod):
-                            if this_rawprod < rawprod:
-                                rawprod = this_rawprod
-                    if re.match(r'^raw_(\w+_)?\d+$', rawprod):
-                        uridict[obs][prod]['rawprod'] = rawprod
+                    if prov_inputs:
+                        for in_uri in re.split(r'\s+', prov_inputs):
+                            this_rawprod = re.split(r'/', in_uri)[2]
+                            if re.match(r'^raw_(\w+_)?\d+$', this_rawprod):
+                                if this_rawprod < rawprod:
+                                    rawprod = this_rawprod
+                        if re.match(r'^raw_(\w+_)?\d+$', rawprod):
+                            uridict[obs][prod]['rawprod'] = rawprod
                 
                 if self.scuba2:
                     if not re.search(r'reduced\d{3}', uri):
@@ -330,6 +327,7 @@ class thumb1to2(object):
                                  logging.DEBUG)
             
             adGet = 'adGet -a'
+            count = 0
             for obs in uridict:
                 for prod in uridict[obs]:
                     if not self.scuba2 and 'rsp' not in uridict[obs][prod]:
@@ -461,27 +459,44 @@ class thumb1to2(object):
                                                                cubeprod,
                                                                size))
                                 shutil.copyfile(reduced_png, cube_png)
+                
+                # persist in batches, if requested
+                count += 1
+                if self.persist and count >= self.transcount:
+                    self.persistpng()
+                    count = 0
+                    if self.transpause > 0.0:
+                        self.timer.wait(self.transpause)
+        
+        if self.persist and count:
+            self.persistpng()
+            
+    def persistpng(self):
+        """
+        Persist png files through e-transfer.
+        """
+        cmd = ' '.join(['scp', 
+                        os.path.join(self.pngdir, '*.png'),
+                        self.user + "@" + self.transhost + ":" +
+                        self.transdir])
+        self.log.console('copy png files to transdir: ' + cmd)
+        
+        try:
+            output = subprocess.check_output(cmd,
+                                             shell=True,
+                                             stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as e:
+            output = e.output
+        if output:
+            self.log.console(output)
+
+        for f in os.listdir(self.pngdir):
+            fpath = os.path.join(self.pngdir, f)
+            os.remove(fpath)
 
     def run(self):
         """
-        Organize the conversion of thumbnails 
+        Run thumbnail conversion
         """
         self.commandLineArguments()
-        if self.qsub:
-            self.submitToGridengine()
-        else:
-            self.convertThumbnails()
-            if self.persist:
-                os.chdir(self.pngdir)
-                cmdlist = ['dpCapture', '-persist', '-archive=JCMT']
-                try:
-                    output = subprocess.check_output(
-                                cmdlist,
-                                shell=True,
-                                stderr=subprocess.STDOUT)
-                except subprocess.CalledProcessError as e:
-                    output = e.output
-                self.log.file(output)
-                os.chdir('../')
-                
-
+        self.convertThumbnails()

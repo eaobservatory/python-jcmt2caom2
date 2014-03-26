@@ -622,14 +622,15 @@ class raw(object):
             beamsize = 0.0
             for key in keys:
                 productID = self.productID_dict[str(key)]
-                restfreq = subsystem[key]['restfreq']
+                # Convert restfreq from GHz to Hz
+                restfreq = 1.0e9 * subsystem[key]['restfreq']
                 iffreq = subsystem[key]['iffreq']
                 ifchansp = subsystem[key]['ifchansp']
                 if productID not in hybrid:
                     hybrid[productID] = {}
-                    hybrid[productID]['restfreq'] = subsystem[key]['restfreq']
-                    hybrid[productID]['iffreq'] = subsystem[key]['iffreq']
-                    hybrid[productID]['ifchansp'] = subsystem[key]['ifchansp']
+                    hybrid[productID]['restfreq'] = restfreq
+                    hybrid[productID]['iffreq'] = iffreq
+                    hybrid[productID]['ifchansp'] = ifchansp
                 this_hybrid = hybrid[productID]
 
                 if 'freq_sig_lower' in this_hybrid:
@@ -880,9 +881,12 @@ class raw(object):
                     spectral_axis = SpectralWCS(energy_axis, 'BARYCENT')
                     spectral_axis.ssysobs = subsystem[key]['ssysobs']
                     spectral_axis.ssyssrc = subsystem[key]['ssyssrc']
-                    spectral_axis.restfrq = subsystem[key]['restfreq']
                     spectral_axis.zsource = subsystem[key]['zsource']
 
+                    # Recall that restfreq has been converted to Hz in 
+                    # thishybrid so do not use the unconverted value from
+                    # subsystem[key][['restfreq']
+                    spectral_axis.restfrq = this_hybrid['restfreq']
                     meanfreq = float(this_hybrid['meanfreq'])
                     ifchansp = float(this_hybrid['ifchansp'])
                     spectral_axis.resolving_power = abs(1.0e9 * meanfreq / 
