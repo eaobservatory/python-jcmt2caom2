@@ -18,7 +18,7 @@ frontends = {'ACSIS': ('HARP', 'RXA3', 'RXWB','RXWD2'),
             }
 continuum = ('SCUBA-2', 'SCUBA')
 
-def instrument_name(frontend, backend, log):
+def instrument_name(frontend, backend, inbeam, log):
     """
     Generates an unambigous name for Instrument.name.
 
@@ -40,29 +40,46 @@ def instrument_name(frontend, backend, log):
     Arguments:
     frontend: the receiver name
     backend: the spectrometer name
+    inbeam: string containing list of subinstruments in the beam
     log: a tools4caom2.logger logger object
     
     Returns a string giving the instrument name.
     """
+    separator = '-'
     
     # Sanitize the frontend and backend names
     myFrontend = frontend.upper() if frontend else 'UNKNOWN'
-    
-    if myFrontend in continuum:
-        instrument = myFrontend
-    else:
-        myBackend = backend.upper() if backend else 'UNKNOWN'
-        if myBackend not in frontends:
-            log.console('backend = ' + myBackend + ' should be one of ' + 
-                        repr(sorted(frontends.keys())), 
-                        logging.WARN)
+    parts = []
 
+    myBackend = backend.upper() if backend else 'UNKNOWN'
+
+    myInbeam = inbeam.upper() if inbeam else ''
+    
+    if re.search(r'POL', myInbeam):
+        if myFrontend == 'SCUBA-2':
+            parts.append('POL2')
+        else:
+            parts.append('POL')
+
+    if re.search(r'FTS2', myInbeam):
+            parts.append('FTS2')
+
+    parts.append(myFrontend)
+    
+    if myBackend in frontends:
+        parts.append(myBackend)
+        
         if myFrontend not in frontends[myBackend]:
             log.console('frontend = ' + myFrontend + ' should be one of ' + 
                         repr(sorted(frontends[myBackend])), 
                         logging.WARN)
+    else:
+        log.console('backend = ' + myBackend + ' should be one of ' + 
+                    repr(sorted(frontends.keys())), 
+                    logging.WARN)
 
-        instrument = myFrontend + '-' + myBackend
+
+    instrument = separator.join(parts)
 
     return instrument
             

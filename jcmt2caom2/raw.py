@@ -290,7 +290,7 @@ class raw(object):
         if self.logfile:
             self.logfile = os.path.abspath(
                                os.path.expanduser(
-                                   os.path.expandvars(logfile)))
+                                   os.path.expandvars(self.logfile)))
         else:
             defaultlogname = ('caom_JCMT_' + self.obsid + '.log')
             if self.logdir:
@@ -613,7 +613,14 @@ class raw(object):
 
         frontend = common['instrume'].upper()
         backend = common['backend'].upper()
-        instrument = Instrument(instrument_name(frontend, backend, self.log))
+        if common['inbeam']:
+            inbeam = common['inbeam'].upper()
+        else:
+            inbeam = ''
+        instrument = Instrument(instrument_name(frontend, 
+                                                backend, 
+                                                inbeam,
+                                                self.log))
         instrument.keywords.extend(self.instrument_keywords)
 
         if backend in ['ACSIS', 'DAS', 'AOSC']:

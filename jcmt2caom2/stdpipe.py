@@ -43,6 +43,7 @@ from jcmt2caom2.jsa.intent import intent
 from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
+from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
 
 import __version__
@@ -405,8 +406,10 @@ class stdpipe(ingest2caom2):
         if header['BACKEND'].strip() in ('SCUBA-2',):
             someBAD |= self.check_missing('FILTER', header)
         else:
-            # ACSIS-like files must define the SUBSYSNR
+            # ACSIS-like files must define the SUBSYSNR, RESTFRQ and BWMODE
             someBAD |= self.check_missing('SUBSYSNR', header)
+            someBAD |= self.check_missing('RESTFRQ', header)
+            someBAD |= self.check_missing('BWMODE', header)
 
         if int(header['OBSCNT']) > 0:
             for n in range(int(header['OBSCNT'])):
@@ -717,8 +720,12 @@ class stdpipe(ingest2caom2):
         
         # Instrument
         if 'BACKEND' in header and header['BACKEND'] != pyfits.card.UNDEFINED:
+            inbeam = ''
+            if 'INBEAM' in header and header['INBEAM'] != pyfits.card.UNDEFINED:
+                inbeam = header['INBEAM']
             instrument = instrument_name(header['INSTRUME'],
                                          header['BACKEND'],
+                                         inbeam,
                                          self.log)
             self.add_to_plane_dict('instrument.name', instrument)
             self.add_to_plane_dict('instrument.keywords',
@@ -824,12 +831,26 @@ class stdpipe(ingest2caom2):
         # Plane metadata
         product = header['PRODUCT']
         if header['INSTRUME'] == 'SCUBA-2':
-            self.productID = product + '_' + str(header['FILTER'])
+            self.productID = product_id('SCUBA-2', self.log,
+                                        product=product,
+                                        filter=str(header['FILTER']))
             self.add_to_plane_dict('plane.calibrationLevel',
                                    str(CalibrationLevel.CALIBRATED.value))
         else:  # ACSIS-like backends
             if product in ['reduced', 'rimg', 'rsp']:
-                self.productID = 'reduced_' + str(header['SUBSYSNR'])
+                self.productID = \
+                    product_id(header['BACKEND'], self.log,
+                               product='reduced',
+                               restfreq=float(header['RESTFRQ']),
+                               bwmode=header['BWMODE'],
+                               subsysnr=str(header['SUBSYSNR']))
+            elif product in ['healpix', 'hpxrimg', 'hpxrsp']:
+                self.productID = \
+                    product_id(header['BACKEND'], self.log,
+                               product='healpix',
+                               restfreq=float(header['RESTFRQ']),
+                               bwmode=header['BWMODE'],
+                               subsysnr=str(header['SUBSYSNR']))
             elif product == 'cube':
                 # like raw data files, cube files need to be grouped into
                 # hybrid planes.  These are the same as ACSIS subsystems if
@@ -855,13 +876,23 @@ class stdpipe(ingest2caom2):
                      '         a.ifchansp'])
                 result = self.conn.read(sqlcmd)
                 if len(result):
-                    self.productID = 'cube_%d' % result[0]
+                    self.productID = \
+                        product_id(header['BACKEND'], self.log,
+                                   product='cube',
+                                   restfreq=float(header['RESTFRQ']),
+                                   bwmode=header['BWMODE'],
+                                   subsysnr='%d' % result[0])
                 else:
                     self.log.console('Could not generate productID for ' +
                                      file_id,
                                      logging.ERROR)
             else:
-                self.productID = product + '_' + str(header['SUBSYSNR'])
+                self.productID = \
+                    product_id(header['BACKEND'], self.log,
+                               product=product,
+                               restfreq=float(header['RESTFRQ']),
+                               bwmode=header['BWMODE'],
+                               subsysnr=str(header['SUBSYSNR']))
 
             if product == 'cube':
                 self.add_to_plane_dict('plane.calibrationLevel',
@@ -962,7 +993,7 @@ class stdpipe(ingest2caom2):
             if ('FILTER' in header and
                 header['FILTER'] != pyfits.card.UNDEFINED):
                 self.add_to_plane_dict('bandpassName', 
-                                'SCUBA-2_' + str(header['FILTER']) + 'um')
+                                'SCUBA-2-' + str(header['FILTER']) + 'um')
         elif header['BACKEND'] in ('ACSIS',):
             if ('MOLECULE' in header and
                 header['MOLECULE'] not in (pyfits.card.UNDEFINED, 'No Line')):
