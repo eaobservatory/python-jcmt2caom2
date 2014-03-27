@@ -520,7 +520,6 @@ class raw(object):
             subsysnr = subsystem.keys()[0]
             keyword_dict['sideband'] = subsystem[subsysnr]['obs_sb']
             keyword_dict['sideband_filter'] = subsystem[subsysnr]['sb_mode']
-            keyword_dict['subsys_bwmode'] = subsystem[subsysnr]['bwmode']
         someBad, keyword_list = instrument_keywords('raw', 
                                                     common['instrume'],
                                                     common['backend'],

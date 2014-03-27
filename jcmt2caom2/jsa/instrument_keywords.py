@@ -58,7 +58,6 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict, log):
         sideband: for heterodyne observations, the signal sideband (USB, LSB)
         sideband_mode: single or double sideband (SSB, DSB) 
         swiching_mode: the switching mode in use
-        subsys_bwmode: bandwidth mode
     log: a tools4caom2.logger logger object
     
     Returns a tuple containing:
@@ -75,7 +74,6 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict, log):
         if backend in ('ACSIS', 'DAS', 'AOS-C'):
             keyword_dict['sideband'] = subsystem['obs_sb']
             keyword_dict['sieband_mode'] = subsystem['sb_mode']
-            keyword_dict['subsys_bwmode'] = subsystem['bwmode']
         mybad, keywords = instrument_keywords('raw', keyword_dict)
     For processed data:
         keyword_dict = {}
@@ -86,7 +84,6 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict, log):
         if header['BACKEND'] in ('ACSIS', 'DAS', 'AOS-C'):
             keyword_dict['sideband'] = header['OBS_SB']
             keyword_dict['sieband_filter'] = header['SB_MODE']
-            keyword_dict['subsys_bwmode'] = header['BWMODE']
         mybad, keywords = instrument_keywords('stdpipe', 
                                               frontend, 
                                               backend, 
@@ -166,12 +163,6 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict, log):
                             logging.WARN)
                 bad = True
 
-            if 'subsys_bwmode' in keyword_dict:
-                log.console('subsys_bwmode is not permitted for ' + 
-                            backend, 
-                            logging.WARN)
-                bad = True
-
         if 'switching_mode' not in keyword_dict and strictness == 'raw':
             log.console('switching_mode is not defined', logging.WARN)
             bad = True
@@ -199,7 +190,7 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict, log):
                 inbeam_list = re.split(r'\s+', 
                                        keyword_dict['inbeam'].strip().upper())
                 for item in inbeam_list:
-                    if item != 'SHUTTER':
+                    if not re.search(r'POL|FTS|SHUTTER', item):
                         keywords.append(item)
             else:
                 keywords.append(keyword_dict[key].strip().upper())

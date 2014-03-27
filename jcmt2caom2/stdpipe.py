@@ -488,10 +488,6 @@ class stdpipe(ingest2caom2):
                     header['SB_MODE'] != pyfits.card.UNDEFINED):
                     keyword_dict['sideband_filter'] = header['SB_MODE']
             
-                if ('BWMODE' in header and 
-                    header['BWMODE'] != pyfits.card.UNDEFINED):
-                    keyword_dict['subsys_bwmode'] = header['BWMODE']
-            
             thisBad, keyword_list = instrument_keywords('stdpipe',
                                                         frontend,
                                                         backend,
