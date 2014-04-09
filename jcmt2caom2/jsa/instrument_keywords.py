@@ -19,11 +19,11 @@ permitted = {'ACSIS': {'inbeam': ["POL"],
                        
              'DAS': {'inbeam': ["ROVER"],
                      'sideband': ["LSB", "USB"],
-                     'sideband_filter': ["DSB", "SSB"],
+                     'sideband_filter': ["DSB", "SSB", "UNKNOWN"],
                      'switching_mode': ["CHOP", "FREQSW", "NONE", "PSSW"]
                     },
              'AOS-C': {'sideband': ["LSB", "USB"],
-                       'sideband_filter': ["DSB", "SSB"],
+                       'sideband_filter': ["DSB", "SSB", 'UNKNOWN'],
                        'switching_mode': ["CHOP", "FREQSW", "NONE", "PSSW"]
                       },
              'SCUBA-2': {'inbeam': ["BLACKBODY", "FTS2", "POL", "POL2_CAL", 
@@ -139,7 +139,8 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict, log):
                     sideband_filter = 'DSB'
                     keyword_dict['sideband_filter'] = sideband_filter
                 
-                elif sideband_filter == '' and frontend == 'RXB3':
+                elif sideband_filter == 'UNKNOWN' and backend in ['DAS', 
+                                                                  'AOS-C']:
                     del keyword_dict['sideband_filter']
                     
                 elif sideband_filter not in permitted[myBackend]['sideband_filter']:

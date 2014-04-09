@@ -13,6 +13,7 @@ makes SYBASE access problematic.
 __author__ = "Russell O. Redman"
 
 from contextlib import contextmanager
+import datetime
 import logging
 import os.path
 import pyfits
@@ -234,6 +235,11 @@ class stdpipe(ingest2caom2):
         Return:
         True if the key is missing or undefined, False otherwise
         """
+        if self.debug:
+            self.log.console('enter check_missing: ' + 
+                             key + ': ' +
+                             datetime.datetime.now().isoformat(),
+                             loglevel=logging.DEBUG)
         bad = False
         if key not in head or head[key] == pyfits.card.UNDEFINED:
             self.log.console('Mandatory header ' + key + ' is missing',
@@ -255,6 +261,11 @@ class stdpipe(ingest2caom2):
         Return:
         True if the key is missing or not in the acceptable list, False otherwise
         """
+        if self.debug:
+            self.log.console('enter check_values: ' + 
+                             key + ': ' +
+                             datetime.datetime.now().isoformat(),
+                             loglevel=logging.DEBUG)
         bad = False
         if key not in head:
             self.log.console('Mandatory header ' + key + ' is missing',
@@ -333,6 +344,10 @@ class stdpipe(ingest2caom2):
                observationID
                productID
         '''
+        if self.debug:
+            self.log.console('enter build_dict: ' + 
+                             datetime.datetime.now().isoformat(),
+                             loglevel=logging.DEBUG)
         if self.repository is None:
             # note that this is similar to the repository in ingest2caom2, but 
             # that is not made a part of the structure - probably should be 
@@ -1290,7 +1305,10 @@ class stdpipe(ingest2caom2):
         against bad files.  Note that this does not check whether particular
         keywords are present, only that the existing keywords are acceptable.
         """
-
+        if self.debug:
+            self.log.console('enter check_acceptable_headers: ' + 
+                             datetime.datetime.now().isoformat(),
+                             loglevel=logging.DEBUG)
         acceptable = [
                       '',
                     'AGENTID',

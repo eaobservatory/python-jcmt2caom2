@@ -52,6 +52,7 @@ from tools4caom2.database import connection
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.mjd import utc2mjd
 from tools4caom2.logger import logger
+import tools4caom2.__version__
 
 from jcmt2caom2.jsa.quality import JCMT_QA
 from jcmt2caom2.jsa.quality import JSA_QA
@@ -66,12 +67,12 @@ from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2 import __version__
 
 __doc__ = """
-The raw class immplements methods to collect metadata from the jcmtmd database
+The raw class immplements methods to collect metadata from the database
 to construct a caom2 observation.  Once completed, the observation is
 serialized to a temporary xml file in outdir and push to the CAOM-2
 repository.
 
-This routine requires read access to the jcmtmd database, but does only reads.
+This routine requires read access to the database, but does only reads.
 It therefore always reads the metadata from SYBASE.
 
 Version : """ + __version__.version
@@ -88,7 +89,7 @@ class raw(object):
     """
     Use pyCAOM2 to ingest raw JCMT raw data for a single observation using
     metadata from the COMMON, ACSIS, SCUBA2 and FILES tables in
-    jcmtmd.dbo on SYBASE.
+    self.database + '.' + self.schema on SYBASE.
 
     This class requires direct access to the copies of these tables at the CADC.
     Only read access is required inside this routine to gather the metadata and
@@ -214,48 +215,46 @@ class raw(object):
         """
         ap = argparse.ArgumentParser()
         ap.add_argument('--key',
-                        required=True,
-                        help='obsid, primary key in jcmtmd.dbo.COMMON table')
+            required=True,
+            help='obsid, primary key in COMMON table')
         ap.add_argument('--outdir',
-                        help='working directory for output files')
+            help='working directory for output files')
 
         ap.add_argument('--server',
-                        choices=('SYBASE', 'DEVSYBASE'),
-                        default='SYBASE',
-                        help='database server to use')
+            default='SYBASE',
+            help='logical name of Sybase server')
         ap.add_argument('--database',
-                        default='jcmtmd',
-                        help='database to use')
+            default='jcmtmd',
+            help='database containing COMMON, ACSIS, SCUVBA2 and FILES tables')
         ap.add_argument('--schema',
-                        default='dbo',
-                        help='database schema to use')
+            default='dbo',
+            help='database schema to use')
 
         ap.add_argument('--collection',
-                        choices=('JCMT', 'SANDBOX'),
-                        default='JCMT',
-                        help='collection to use for ingestion')
+            choices=('JCMT', 'SANDBOX'),
+            default='JCMT',
+            help='collection to use for ingestion')
 
         ap.add_argument('-c', '--check',
-                        action='store_const',
-                        dest='checkmode',
-                        const=True,
-                        default=False,
-                        help='Check the validity of metadata for this'
-                             ' observation and file, then exit')
+            action='store_true',
+            dest='checkmode',
+            help='Check the validity of metadata for this'
+                 ' observation and file, then exit')
         ap.add_argument('--logdir',
-                        help='path to log file directory')
+            help='path to log file directory')
         ap.add_argument('--log',
-                        help='path to log file')
+            help='path to log file')
         ap.add_argument('-d', '--debug',
-                        dest='loglevel',
-                        action='store_const',
-                        const=logging.DEBUG)
+            dest='loglevel',
+            action='store_const',
+            const=logging.DEBUG)
         args = ap.parse_args()
 
         self.obsid = args.key
         self.server = args.server
         self.database = args.database
         self.schema = args.schema
+        self.db = self.database + '.' + self.schema + '.'
         
         self.collection = args.collection
 
@@ -311,13 +310,16 @@ class raw(object):
         Arguments:
         <None>
         """
+        self.log.file('jcmt2caom2version    = ' + __version__.version)
+        self.log.file('tools4caom2version   = ' + 
+                      tools4caom2.__version__.version)
         for line in ['obsid = ' + self.obsid,
-                                    'server = ' + self.server,
-                                    'database = ' + self.database,
-                                    'schema = ' + self.schema,
-                                    'outdir = ' + self.outdir,
-                                    'loglevel = %d' % self.loglevel,
-                                    'checkmode = ' + str(self.checkmode)]:
+                     'server = ' + self.server,
+                     'database = ' + self.database,
+                     'schema = ' + self.schema,
+                     'outdir = ' + self.outdir,
+                     'loglevel = %d' % self.loglevel,
+                     'checkmode = ' + str(self.checkmode)]:
             self.log.file(line)
         self.log.console('Logfile = ' + self.logfile)
 
@@ -335,7 +337,7 @@ class raw(object):
         """
         sqlcmd = '\n'.join(['SELECT',
                             '    count(obsid)',
-                            'FROM jcmtmd.dbo.COMMON',
+                            'FROM ' + self.db + 'COMMON',
                             'WHERE',
                             '    obsid = "%s"' % (self.obsid,)])
         return self.conn.read(sqlcmd)[0][0]
@@ -344,7 +346,7 @@ class raw(object):
                     table,
                     columns):
         """
-        Query a specified table in jcmtmd.dbo. for a set of columns.
+        Query a specified table in self.db for a set of columns.
 
         Arguments:
         table      the name of the table to query
@@ -359,7 +361,7 @@ class raw(object):
                                 for key in columns])
         sqlcmd = '\n'.join(['SELECT',
                             '%s' % (selection,),
-                            'FROM jcmtmd.dbo.' + table,
+                            'FROM ' + self.db + table,
                             'WHERE obsid = "%s"' % (self.obsid,)])
 
         answer = self.conn.read(sqlcmd)
@@ -385,9 +387,9 @@ class raw(object):
             'SELECT ',
             '    ou.uname,',
             '    op.title',
-            'FROM jcmtmd.dbo.COMMON c',
-            '    left join jcmtmd.dbo.ompproj op on c.project=op.projectid',
-            '    left join jcmtmd.dbo.ompuser ou on op.pi=ou.userid',
+            'FROM ' + self.db + 'COMMON c',
+            '    left join ' + self.db + 'ompproj op on c.project=op.projectid',
+            '    left join ' + self.db + 'ompuser ou on op.pi=ou.userid',
             'WHERE c.obsid="%s"' % (obsid,)])
         answer = self.conn.read(sqlcmd)
 
@@ -412,7 +414,7 @@ class raw(object):
         sqlcmd = '\n'.join([
             'SELECT ',
             '    isnull(commentstatus, 0)',
-            'FROM jcmtmd.dbo.ompobslog',
+            'FROM ' + self.db + 'ompobslog',
             'WHERE obsid="%s"' % (obsid,),
             '    AND obsactive=1',
             '    AND commentstatus <= %d' % (JCMT_QA.JUNK),
@@ -439,7 +441,7 @@ class raw(object):
             'SELECT ',
             '    obsid_subsysnr,',
             '    file_id',
-            'FROM jcmtmd.dbo.FILES',
+            'FROM ' + self.db + 'FILES',
             'WHERE obsid="%s"' % (obsid,),
             'ORDER BY obsid_subsysnr, file_id'])
         answer = self.conn.read(sqlcmd)
@@ -452,7 +454,7 @@ class raw(object):
                     results[obsid_subsysnr] = []
                 results[obsid_subsysnr].append(answer[i][1])
         else:
-            self.log.console('No rows in jcmtmd.dbo.FILES for obsid = ' +
+            self.log.console('No rows in ' + self.db + 'FILES for obsid = ' +
                              obsid,
                              logging.ERROR)
         return results
