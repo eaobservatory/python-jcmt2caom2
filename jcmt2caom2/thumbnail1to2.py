@@ -9,6 +9,7 @@ import os.path
 import re
 import shutil
 import subprocess
+import sys
 from threading import Event
 
 from tools4caom2.logger import logger
@@ -57,10 +58,10 @@ class thumb1to2(object):
         self.transcount = 0
         self.transpause = 0.0
         self.timer = Event()
-        self.jcmt2caom2raw = subprocess.check_output('which jcmt2caom2raw',
-                                                     shell=True)
-        self.jcmt2caom2proc = subprocess.check_output('which jcmt2caom2proc',
-                                                      shell=True)
+        self.jcmt2caom2raw = os.path.realpath(
+                                os.path.join(sys.path[0], 'jcmt2caom2raw'))
+        self.jcmt2caom2proc = os.path.realpath(
+                                os.path.join(sys.path[0], 'jcmt2caom2proc'))
     
     def commandLineArguments(self):
         """
@@ -193,6 +194,8 @@ class thumb1to2(object):
         self.pngdir = os.path.abspath(
                         os.path.expanduser(
                             os.path.expandvars(a.pngdir)))
+        if not os.path.exists(self.pngdir):
+            os.makedirs(self.pngdir)
         if not os.path.isdir(self.pngdir):
             self.log.console('png dir does not exist: ' + self.pngdir)
         
@@ -245,6 +248,7 @@ class thumb1to2(object):
         os.mkdir(self.pngdir)
         rawset = set([])
         procset = set([])
+        daylist = []
         
         with connection('SYBASE', 'jcmt', self.log) as db:
             count = 0
@@ -266,6 +270,9 @@ class thumb1to2(object):
                 results = db.read(sqlcmd)
                 if results:
                     daylist = [str(x[0]) for x in results]
+            
+            if not daylist:
+                self.log.console('No entries to process')
             
             for day in daylist:
                 if self.logdir:
@@ -307,10 +314,11 @@ class thumb1to2(object):
                                    '--end=' + obsid,
                                    '--script=' + self.jcmt2caom2raw,
                                    '--log=' + mylogfile]
+                            cmdline = ' '.join(cmd)
                             try:
-                                self.log.console(' '.join(cmd))
+                                self.log.console(cmdline)
                                 if self.persist:
-                                    output = subprocess.check_output(cmd,
+                                    output = subprocess.check_output(cmdline,
                                                     shell=True,
                                                     stderr=subprocess.STDOUT)
                             except Exception as e:
@@ -353,7 +361,7 @@ class thumb1to2(object):
                                                      'dp:' + str(runid),
                                                      logging.WARN)
                                     self.log.file(e.output)
-
+        
                 sqllist = [
                     'SELECT o.observationID,',
                     '       o.algorithm_name,',
