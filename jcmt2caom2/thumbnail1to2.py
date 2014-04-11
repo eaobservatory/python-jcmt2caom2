@@ -288,8 +288,9 @@ class thumb1to2(object):
                     for f in os.listdir(mylogdir):
                         base, ext = os.path.splitext(f)
                         if ext == '.log':
-                            self.log.file('PROGRESS: remove ' + f)
-                            os.remove(f)
+                            ff = os.path.join(mylogdir, f)
+                            self.log.file('PROGRESS: remove ' + ff)
+                            os.remove(ff)
                         
                     sqlcmd = '\n'.join([
                         'SELECT obsid',
