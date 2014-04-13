@@ -63,6 +63,7 @@ from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
+from jcmt2caom2.jsa.twod import TwoD
 
 from jcmt2caom2 import __version__
 
@@ -777,74 +778,131 @@ class raw(object):
 
 # Note that for single spectra the bl and tr corners have the same
 # coordinates.  CAOM-2 does not accept a zero-area polygon, so pad the
-# coordinates by the beam size.
+# coordinates by the +/- 0.5 * beamsize.
+# Also, a line map in X or Y grid coordinates will have zero area,
+# so expand the box sideways by +/- 0.5 * beamsize.
+# Finally, check for a bowtie polygon, where the corners were recorded
+# in the wrong order.
                 if (common['obs_type'] in ('science', 'pointing', 'focus')
                     and common['obsrabl'] is not None):
                     # Sky position makes no sense for other kinds of 
                     # observations, even if supplied in COMMON
                     
                     # Position axis bounds are in ICRS
+                    # Check for various pathologies due to different
+                    # observing strategies
+                    # position accuracy is about 0.1 arcsec (in decimal degrees)
+                    eps = 0.1 / 3600.0
+                     
+                    bl = TwoD(common['obsrabl'], common['obsdecbl'])
+                    br = TwoD(common['obsrabr'], common['obsdecbr'])
+                    tl = TwoD(common['obsratl'], common['obsdectl'])
+                    tr = TwoD(common['obsratr'], common['obsdectr'])
+                    self.log.file('initial bounds bl = ' + str(bl))
+                    self.log.file('initial bounds br = ' + str(br))
+                    self.log.file('initial bounds tr = ' + str(tr))
+                    self.log.file('initial bounds tl = ' + str(tl))
+                    halfbeam = beamsize /2.0
+
                     # The precomputed bounding box can be represented as a polgon
-                    if (common['obsrabl'] == common['obsratr'] and
-                        common['obsdecbl'] == common['obsdectr']):
-                        # bounding "box" is a point, so insert a circle 
-                        bounding_box = CoordCircle2D(ValueCoord2D(
-                            common['obsratl'],
-                            common['obsdectl']),
-                            beamsize)
+                    if ((bl - br).abs() < eps
+                        and (bl - tl).abs() < eps 
+                        and (tl - tr).abs() < eps):
+                        # bounding "box" is a point, so expand to a box 
+                        self.log.console('For observation ' + 
+                                         common['obsid'] + 
+                                         ' the bounds are a point')
+                        
+                        cosdec = math.cos(br.y * math.pi / 180.0)
+                        offsetX = 0.5 * beamsize / cosdec
+                        offsetY = 0.5 * beamsize
+                        bl = bl + TwoD(-offsetX, -offsetY)
+                        br = br + TwoD( offsetX, -offsetY)
+                        tr = tr + TwoD( offsetX,  offsetY)
+                        tl = tl + TwoD(-offsetX,  offsetY)
+
+                    elif ((bl - br).abs() < eps
+                          and (tl - tr).abs() < eps
+                          and (bl - tl).abs() >= eps):
+                        # bounding box is a line in y, so diff points to + Y
+                        # and the perpendicular points along - X
+                        self.log.console('For observation ' + 
+                                         common['obsid'] + 
+                                         ' the bounds are in a line in Y')
+                        diff = tl - bl
+                        mean = (tl + bl)/2.0
+                        cosdec = math.cos(mean.y * math.pi / 180.0)
+                        
+                        unitX = TwoD(diff.y, -diff.x * cosdec)
+                        unitX = unitX / unitX.abs()
+                        offsetX = -halfbeam * TwoD(unitX.x / cosdec, unitX.y)
+                        
+                        unitY = TwoD(diff.x * cosdec, diff.y)
+                        unitY = unitY / unitY.abs()
+                        offsetY = halfbeam * TwoD(unitY.x / cosdec, unitY.y)
+                        
+                        bl = bl - offsetX - offsetY
+                        tl = tl - offsetX + offsetY 
+                        br = br + offsetX - offsetY 
+                        tr = tr + offsetX + offsetY
+                        
+                    elif ((bl - tl).abs() < eps 
+                          and (br - tr).abs() < eps 
+                          and (bl - br).abs() >= eps):
+                        # bounding box is a line in x
+                        self.log.console('For observation ' + 
+                                         common['obsid'] + 
+                                         ' the bounds are in a line in X')
+                        diff = br - bl
+                        mean = (br + bl)/2.0
+                        cosdec = math.cos(mean.y * math.pi / 180.0)
+
+                        unitX = TwoD(diff.x * cosdec, diff.y)
+                        unitX = unitX / unitX.abs()
+                        offsetX = halfbeam * TwoD(unitX.x / cosdec, unitX.y)
+                        
+                        unitY = TwoD(diff.y, -diff.x * cosdec)
+                        unitY = unitY / unitY.abs()
+                        offsetY = halfbeam * TwoD(unitY.x / cosdec, unitY.y)
+
+                        bl = bl - offsetX - offsetY
+                        tl = tl - offsetX + offsetY 
+                        br = br + offsetX - offsetY 
+                        tr = tr + offsetX + offsetY
+                        
                     else:
-                        bounding_box = CoordPolygon2D()
-                        bounding_box.vertices.append(ValueCoord2D(
-                            common['obsratl'],
-                            common['obsdectl']))
-                        bounding_box.vertices.append(ValueCoord2D(
-                            common['obsratr'],
-                            common['obsdectr']))
-                        bounding_box.vertices.append(ValueCoord2D(
-                            common['obsrabr'],
-                            common['obsdecbr']))
-                        bounding_box.vertices.append(ValueCoord2D(
-                            common['obsrabl'],
-                            common['obsdecbl']))
-#                if common['obsratl']:
-#                    # only insert a position range if it is not null
-#                    ra_range = [common['obsratl'],
-#                                common['obsratr'],
-#                                common['obsrabr'],
-#                                common['obsrabl']]
-#                    dec_range = [common['obsdectl'],
-#                                 common['obsdectr'],
-#                                 common['obsdecbr'],
-#                                 common['obsdecbl']]
-#                    ra_min = min(ra_range)
-#                    ra_max = max(ra_range)
-#                    if ra_min < 90.0 and ra_max > 270.0:
-#                        ra_save = ra_min
-#                        ra_min = ra_max
-#                        ra_max = ra_save
-#                    dec_min = min(dec_range)
-#                    dec_max = max(dec_range)
-#                    
-#                    meandec = (dec_min + dec_max)/2.0
-#                    ddec = beamsize/7200.0
-#                    dra = ddec/math.cos(math.pi * meandec / 180.0)
-#                    
-#                    range2d = CoordRange2D(
-#                        Coord2D(
-#                            RefCoord(0.5, ra_min - dra),
-#                            RefCoord(0.5, dec_min - ddec)),
-#                        Coord2D(
-#                            RefCoord(1.5, ra_max + dra),
-#                            RefCoord(1.5, dec_max + ddec)))
+                        # Get here only if the box is not degenerate
+                        sign1 = math.copysign(TwoD.cross(br - bl, tl - bl), 1)
+                        sign2 = math.copysign(TwoD.cross(tr - br, bl - br), 1)
+                        sign3 = math.copysign(TwoD.cross(tl - tr, br - tr), 1)
+                        sign4 = math.copysign(TwoD.cross(bl - tl, tr - tl), 1)
+                        
+                        # If the signs are not all the same, the vertices
+                        # were recorded in a bowtie order.  Swap any two.
+                        if (sign1 != sign2 or sign2 != sign3 or sign3 != sign4):
+                            self.log.console('For observation ' + 
+                                             common['obsid'] + 
+                                             ' the bounds are in a bowtie order',
+                                             logging.WARN)
+                            bl.swap(br)
 
-                        spatial_axes = CoordAxis2D(Axis('RA', 'deg'),
-                                                   Axis('DEC', 'deg'))
-                        spatial_axes.bounds = bounding_box
-#                    spatial_axes.range = range2d
+                    self.log.file('final bounds bl = ' + str(bl))
+                    self.log.file('final bounds br = ' + str(br))
+                    self.log.file('final bounds tr = ' + str(tr))
+                    self.log.file('final bounds tl = ' + str(tl))
+                    bounding_box = CoordPolygon2D()
+                    bounding_box.vertices.append(ValueCoord2D(bl.x, bl.y))
+                    bounding_box.vertices.append(ValueCoord2D(br.x, br.y))
+                    bounding_box.vertices.append(ValueCoord2D(tr.x, tr.y))
+                    bounding_box.vertices.append(ValueCoord2D(tl.x, tl.y))
 
-                        chunk.position = SpatialWCS(spatial_axes)
-                        chunk.position.coordsys = 'ICRS'
-                        chunk.position.equinox = 2000.0
+                    spatial_axes = CoordAxis2D(Axis('RA', 'deg'),
+                                               Axis('DEC', 'deg'))
+                    spatial_axes.bounds = bounding_box
+
+                    chunk.position = SpatialWCS(spatial_axes)
+                    chunk.position.coordsys = 'ICRS'
+                    chunk.position.equinox = 2000.0
 
                 # energy range, which can contain two subranges in DSB
                 if backend == 'SCUBA-2':
