@@ -872,10 +872,10 @@ class raw(object):
                         
                     else:
                         # Get here only if the box is not degenerate
-                        sign1 = math.copysign(TwoD.cross(br - bl, tl - bl), 1)
-                        sign2 = math.copysign(TwoD.cross(tr - br, bl - br), 1)
-                        sign3 = math.copysign(TwoD.cross(tl - tr, br - tr), 1)
-                        sign4 = math.copysign(TwoD.cross(bl - tl, tr - tl), 1)
+                        sign1 = math.copysign(1, TwoD.cross(br - bl, tl - bl))
+                        sign2 = math.copysign(1, TwoD.cross(tr - br, bl - br))
+                        sign3 = math.copysign(1, TwoD.cross(tl - tr, br - tr))
+                        sign4 = math.copysign(1, TwoD.cross(bl - tl, tr - tl))
                         
                         # If the signs are not all the same, the vertices
                         # were recorded in a bowtie order.  Swap any two.

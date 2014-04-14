@@ -64,6 +64,13 @@ class testTwoD( unittest.TestCase):
         
         self.assertEqual((bl - tr).abs(), math.sqrt(2.0))
         
+        # Check deepcopy operations
+        xx = TwoD(1.0, 2.0)
+        yy = TwoD(xx)
+        yy.x = 3.0
+        self.assertEqual(xx.x, 1.0)
+        self.assertEqual(yy.x, 3.0)
+        
 if __name__ == '__main__':
     unittest.main()
     

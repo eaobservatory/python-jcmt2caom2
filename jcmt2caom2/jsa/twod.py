@@ -127,4 +127,4 @@ class TwoD(object):
 
     @staticmethod
     def cross(v1, v2):
-        return (v1.x*v2.y - v1.y-v2.x)
+        return (v1.x*v2.y - v1.y*v2.x)
