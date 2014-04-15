@@ -64,6 +64,7 @@ from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.twod import TwoD
+from jcmt2caom2.jsa.threed import ThreeD
 
 from jcmt2caom2 import __version__
 
@@ -872,10 +873,23 @@ class raw(object):
                         
                     else:
                         # Get here only if the box is not degenerate
-                        sign1 = math.copysign(1, TwoD.cross(br - bl, tl - bl))
-                        sign2 = math.copysign(1, TwoD.cross(tr - br, bl - br))
-                        sign3 = math.copysign(1, TwoD.cross(tl - tr, br - tr))
-                        sign4 = math.copysign(1, TwoD.cross(bl - tl, tr - tl))
+                        bl3d = ThreeD(bl)
+                        br3d = ThreeD(br)
+                        tr3d = ThreeD(tr)
+                        tl3d = ThreeD(tl)
+                        
+                        sign1 = math.copysign(1, 
+                            ThreeD.dot(bl3d, 
+                                       ThreeD.cross(br3d - bl3d, tl3d - bl3d))
+                        sign1 = math.copysign(1, 
+                            ThreeD.dot(br3d, 
+                                       ThreeD.cross(tr3d - br3d, bl3d - br3d))
+                        sign1 = math.copysign(1, 
+                            ThreeD.dot(tr3d, 
+                                       ThreeD.cross(tl3d - tr3d, br3d - tr3d))
+                        sign1 = math.copysign(1, 
+                            ThreeD.dot(tl3d, 
+                                       ThreeD.cross(bl3d - tl3d, tr3d - tl3d))
                         
                         # If the signs are not all the same, the vertices
                         # were recorded in a bowtie order.  Swap any two.
