@@ -880,16 +880,16 @@ class raw(object):
                         
                         sign1 = math.copysign(1, 
                             ThreeD.dot(bl3d, 
-                                       ThreeD.cross(br3d - bl3d, tl3d - bl3d))
+                                       ThreeD.cross(br3d - bl3d, tl3d - bl3d)))
                         sign1 = math.copysign(1, 
                             ThreeD.dot(br3d, 
-                                       ThreeD.cross(tr3d - br3d, bl3d - br3d))
+                                       ThreeD.cross(tr3d - br3d, bl3d - br3d)))
                         sign1 = math.copysign(1, 
                             ThreeD.dot(tr3d, 
-                                       ThreeD.cross(tl3d - tr3d, br3d - tr3d))
+                                       ThreeD.cross(tl3d - tr3d, br3d - tr3d)))
                         sign1 = math.copysign(1, 
                             ThreeD.dot(tl3d, 
-                                       ThreeD.cross(bl3d - tl3d, tr3d - tl3d))
+                                       ThreeD.cross(bl3d - tl3d, tr3d - tl3d)))
                         
                         # If the signs are not all the same, the vertices
                         # were recorded in a bowtie order.  Swap any two.
