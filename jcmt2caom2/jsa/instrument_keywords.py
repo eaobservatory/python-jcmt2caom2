@@ -28,7 +28,7 @@ permitted = {'ACSIS': {'inbeam': ["POL"],
                       },
              'SCUBA-2': {'inbeam': ["BLACKBODY", "FTS2", "POL", "POL2_CAL", 
                                     "POL2_WAVE", "POL2_ANA", "SHUTTER"],
-                         'switching_mode': ["NONE", "SELF"]
+                         'switching_mode': ["NONE", "SELF", "SPIN"]
                         }
             }
 receiver_sideband_modes = {'HARP': ['SSB'],
