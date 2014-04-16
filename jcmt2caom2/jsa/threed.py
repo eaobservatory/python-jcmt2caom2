@@ -143,3 +143,36 @@ class ThreeD(object):
     @staticmethod
     def dot(a, b):
         return (a.x * b.x + a.y * b.y + a.z * b.z)
+    
+    @staticmethod
+    def included_angle(a, b, c):
+        """
+        Calculate the included angle between the planes defined by
+        (origin a, b) and (origin, b, c) in degrees,
+        checking for degenerate cases.
+        """
+        if (a == b or b == c or c == a):
+            raise ValueError('The triangle a = ' + str(a) + ', b = ' +
+                             str(b) + ', c = ' + str(c) + ' is degenerate')
+        # Most triangles will be very small on the celestial sphere.
+        # Subtracting b helps retain numerical significance.
+        amb = ThreeD.cross(a - b, b)
+        norm = amb.abs()
+        if 0.0 == norm:
+            raise ValueError('The origin, a = ' + str(a) + ', and '
+                             'b = ' + str(b) + ' are colinear')
+        amb = amb / norm
+        
+        cmb = ThreeD.cross(c - b, b)
+        norm = cmb.abs()
+        if 0.0 == norm:
+            raise ValueError('The origin, b = ' + str(b) + ', and '
+                             'c = ' + str(c) + ' are colinear')
+        cmb = cmb / norm
+        
+        cosval = ThreeD.dot(amb, cmb)
+        if cosval > 1.0:
+            cosval = 1.0
+        if cosval < -1.0:
+            cosval = -1.0
+        return math.acos(cosval) / ThreeD.radiansPerDegree

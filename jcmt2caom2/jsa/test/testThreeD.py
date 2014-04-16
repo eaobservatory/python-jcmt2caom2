@@ -68,6 +68,38 @@ class testThreeD( unittest.TestCase):
         self.assertEqual(1.0, yunit.abs())
         self.assertEqual(1.0, zunit.abs())
         
+        self.assertEquals(180.0, 
+                          ThreeD.included_angle(
+                            ThreeD(1.0, 0.0, 1.0),
+                            ThreeD(2.0, 0.0, 1.0),
+                            ThreeD(3.0, 0.0, 1.0)))
+        self.assertEquals(0.0, 
+                          ThreeD.included_angle(
+                            ThreeD(1.0, 0.0, 1.0),
+                            ThreeD(2.0, 0.0, 1.0),
+                            ThreeD(-3.0, 0.0, 1.0)))
+        self.assertEquals(180.0, 
+                          ThreeD.included_angle(
+                            ThreeD( 1.0, 0.0, 0.0),
+                            ThreeD( 0.0, 1.0, 0.0),
+                            ThreeD(-1.0, 0.0, 0.0)))
+        self.assertEquals(90.0, 
+                          ThreeD.included_angle(
+                            ThreeD(0.0, 0.0, 1.0),
+                            ThreeD(0.0, 1.0, 0.0),
+                            ThreeD(1.0, 0.0, 0.0)))
+        for ang in range(0, 90, 3):
+            for iscale in range(0, 4):
+                scale = 0.1 ** iscale
+                angle = ang * math.pi / 180.0
+                
+                a = ThreeD(TwoD(ang,        90.0 - scale))
+                b = ThreeD(TwoD(ang,        90.0))
+                c = ThreeD(TwoD(ang + 90.0, 90.0 - scale))
+                
+                self.assertTrue(abs(90.0 - ThreeD.included_angle(a, b, c)) < 
+                                1.0e-9)
+        
 if __name__ == '__main__':
     unittest.main()
     
