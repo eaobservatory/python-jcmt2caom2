@@ -1217,7 +1217,7 @@ class stdpipe(ingest2caom2):
                                             prod,
                                             input=False)
                         self.log.console('CLEANUP: remove obsolete plane:' + 
-                                         uri,
+                                         uri.uri,
                                          logging.WARN)
                         del obs.planes[prod]
                         del self.remove_dict[collection][observationID][prod]

@@ -730,7 +730,7 @@ class raw(object):
         # Delete any existing raw planes, since we will construct
         # new ones from scratch
         for productID in observation.planes:
-            if productID[0:4] == 'raw_':
+            if productID[0:3] == 'raw':
                 del observation.planes[productID]
 
         # Use key for the numeric value of subsysnr here for brevity and
