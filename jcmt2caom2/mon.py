@@ -17,11 +17,13 @@ import commands
 import urllib
 import smtplib
 
+from tools4caom2.config import config
 from tools4caom2.logger import logger
 from tools4caom2.database import database
 from tools4caom2.database import connection
 
-from jcmt2caom2.__version__ import version
+from tools4caom2.__version__ import version as tools4caom2version
+from jcmt2caom2.__version__ import version as jcmt2caom2version
   
 ####################################
 # Exception to skip further processing
@@ -121,8 +123,9 @@ class mon(object):
         self.topclause = ''
         self.fileString = ''
         
-        self.server = 'SYBASE'
-        
+        self.userconfig = None
+        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+
         self.log = None
         self.logdir = os.path.abspath('.')
         self.logfile = None
@@ -154,6 +157,11 @@ class mon(object):
                             'format YYYYMMDD as an integer giving the offset '
                             'in days from today.  Giving --date overrides '
                             'the --begin and --end switches')
+        ap.add_argument('--userconfig',
+                        default=self.userconfigpath,
+                        help='Optional user configuration file '
+                        '(default=' + self.userconfigpath + ')')
+
         # Logging arguments
         ap.add_argument('--logdir',
                         help='(optional) name of log directory (default=".")')
@@ -166,11 +174,6 @@ class mon(object):
                         help='e-mail address of recipient (may be several)')
         ap.add_argument('--subject',
                         help='subject line for report')
-        
-        # database server
-        ap.add_argument('--dev',
-                        action='store_true',
-                        help='Use DEVSYBASE instead of SYBASE')
         
         # Date ranges in COMMON
         ap.add_argument('-b', '--begin',
@@ -188,13 +191,15 @@ class mon(object):
                         help='max rows in large queries (0 = all)')
         
         args = ap.parse_args()
+        self.userconfig = config(args.userconfig)
+        self.userconfig['server'] = 'SYBASE'
+        self.userconfig['caom_db'] = 'jcmt'
+        self.userconfig.read()
+        
         if args.logdir:
             self.logdir = os.path.abspath(
                             os.path.expanduser(
                                 os.path.expandvars(args.logdir)))
-        
-        if args.dev:
-            self.server = 'DEVSYBASE'
         
         if args.top > 0:
             self.topclause = ' TOP %d' % (args.top)
@@ -250,7 +255,8 @@ class mon(object):
         """
         Logg cofiguration read from the command line switches
         """
-        self.log.console('jcmt2mon version ' + version)
+        self.log.console('jcmt2caom2 version ' + jcmt2caom2version)
+        self.log.console('tools4caom2 version ' + tools4caom2version)
         if self.sender and self.to and self.subject:
             self.log.console('%-20s = %s' % ('now', self.now))
             self.log.console('%-20s = %s' % ('nowday', self.nowday))
@@ -264,7 +270,6 @@ class mon(object):
             if self.end:
                 self.log.console('%-20s = %s' % ('end', self.end))
         self.log.console('%-20s = %s' % ('datestring', self.datestring))
-        self.log.console('%-20s = %s' % ('server', self.server))
 
     def print_query_table(self, label, header, format, sqlcmd):
         """
@@ -528,7 +533,7 @@ class mon(object):
                     to=self.to,
                     subject=self.subject).record() as self.log:
             self.log_command_line_switches()
-            with connection(self.server, 'jcmt', self.log) as self.db:
+            with connection(self.userconfig, self.log) as self.db:
             
                 self.log.console('---- RAW DATA ----')
                 self.analyze_raw_data()

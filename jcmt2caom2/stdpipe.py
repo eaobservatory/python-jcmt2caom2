@@ -34,6 +34,7 @@ from caom2.wcs.caom2_temporal_wcs import TemporalWCS
 from caom2.caom2_enums import ProductType
 from caom2.caom2_simple_observation import SimpleObservation as SimpleObservation
 
+from tools4caom2.config import config
 from tools4caom2.database import database
 from tools4caom2.ingest2caom2 import ingest2caom2
 from tools4caom2.caom2repo_wrapper import Repository
@@ -47,7 +48,7 @@ from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
 
-import __version__
+from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 # from caom2.caom2_enums import CalibrationLevel
 # from caom2.caom2_enums import DataProductType
@@ -139,6 +140,8 @@ class stdpipe(ingest2caom2):
         self.database = 'jcmt'
         self.needs_connection = True
         
+        self.userconfig = None
+        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
 
         # set default locations for the config files, if they can be found
         if not os.path.isdir(self.configpath):
@@ -200,7 +203,7 @@ class stdpipe(ingest2caom2):
         Arguments:
         <none>
         """
-        self.log.file('jcmt2caom2version    = ' + __version__.version)
+        self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
         ingest2caom2.logCommandLineSwitches(self)
 
         if self.switches.check:

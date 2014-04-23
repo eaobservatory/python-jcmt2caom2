@@ -9,10 +9,14 @@ import re
 import stat
 import sys
 
+from tools4caom2.config import config
 from tools4caom2.logger import logger
 from tools4caom2.database import database
 from tools4caom2.database import connection
 from tools4caom2.gridengine import gridengine
+
+from tools4caom2.__version__ import version as tools4caom2version
+from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 def run():
     """
@@ -22,7 +26,13 @@ def run():
     Examples:
     rawutdate --debug --start=20100123 --end=20100131
     """
+    userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+    
     ap = argparse.ArgumentParser('rawutdate')
+    ap.add_argument('--userconfig',
+                    default=userconfigpath,
+                    help='Optional user configuration file '
+                    '(default=' + userconfigpath + ')')
     ap.add_argument('--log',
                     default='rawutdate.log',
                     help='(optional) name of log file')
@@ -58,12 +68,26 @@ def run():
                     default=False,
                     const=True,
                     help='submit jobs to gridengine, one utdate for each job')
+    ap.add_argument('--queue',
+                    default='cadcproc',
+                    help='gridengine queue to use if --qsub is set')
     a = ap.parse_args()
 
+    userconfig = config(a.userconfig)
+    userconfig['server'] = 'SYBASE'
+    userconfig['caom_db'] = 'jcmt'
+    userconfig.read()
+        
+    # Open log and record switches
     loglevel = logging.INFO        
     if a.debug:
         loglevel = logging.DEBUG
     log = logger(a.log, loglevel)
+    log.file('jcmt2caom2version    = ' + jcmt2caom2version)
+    log.file('tools4caom2version   = ' + tools4caom2version)
+    for attr in dir(a):
+        if attr != 'id' and attr[0] != '_':
+            log.console('%-15s= %s' % (attr, getattr(a, attr)))
     
     if not a.end:
         a.end = a.begin
@@ -75,7 +99,7 @@ def run():
     
     retvals = None
     if a.qsub:
-        with connection('SYBASE', 'jcmtmd', log) as db:
+        with connection(userconfig, log) as db:
             sqlcmd = '\n'.join([
                 'SELECT c.utdate',
                 'FROM jcmtmd.dbo.COMMON c',
@@ -126,7 +150,7 @@ def run():
                 mygridengine.submit(cmd, cshpath, logpath)
 
     else:
-        with connection('SYBASE', 'jcmtmd', log) as db:
+        with connection(userconfig, log) as db:
             sqlcmd = '\n'.join([
                 'SELECT c.utdate,',
                 '       c.obsnum,',

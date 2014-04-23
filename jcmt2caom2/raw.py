@@ -47,6 +47,7 @@ from caom2.wcs.caom2_coord_range2d import CoordRange2D
 from caom2.wcs.caom2_temporal_wcs import TemporalWCS
 from caom2.caom2_enums import ProductType
 
+from tools4caom2.config import config
 from tools4caom2.database import database
 from tools4caom2.database import connection
 from tools4caom2.caom2repo_wrapper import Repository
@@ -66,7 +67,8 @@ from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.twod import TwoD
 from jcmt2caom2.jsa.threed import ThreeD
 
-from jcmt2caom2 import __version__
+from tools4caom2.__version__ import version as tools4caom2version
+from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 __doc__ = """
 The raw class immplements methods to collect metadata from the database
@@ -76,8 +78,7 @@ repository.
 
 This routine requires read access to the database, but does only reads.
 It therefore always reads the metadata from SYBASE.
-
-Version : """ + __version__.version
+"""
 
 class INGESTIBILITY(object):
     """
@@ -100,8 +101,7 @@ class raw(object):
 
     The resulting xml file will be pushed back to the CAOM-2 repository to
     complete the put/update, and this must be separately configured.
-
-    Version: """ + __version__.version
+    """
 
     # Allowed values for backend names in ACSIS
     BACKENDS = ['ACSIS', 'SCUBA-2', 'DAS', 'AOSC']
@@ -203,6 +203,9 @@ class raw(object):
         self.logfile = ''
         self.loglevel = logging.INFO
         self.log = None
+        
+        self.userconfig = None
+        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
 
         self.reader = ObservationReader(True)
         self.writer = ObservationWriter()
@@ -216,6 +219,10 @@ class raw(object):
         <None>
         """
         ap = argparse.ArgumentParser()
+        ap.add_argument('--userconfig',
+                        default=self.userconfigpath,
+                        help='Optional user configuration file '
+                        '(default=' + self.userconfigpath + ')')
         ap.add_argument('--key',
             required=True,
             help='obsid, primary key in COMMON table')
@@ -226,7 +233,6 @@ class raw(object):
             default='SYBASE',
             help='logical name of Sybase server')
         ap.add_argument('--database',
-            default='jcmtmd',
             help='database containing COMMON, ACSIS, SCUVBA2 and FILES tables')
         ap.add_argument('--schema',
             default='dbo',
@@ -234,7 +240,6 @@ class raw(object):
 
         ap.add_argument('--collection',
             choices=('JCMT', 'SANDBOX'),
-            default='JCMT',
             help='collection to use for ingestion')
 
         ap.add_argument('-c', '--check',
@@ -252,14 +257,34 @@ class raw(object):
             const=logging.DEBUG)
         args = ap.parse_args()
 
+        self.userconfig = config(args.userconfig)
+        self.userconfig['server'] = 'SYBASE'
+        self.userconfig['caom_db'] = 'jcmtmd'        
+        self.userconfig['collection'] = 'JCMT'        
+        self.userconfig.read()
+                
+        if args.server:
+            self.userconfig['server'] = args.server
+            self.server = args.server
+        else:
+            self.server = self.userconfig['server']
+        
+        if args.database:
+            self.userconfig['caom_db'] = args.database
+            self.database = args.database
+        else:
+            self.database = self.userconfig['caom_db']
+
+        if args.collection:
+            self.userconfig['collection'] = args.collection
+            self.collection = args.collection
+        else:
+            self.collection = self.userconfig['collection']
+
         self.obsid = args.key
-        self.server = args.server
-        self.database = args.database
         self.schema = args.schema
         self.db = self.database + '.' + self.schema + '.'
         
-        self.collection = args.collection
-
         if args.outdir:
             self.outdir = os.path.abspath(
                               os.path.expanduser(
@@ -293,7 +318,9 @@ class raw(object):
                                os.path.expanduser(
                                    os.path.expandvars(self.logfile)))
         else:
-            defaultlogname = ('caom_JCMT_' + self.obsid + '.log')
+            defaultlogname = '_'.join(['caom',
+                                       self.collection,
+                                       self.obsid]) + '.log'
             if self.logdir:
                 if not os.path.isdir(self.logdir):
                     raise RuntimeError('logdir = ' + self.logdir +
@@ -312,9 +339,8 @@ class raw(object):
         Arguments:
         <None>
         """
-        self.log.file('jcmt2caom2version    = ' + __version__.version)
-        self.log.file('tools4caom2version   = ' + 
-                      tools4caom2.__version__.version)
+        self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
+        self.log.file('tools4caom2version   = ' + tools4caom2version)
         for line in ['obsid = ' + self.obsid,
                      'server = ' + self.server,
                      'database = ' + self.database,
@@ -1124,8 +1150,7 @@ class raw(object):
                     loglevel = self.loglevel).record() as self.log:
             try:
                 self.logCommandLineSwitches()
-                with connection(self.server,
-                                self.database,
+                with connection(self.userconfig,
                                 self.log) as self.conn:
                     self.ingest()
             except Exception as e:

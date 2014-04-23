@@ -9,10 +9,14 @@ import re
 import stat
 import string
 
+from tools4caom2.config import config
 from tools4caom2.logger import logger
 from tools4caom2.database import database
 from tools4caom2.database import connection
 from tools4caom2.gridengine import gridengine
+
+from tools4caom2.__version__ import version as tools4caom2version
+from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 def runcommand(identity_instance_id,
                basedir,
@@ -82,7 +86,15 @@ def run():
     jcmtprocwrap --qsub --algorithm=project
     jcmtprocwrap --qsub --backend=SCUBA-2 --existing
     """
+    userconfig = None
+    userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+
     ap = argparse.ArgumentParser('recipe_ad')
+    ap.add_argument('--userconfig',
+                    default=userconfigpath,
+                    help='Optional user configuration file '
+                    '(default=' + userconfigpath + ')')
+    
     ap.add_argument('--log',
                     default='procrecipe.log',
                     help='(optional) name of log file')
@@ -93,6 +105,9 @@ def run():
     ap.add_argument('--qsub',
                     action='store_true',
                     help='rsubmit a job to gridengine for each recipe instance')
+    ap.add_argument('--queue',
+                    default='cadcproc',
+                    help='gridengine queue to use if --qsub is set')
     ap.add_argument('--test',
                     action='store_true',
                     help='do not submit to gridengine or run commnands')
@@ -130,13 +145,20 @@ def run():
                     nargs='*',
                     help='list of identity_instance_id values or ranges')
     a = ap.parse_args()
-
+    
+    userconfig = config(a.userconfig)
+    userconfig['server'] = 'SYBASE'
+    userconfig['caom_db'] = 'jcmt'
+    userconfig.read()
+            
     log = logger(a.log, logging.INFO, True)
+    log.file('jcmt2caom2version    = ' + jcmt2caom2version)
+    log.file('tools4caom2version   = ' + tools4caom2version)
     for attr in dir(a):
         if attr != 'id' and attr[0] != '_':
             log.console('%-15s= %s' % (attr, getattr(a, attr)))
 
-    mygridengine = gridengine(log)
+    mygridengine = gridengine(log, queue=a.queue)
     
     basedir = os.path.dirname(
                 os.path.abspath(
@@ -169,7 +191,7 @@ def run():
     log.console('%-15s= %s' % ('id', str(idlist)))
 
     retvals = None
-    with connection('SYBASE', 'data_proc', log) as db:    
+    with connection(userconfig, log) as db:    
         selectclauses = ['SELECT convert(char(26), dri.identity_instance_id),'
                          '       count(cp.planeID)']
         fromclauses = ['FROM data_proc.dbo.dp_recipe_instance dri',

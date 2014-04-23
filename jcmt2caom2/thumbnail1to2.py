@@ -12,9 +12,11 @@ import subprocess
 import sys
 from threading import Event
 
+from tools4caom2.config import config
 from tools4caom2.logger import logger
 from tools4caom2.database import database
 from tools4caom2.database import connection
+
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
@@ -37,6 +39,9 @@ class thumb1to2(object):
         """
         Create a thumb1to2 object.
         """
+        self.userconfig = None
+        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+
         self.loglevel = logging.INFO
         self.logname = None
         self.logfile = None
@@ -89,6 +94,11 @@ class thumb1to2(object):
         
         """
         ap = argparse.ArgumentParser('thumbnail')
+        ap.add_argument('--userconfig',
+                        default=self.userconfigpath,
+                        help='Optional user configuration file '
+                        '(default=' + self.userconfigpath + ')')
+        
         ap.add_argument('--obs',
                         help='convert thumbnails for the specified '
                              ' observation')
@@ -147,6 +157,11 @@ class thumb1to2(object):
 
         a = ap.parse_args()
 
+        self.userconfig = config(args.userconfig)
+        self.userconfig['server'] = 'SYBASE'
+        self.userconfig['caom_db'] = 'jcmt'
+        self.userconfig.read()
+
         self.loglevel = logging.INFO        
         if a.debug:
             self.debug = True
@@ -160,11 +175,6 @@ class thumb1to2(object):
             self.loglevel = logging.DEBUG
             basename += 'scuba-2_'
         
-        if a.rawingest:
-            self.rawingest = a.rawingest
-        if a.procingest:
-            self.procingest = a.procingest
-            
         if a.obs:
             self.obs = a.obs
             self.logname = basename + a.obs
@@ -190,7 +200,17 @@ class thumb1to2(object):
             self.logfile = os.path.join(self.logdir, self.logname + '.log')
             
         self.log = logger(self.logfile, loglevel=self.loglevel)
+        self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
+        self.log.file('tools4caom2version   = ' + tools4caom2version)
+        for attr in dir(a):
+            if attr != 'id' and attr[0] != '_':
+                self.log.file('%-15s= %s' % (attr, getattr(a, attr)))
         
+        if a.rawingest:
+            self.rawingest = a.rawingest
+        if a.procingest:
+            self.procingest = a.procingest
+            
         self.pngdir = os.path.abspath(
                         os.path.expanduser(
                             os.path.expandvars(a.pngdir)))
@@ -250,7 +270,7 @@ class thumb1to2(object):
         procset = set([])
         daylist = []
         
-        with connection('SYBASE', 'jcmt', self.log) as db:
+        with connection(self.userconfig, self.log) as db:
             count = 0
             if self.obs:
                 daylist = [self.obs]
