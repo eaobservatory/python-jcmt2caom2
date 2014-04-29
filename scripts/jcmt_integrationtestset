@@ -1,0 +1,4 @@
+#!/usr/bin/env python2.7
+from jcmt2caom2.integrationtestset import integrationtestset
+testset = integrationtestset()
+testset.run()
