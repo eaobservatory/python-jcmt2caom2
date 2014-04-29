@@ -79,10 +79,29 @@ def run():
     userconfig.read()
         
     # Open log and record switches
-    loglevel = logging.INFO        
+    cwd = os.path.abspath(
+                os.path.expanduser(
+                    os.path.expandvars('.')))
+    
+    if a.logdir:
+        logdir = os.path.abspath(
+                os.path.expanduser(
+                    os.path.expandvars(a.logdir)))
+    else:
+        logdir = cwd
+    
+    loglevel = logging.INFO
     if a.debug:
         loglevel = logging.DEBUG
-    log = logger(a.log, loglevel)
+    
+    if os.path.dirname(a.log):
+        logpath = os.path.abspath(
+                    os.path.expanduser(
+                        os.path.expandvars(a.log)))
+    else:
+        logpath = os.path.join(logdir, a.log)
+
+    log = logger(logpath, loglevel)
     log.file('jcmt2caom2version    = ' + jcmt2caom2version)
     log.file('tools4caom2version   = ' + tools4caom2version)
     for attr in dir(a):
@@ -123,13 +142,20 @@ def run():
         if retvals:
             for utd, in retvals:
                 utdate = str(utd)
-                dirpath = os.path.dirname(
-                            os.path.abspath(
-                                os.path.expanduser(
-                                    os.path.expandvars(a.log))))
-                logpath = os.path.join(dirpath, 
+                utdirpath = os.path.join(logdir, utdate)
+                
+                # be sure that the utdirpath exists and is empty
+                os.makedirs(utdirpath)
+                os.chdir(utdirpath)
+                rmcmd = '/bin/rm -f -r *'
+                # this command crashes if it fails because it should never fail
+                output = subprocess.check_output(rmcmd,
+                                                 shell=True,
+                                                 stderr=subprocess.STDOUT)
+            
+                utlogpath = os.path.join(dirpath, 
                                        'raw_' + utdate + '.log')
-                cshpath = os.path.join(dirpath, 
+                utcshpath = os.path.join(dirpath, 
                                        'raw_' + utdate + '.csh')
 
                 cmd = 'jcmtrawwrap'
@@ -138,14 +164,11 @@ def run():
 
                 cmd += ' --begin=' + utdate
 
-                cmd += ' --log=' + logpath
                 if a.sharelog:
+                    cmd += ' --log=' + logpath
                     cmd += ' --sharelog'
                 else:
-                    if a.logdir:
-                        cmd += ' --logdir=' + a.logdir
-                    else:
-                        cmd += ' --logdir=' + dirpath
+                    cmd += ' --logdir=' + utdirpath
                     
                 mygridengine.submit(cmd, cshpath, logpath)
 
@@ -179,9 +202,9 @@ def run():
             
             logflag = ''
             if a.sharelog:
-                logflag = ' --log=' + a.log
+                logflag = ' --log=' + logpath
             elif a.logdir:
-                logflag = ' --logdir=' + a.logdir
+                logflag = ' --logdir=' + logdir
 
             if a.script:
                 scriptpath = os.path.abspath(a.script)
