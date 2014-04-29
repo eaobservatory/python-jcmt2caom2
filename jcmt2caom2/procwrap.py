@@ -19,55 +19,6 @@ from tools4caom2.gridengine import gridengine
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
-def runcommand(identity_instance_id,
-               basedir,
-               qsub,
-               debug,
-               test,
-               log,
-               keeplog,
-               mygridengine):
-    """
-    Format the command to ingest one identity_instance_id and
-    either run directly or submit to gridengine.
-    
-    Aruments:
-    identity_instance_id: primary key in dp_recipe_instance, as a string
-    basedir: directory to hold csh and log files
-    debug: run in debug mode if True, otherwise use verbose
-    qsub: submit to gridengine if True
-    log: an open tools4caom2.logger instance
-    """
-    cshdir = os.path.abspath(basedir)
-    suffix = re.sub(r':', '-', datetime.datetime.utcnow().isoformat())
-    
-    rootfile = os.path.join(cshdir, '_'.join(['proc', 
-                                              identity_instance_id, 
-                                              suffix]))
-    logfile = rootfile + '.log'
-    
-    proccmd = 'jcmt2caom2proc'
-    proccmd += ' --outdir=${TMPDIR}'
-    if debug:
-        proccmd += ' --debug'
-    if keeplog:
-        proccmd += ' --keeplog'
-    proccmd += ' --log=' + logfile
-    proccmd += ' dp:' + identity_instance_id
-    
-    log.console('PROGRESS: "%s"' % (proccmd,))
-    if qsub:
-        cshfile = rootfile + '.csh'
-        if not test:
-            mygridengine.submit(proccmd, cshfile, logfile)
-
-    else:
-        if not test:
-            status, output = commands.getstatusoutput(proccmd)
-            if status:
-                log.console(output,
-                            logging.WARN)
-
         
 def run():
     """
