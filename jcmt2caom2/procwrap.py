@@ -41,7 +41,7 @@ def run():
     userconfig = None
     userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
 
-    ap = argparse.ArgumentParser('recipe_ad')
+    ap = argparse.ArgumentParser('jcmtprocwrap')
     ap.add_argument('--userconfig',
                     default=userconfigpath,
                     help='Optional user configuration file '
