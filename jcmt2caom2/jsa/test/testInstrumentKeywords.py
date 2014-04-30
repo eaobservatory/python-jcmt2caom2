@@ -49,7 +49,7 @@ class testInstrumentKeywords( unittest.TestCase):
                       {'raw': False,
                        'stdpipe': False,
                        'external': False},
-                      ['FTS', 'SELF']],
+                      ['SELF']],
 
                      ['SCUBA-2',
                       'SCUBA-2',
@@ -58,7 +58,7 @@ class testInstrumentKeywords( unittest.TestCase):
                       {'raw': False,
                        'stdpipe': False,
                        'external': False},
-                      ['POL', 'FTS', 'SELF']],
+                      ['SELF']],
 
                      ['SCUBA-2',
                       'SCUBA-2',
@@ -76,7 +76,7 @@ class testInstrumentKeywords( unittest.TestCase):
                       {'raw': False,
                        'stdpipe': False,
                        'external': False},
-                      ['POL', 'SELF']],
+                      ['SELF']],
 
                      [# processed data can mix sidebands
                       'ACSIS',
