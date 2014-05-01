@@ -2,7 +2,8 @@
 
 import argparse
 import commands
-import datetime
+from datetime import datetime
+from datetime import timedelta
 import logging
 import os.path
 import re
@@ -35,10 +36,13 @@ def run():
                     '(default=' + userconfigpath + ')')
     
     ap.add_argument('--utdate',
+                    type=str,
                     help='include only a specific utdate')
     ap.add_argument('--begin',
+                    type=str,
                     help='include only utdays on or after begin')
     ap.add_argument('--end',
+                    type=str,
                     help='include only utdays on or before end')
     ap.add_argument('--new',
                     action='store_true',
@@ -99,21 +103,64 @@ def run():
         log.console('specify both of begin and end or neither',
                     logging.ERROR)
     
+    # utdate and begin/end can be absolute or relative to now
+    now = datetime.utcnow()
+    this_utdate = None
+    if a.utdate:
+        if a.utdate > '19800101':
+            this_utdate = a.utdate
+        else:
+            thisutc = now - timedelta(int(a.utdate))
+            this_utdate = '%04d%02d%02d' % (thisutc.year, 
+                                            thisutc.month, 
+                                            thisutc.day)
+    
+    this_begin = None
+    if a.begin:
+        if a.begin > '19800101':
+            this_begin = a.begin
+        else:
+            thisutc = now - timedelta(int(a.begin))
+            this_begin = '%04d%02d%02d' % (thisutc.year, 
+                                           thisutc.month, 
+                                           thisutc.day)
+
+    this_end = None
+    if a.end:
+        if a.end > '19800101':
+            this_end = a.end
+        else:
+            thisutc = now - timedelta(int(a.end))
+            this_end = '%04d%02d%02d' % (thisutc.year, 
+                                           thisutc.month, 
+                                           thisutc.day)
+    
+    if this_begin and this_end:
+        if this_begin > this_end:
+            store = this_begin
+            this_begin = this_end
+            this_end = store
+    
     retvals = None
     with connection(userconfig, log) as db:
         rcinstcmd = '\n'.join([
             'SELECT rcinst,',
             '       state,',
             '       outcount,',
+            '       date_processed,',
+            '       lastModified,',
             '       substring(uri, patindex("%[12]%", uri), 8) AS utdate',
             'FROM (',
             '    SELECT convert(char(20), s.identity_instance_id) AS rcinst,',
             '           s.state,',
             '           s.outcount,',
-            '           min(dfi.dp_input) as uri',
+            '           s.date_processed,',
+            '           MIN(dfi.dp_input) as uri,',
+            '           MAX(ISNULL(u.lastModified, "1980-01-01")) as lastModified',
             '    FROM (',
             '        SELECT dri.identity_instance_id,',
             '               dri.state, ',
+            '               dri.date_processed,',
             '               count(dro.dp_output) AS outcount',
             '        FROM data_proc.dbo.dp_recipe_instance dri',
             '            INNER JOIN data_proc.dbo.dp_recipe dr',
@@ -125,36 +172,38 @@ def run():
             '         ) s',
             '        INNER JOIN data_proc.dbo.dp_file_input dfi',
             '            ON s.identity_instance_id=dfi.identity_instance_id',
-            '    GROUP BY s.identity_instance_id) t'])
+            '        LEFT JOIN (',
+            '            SELECT CASE WHEN charindex("x", provenance_runID) = 2 ',
+            '                        THEN hextobigint(provenance_runID) ',
+            '                        ELSE convert(bigint, provenance_runID) ',
+            '                   END as identity_instance_id,',
+            '                   lastModified',
+            '            FROM jcmt.dbo.caom2_Plane',
+            '            WHERE productID like "reduced%" ',
+            '                  OR productID like "cube%") u',
+            '                ON s.identity_instance_id=u.identity_instance_id',            
+            '    GROUP BY s.identity_instance_id,',
+            '             s.state,',
+            '             s.outcount,',
+            '             s.date_processed) t'])
         retvals = db.read(rcinstcmd)
         
-        caom2runid = set()
-        if a.new:
-            # read the set of existing recipe_instances
-            runidcmd = '\n'.join([
-                'SELECT CASE WHEN charindex("x", provenance_runID) = 2 ',
-                '             THEN hextobigint(provenance_runID) ',
-                '             ELSE convert(bigint, provenance_runID) ',
-                '        END as identity_instance_id',
-                'FROM jcmt.dbo.caom2_Plane',
-                'WHERE productID like "reduced%" ',
-                '      OR productID like "cube%"'])
-            runidresults = db.read(runidcmd)
-            if runidresults:
-                for runid, in runidresults:
-                    caom2runid.add(str(runid))
-            log.file(repr(caom2runid))
-            
         rcinst_dict = {}
         if retvals:
-            for identity_instance_id, state, countout, utdate in retvals:
+            for (identity_instance_id, 
+                 state, 
+                 countout, 
+                 date_processed, 
+                 lastModified, 
+                 utdate) in retvals:
+                 
                 rcinst = str(identity_instance_id).strip()
                 
-                if ((not a.new or (a.new and rcinst not in caom2runid)) and
+                if ((not a.new or (a.new and lastModified < date_processed)) and
                     utdate and 
-                    (not a.utdate or (a.utdate == utdate)) and
-                    (not a.begin or ((a.begin <= utdate) and
-                                     (a.end >= utdate)))):
+                    (not this_utdate or (this_utdate == utdate)) and
+                    (not this_begin or ((this_begin <= utdate) and
+                                        (this_end >= utdate)))):
 
                     if state != 'Y':
                         log.console('RCINST = ' + rcinst + ' has state=' + 
@@ -167,7 +216,7 @@ def run():
                                     'output and cannot be ingested',
                                     logging.WARN)
                         continue
-
+                    
                     if utdate:
                         if not re.match(r'^\d{8}$', utdate):
                             log.console('RCINST = ' + rcinst +' has UTDATE ' + 
