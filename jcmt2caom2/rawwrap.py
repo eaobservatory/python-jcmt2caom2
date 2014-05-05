@@ -18,6 +18,7 @@ from tools4caom2.gridengine import gridengine
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
+
 def run():
     """
     Ingest raw JCMT observation from a range of UTDATE's.
@@ -27,50 +28,48 @@ def run():
     rawutdate --debug --start=20100123 --end=20100131
     """
     userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+    obsid_regex = re.compile('^\s*((acsis|scuba2|DAS|AOSC)_\d{5}_\d{8}T\d{6})')
     
-    ap = argparse.ArgumentParser('rawutdate')
+    ap = argparse.ArgumentParser('jcmtrawwrap')
     ap.add_argument('--userconfig',
                     default=userconfigpath,
                     help='Optional user configuration file '
                     '(default=' + userconfigpath + ')')
+
     ap.add_argument('--log',
-                    default='rawutdate.log',
+                    default='jcmtrawwrap.log',
                     help='(optional) name of log file')
     ap.add_argument('--logdir',
                     help='(optional) directory to hold log files')
     ap.add_argument('--sharelog',
                     action='store_true',
                     help='share the same log file for all ingestions')
+
+    ap.add_argument('--outdir',
+                    help='(optional) output directory for working files')
+    
     ap.add_argument('--debug', '-d',
                     action='store_true',
                     help='run ingestion commands in debug mode')
-    ap.add_argument('--force',
-                    action='store_true',
-                    help='ingest all observations, not just missing ones')
-    ap.add_argument('--stop_on_error', '-s',
-                    action='store_const',
-                    dest='stop',
-                    default=False,
-                    const=True,
-                    help='stop processing on the first error reported by '
-                         'jcmt2caom2raw; if not set, report the error and '
-                         'retain the xml file but continue '
-                         'processing with the next observation')
-    ap.add_argument('--script',
-                    help='store commands to a script instead of running')
-    ap.add_argument('--begin',
-                    required=True,
-                    help='ingest raw data with utdate >= this date')
-    ap.add_argument('--end',
-                    help='(optional) ingest raw data with utdate <= this date')
     ap.add_argument('--qsub',
                     action='store_const',
                     default=False,
                     const=True,
-                    help='submit jobs to gridengine, one utdate for each job')
+                    help='submit ingestion jobs to gridengine')
+    ap.add_argument('--qsubrequirements',
+                    help='(optional) requirements to pass to gridengine')
     ap.add_argument('--queue',
                     default='cadcproc',
                     help='gridengine queue to use if --qsub is set')
+
+    ap.add_argument('--test',
+                    action='store_true',
+                    help='do not submit to gridengine or run commnands')
+
+    ap.add_argument('id',
+                    nargs='*',
+                    help='list of directories, rcinst files, or '
+                    'OBSID values')
     a = ap.parse_args()
 
     userconfig = config(a.userconfig)
@@ -107,128 +106,144 @@ def run():
     for attr in dir(a):
         if attr != 'id' and attr[0] != '_':
             log.console('%-15s= %s' % (attr, getattr(a, attr)))
+    log.console('id = ' + repr(a.id))
     
-    if not a.end:
-        a.end = a.begin
+    if a.qsubrequirements:
+        mygridengine = gridengine(log, 
+                                  queue=a.queue,
+                                  options=a.qsubrequirements)
+    else:
+        mygridengine = gridengine(log, queue=a.queue)
+     
+    # idset is the set of recipe instances to ingest
+    idset = set()
+    # obsidset is a set of abspaths to obsid files
+    obsidset = set()
+    for id in a.id:
+        # if id is a directory, add any obsid files it contains to obsidset
+        if os.path.isdir(id):
+            idpath = os.path.abspath(id)
+            for filename in os.listdir(idpath):
+                basename, ext = os.path.splitext(filename)
+                if ext == '.obsid':
+                    obsidset.add(os.path.join(idpath, filename))
+        elif os.path.exists(id):
+            # if id is an obsid file add it to obsidset
+            basename, ext = os.path.splitext(id)
+            if ext == '.obsid':
+                obsidset.add(os.path.abspath(id))
+        elif obsid_regex.search(id):
+            # if id is an observationID string, add it to idset
+            m = obsid_regex.search(id)
+            idset.add(id.group[1])
+        else:
+            log.console(id + ' is not a directory, and obsid file, nor an '
+                        'OBSID value',
+                        logging.WARN)
     
-    mygridengine = gridengine(log)
-    
-    # Find all the observations on the requested UTDATE and their quality
-    log.console('UTDATE in [' + a.begin + ', ' + a.end + ']')
+    log.file('idset = ' + repr(idset))
+    log.file('obsidset = ' + repr(obsidset))
     
     retvals = None
     if a.qsub:
-        with connection(userconfig, log) as db:
-            sqlcmd = '\n'.join([
-                'SELECT c.utdate',
-                'FROM jcmtmd.dbo.COMMON c',
-                '    LEFT JOIN jcmt.dbo.caom2_Observation co',
-                '        ON c.obsid=co.observationID'])
-            if not a.force:
-                sqlcmd = '\n'.join([
-                    sqlcmd,
-                    '    LEFT JOIN jcmt.dbo.caom2_Plane cp',
-                    '        ON co.obsID=cp.obsID',
-                    '            AND substring(cp.productID,1,3) like "raw%"'])
-            sqlcmd = '\n'.join([
-                sqlcmd,
-                'WHERE c.utdate >= %s AND c.utdate <= %s' % (a.begin, a.end),
-                'GROUP BY c.utdate'])
-            if not a.force:
-                sqlcmd += '\nHAVING count(cp.planeID) = 0'
-            sqlcmd += '\nORDER BY c.utdate'
-            retvals = db.read(sqlcmd)
+        rawcmd = 'jcmtrawwrap'
+        rawcmd += ' --outdir=${TMPDIR}'
+        if a.debug:
+            rawcmd += ' --debug'
+        if a.keeplog or a.sharelog:
+            rawcmd += ' --keeplog'
             
-        if retvals:
-            for utd, in retvals:
-                utdate = str(utd)
-                utdirpath = os.path.join(logdir, utdate)
+        # submit obsid sets to gridengine
+        # compose the jcmtrawwrap command
+        for obsidfile in sorted(list(obsidset)):
+            cmd = rawcmd
+            obsidbase = os.path.basename(obsidfile)
+            obsidlog =  os.path.join(self.logdir, obsidbase + '.log')
+            obsidcsh = os.path.join(self.logdir, 'csh_' + obsidbase + '.csh')
+            
+            if a.sharelog:
+                cmd += ' --sharelog'
+        
+            obsidlogs = os.path.join(self.logdir, obsidbase + '.logs')
+            os.makedirs(obsidlogs)
+            # make sure obsidlogs is empty
+            for f in os.listdir(obsidlogs):
+                os.remove(f)
                 
-                # be sure that the utdirpath exists and is empty
-                os.makedirs(utdirpath)
-                os.chdir(utdirpath)
-                rmcmd = '/bin/rm -f -r *'
-                # this command crashes if it fails because it should never fail
-                output = subprocess.check_output(rmcmd,
-                                                 shell=True,
-                                                 stderr=subprocess.STDOUT)
+            cmd += ' --log=' + obsidlog
+            cmd += ' --logdir=' + obsidlogs
+            cmd += ' ' + obsidfile
             
-                utlogpath = os.path.join(dirpath, 
-                                       'raw_' + utdate + '.log')
-                utcshpath = os.path.join(dirpath, 
-                                       'raw_' + utdate + '.csh')
+            log.console('SUBMIT: ' + cmd)
+            if not a.test:
+                mygridengine.submit(cmd, obsidcsh, obsidlog)
+        
+        # If any obsid values were specified in the command line, 
+        # submit them as well
+        if idset:
+            idlist = [rawcmd]
+            idlist.extend(sorted(list(idset), key=int, reverse=True))
+            cmd = ' '.join(idlist)
 
-                cmd = 'jcmtrawwrap'
-                if a.debug:
-                    cmd += ' --debug' 
-
-                cmd += ' --begin=' + utdate
-
-                if a.sharelog:
-                    cmd += ' --log=' + logpath
-                    cmd += ' --sharelog'
-                else:
-                    cmd += ' --logdir=' + utdirpath
-                    
-                mygridengine.submit(cmd, cshpath, logpath)
+            obsidcsh = os.path.join(logdir, 'obsid_list.csh')
+            obsidlog = os.path.join(logdir, 'obsid_list.log')
+            
+            log.console('SUBMIT: ' + cmd)
+            if not a.test:
+                mygridengine.submit(cmd, obsidcsh, obsidlog)
 
     else:
-        with connection(userconfig, log) as db:
-            sqlcmd = '\n'.join([
-                'SELECT c.utdate,',
-                '       c.obsnum,',
-                '       c.obsid',
-                'FROM jcmtmd.dbo.COMMON c',
-                'WHERE c.utdate>=' + a.begin,
-                '      AND c.utdate <= ' + a.end])
-                        
-            retvals = db.read(sqlcmd)
+        # ingest the recipe instances in subprocesses
+        for obsidfile in list(obsidset):
+            with open(obsidfile) as OF:
+                for line in OF:
+                    m = obsid_regex.search(line)
+                    if m:
+                        thisid = m.group(1)
+                        log.console('found ' + thisid,
+                                    logging.DEBUG)
+                        idset.add(thisid)
 
-        rawdict = {}
-        if retvals:
-            for utd, obsnum, obsid in retvals:
-                key = '%d%-05d' % (utd, obsnum)
-                if key not in rawdict:
-                    rawdict[key] = obsid
-        else:
-            print 'no observations found for utdate=' + a.utdate
-        
-        SCRIPT = None
-        if rawdict:
-            if a.debug:
-                debugflag = ' --debug'
-            else:
-                debugflag = ''
-            
-            logflag = ''
+        rawcmd = 'jcmt2Caom2DA --full'
+        if a.debug:
+            rawcmd += ' --debug'
+
+        for obsid in idlist:
+            thisrawcmd = rawcmd
+
             if a.sharelog:
-                logflag = ' --log=' + logpath
-            elif a.logdir:
-                logflag = ' --logdir=' + logdir
-
-            if a.script:
-                scriptpath = os.path.abspath(a.script)
-                SCRIPT = open(scriptpath, 'w')
-                print >>SCRIPT, 'date'
+                thisrawcmd += ' --log=' + logpath
+            else:
+                thislog = os.path.join(logdir,
+                                       'raw_' + obsid + '.log')
+                thisrawcmd += ' --log=' + thislog
             
-            for key in sorted(rawdict.keys()):
-                obsid = rawdict[key]
-                cmd = 'jcmt2caom2raw%s --key=%s%s' % \
-                    (debugflag, obsid, logflag)
-                log.console('PROGRESS: ' + cmd)
-                if SCRIPT:
-                    print >>SCRIPT, cmd
-                else:
-                    status, output = commands.getstatusoutput(cmd)
-                    if status:
-                        if a.stop:
-                            self.log.console(output, logging.ERROR)
-                        else:
-                            log.console('REPORT ERROR BUT CONTINUE: ' +
-                                        'status=' + str(status) + ' :' +
-                                        output, logging.WARN)
-        else:
-            log.console('WARNING: no raw data found for '
-                        'utdate in [%s, %s]' % (a.begin, a.end))
-        if SCRIPT:
-            print >>SCRIPT, 'date'
+            thisrawcmd += (' --begin=' + obsid)
+            thisrawcmd += (' --end=' + obsid)
+        
+            log.console('PROGRESS: ' + thisrawcmd)
+            
+            if not a.test:
+                try:
+                    output = subprocess.check_output(
+                                                thisrawcmd,
+                                                shell=True,
+                                                stderr=subprocess.STDOUT)
+                except subprocess.CalledProcessError as e:
+                    log.console('FAILED: ' + obsid,
+                                logging.WARN)
+                    log.file('status = ' + str(e.returncode) + 
+                             ' output = \n' + e.output)
+                
+                # clean up
+                for filename in os.listdir(cwd):
+                    filepath = os.path.join(cwd, filename)
+                    basename, ext = os.path.splitext(filename)
+                    if ext == '.xml':
+                        os.remove(filepath)
+                                
+                gzipcmd = 'gzip ' + thislog
+                output = subprocess.check_output(
+                                    gzipcmd,
+                                    shell=True,
+                                    stderr=subprocess.STDOUT)

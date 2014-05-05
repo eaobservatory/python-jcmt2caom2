@@ -29,12 +29,13 @@ def run():
     userconfig = None
     userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
 
-    ap = argparse.ArgumentParser('recipe_instances')
+    ap = argparse.ArgumentParser('jcmt_rcinst_files')
     ap.add_argument('--userconfig',
                     default=userconfigpath,
                     help='Optional user configuration file '
                     '(default=' + userconfigpath + ')')
     
+    # UTDATE constraints
     ap.add_argument('--utdate',
                     type=str,
                     help='include only a specific utdate')
@@ -44,16 +45,24 @@ def run():
     ap.add_argument('--end',
                     type=str,
                     help='include only utdays on or before end')
+    ap.add_argument('--month',
+                    action='store_true',
+                    help='group by month instead of day')
+
+    # subsets
+    ap.add_argument('--fromset',
+                    type=str,
+                    help='file containing a list of recipe instances')
     ap.add_argument('--new',
                     action='store_true',
                     help='include recipe instance not already in CAOM-2')
     
+    # logging
     ap.add_argument('--log',
-                    default='recipe_instances.log',
+                    default='jcmt_recipe_instances.log',
                     help='(optional) name of log file')
     ap.add_argument('--logdir',
-                    help='(optional) directory to hold log and xml files')
-    # verbosity
+                    help='(optional) directory to hold log file')
     ap.add_argument('--debug', '-d',
                     action='store_true',
                     help='run ingestion commands in debug mode')
@@ -141,6 +150,17 @@ def run():
             this_begin = this_end
             this_end = store
     
+    fromset = set()
+    if a.fromset:
+        with open(a.fromset) as RCF:
+            for line in RCF:
+                m = re.match(r'^\s*(\d+)([^\d].*)?$', line)
+                if m:
+                    thisid = m.group(1)
+                    log.console('from includes: ' + thisid,
+                                logging.DEBUG)
+                    fromset.add(thisid)
+    
     retvals = None
     with connection(userconfig, log) as db:
         rcinstcmd = '\n'.join([
@@ -198,6 +218,9 @@ def run():
                  utdate) in retvals:
                  
                 rcinst = str(identity_instance_id).strip()
+
+                if a.fromset and rcinst not in fromset:
+                    continue
                 
                 if ((not a.new or (a.new and lastModified < date_processed)) and
                     utdate and 
@@ -224,13 +247,17 @@ def run():
                                         'integer',
                                         logging.WARN)
                             continue
-                    
-                        if utdate not in rcinst_dict:
-                            rcinst_dict[utdate] = []
-                        rcinst_dict[utdate].append(rcinst)
-                        log.console('PROGRESS: add ' + rcinst + ' on ' + utdate)
+                        
+                        utdatestr = str(utdate)
+                        if a.month:
+                            utdatestr = utdatestr[0:6]
+                        if utdatestr not in rcinst_dict:
+                            rcinst_dict[utdatestr] = []
+                        rcinst_dict[utdatestr].append(rcinst)
+                        log.console('PROGRESS: add ' + rcinst + ' on ' + 
+                                    utdatestr)
             
             for utdate in rcinst_dict:
-                with open(utdate + '.rcinst', 'w') as RC:
+                with open('ut' + utdate + '.rcinst', 'w') as RC:
                     for rcinst in sorted(rcinst_dict[utdate]):
                         print >>RC, rcinst

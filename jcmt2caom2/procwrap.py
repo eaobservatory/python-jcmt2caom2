@@ -48,7 +48,7 @@ def run():
                     '(default=' + userconfigpath + ')')
     
     ap.add_argument('--log',
-                    default='procrecipe.log',
+                    default='jcmtprocwrap.log',
                     help='(optional) name of log file')
     ap.add_argument('--logdir',
                     help='(optional) directory to hold log and xml files')
@@ -64,7 +64,9 @@ def run():
     
     ap.add_argument('--qsub',
                     action='store_true',
-                    help='rsubmit a job to gridengine for each recipe instance')
+                    help='rsubmit ingestion jobs to gridengine')
+    ap.add_argument('--qsubrequirements',
+                    help='(optional) requirements to pass to gridengine')
     ap.add_argument('--queue',
                     default='cadcproc',
                     help='gridengine queue to use if --qsub is set')
@@ -124,14 +126,18 @@ def run():
             log.console('%-15s= %s' % (attr, getattr(a, attr)))
     log.console('id = ' + repr(a.id))
 
-    mygridengine = gridengine(log, queue=a.queue)
+    if a.qsubrequirements:
+        mygridengine = gridengine(log, 
+                                  queue=a.queue,
+                                  options=a.qsubrequirements)
+    else:
+        mygridengine = gridengine(log, queue=a.queue)
     
     # idset is the set of recipe instances to ingest
     idset = set()
     # rcinstset is a set of abspaths to rcinst files
     rcinstset = set()
     for id in a.id:
-        print id
         # if id is a directory, add any rcinst files it contains to rcinstset
         if os.path.isdir(id):
             idpath = os.path.abspath(id)
@@ -164,21 +170,27 @@ def run():
             proccmd += ' --debug'
         if a.keeplog or a.sharelog:
             proccmd += ' --keeplog'
-        if a.sharelog:
-            proccmd += ' --log=' + logpath
-        else:
-            proccmd += ' --logdir=' + logdir
             
         # submit rcinst sets to gridengine
         # compose the jcmtprocwrap command
         for rcinstfile in sorted(list(rcinstset)):
-            cmd = ' '.join([proccmd, rcinstfile])
+            cmd = proccmd
+            rcinstbase = os.path.basename(rcinstfile)
+            rcinstlog =  os.path.join(self.logdir, rcinstbase + '.log')
+            rcinstcsh = os.path.join(self.logdir, 'csh_' + rcinstbase + '.csh')
             
-            rcinstbase, ext = os.path.splitext(rcinstfile)
-            rcinstbase =  os.path.join(logdir, 
-                                       'csh_' + os.path.basename(rcinstbase))
-            rcinstcsh = rcinstbase + '.csh'
-            rcinstlog = rcinstbase + '.log'
+            if a.sharelog:
+                cmd += ' --sharelog'
+            
+            rcinstlogs = os.path.join(self.logdir, rcinstbase + '.logs')
+            os.makedirs(rcinstlogs)
+            # make sure rcinstlogs is empty
+            for f in os.listdir(rcinstlogs):
+                os.remove(f)
+            
+            cmd += ' --log=' + rcinstlog
+            cmd += ' --logdir=' + rcinstlogs
+            cmd += ' ' + rcinstfile
             
             log.console('SUBMIT: ' + cmd)
             if not a.test:
@@ -200,13 +212,9 @@ def run():
             
     else:
         # ingest the recipe instances in subprocesses
-
-        # to prevent repeated ingestions, collect the rcinst values into 
-        # one large set
         for rcinstfile in list(rcinstset):
             with open(rcinstfile) as RCF:
                 for line in RCF:
-                    print line
                     m = re.match(r'^\s*(\d+)([^\d].*)?$', line)
                     if m:
                         thisid = m.group(1)
@@ -214,6 +222,7 @@ def run():
                                     logging.DEBUG)
                         idset.add(thisid)
 
+        # Handle one rcinst file at a time and adjust the logdir
         idlist = []
         if idset:
             idlist = sorted(list(idset), key=int, reverse=True)
@@ -226,21 +235,13 @@ def run():
             proccmd += ' --debug'
         if a.keeplog or a.sharelog:
             proccmd += ' --keeplog'
+        if a.sharelog:
+            thisproccmd += ' --log=' + logpath
+        else:
+            thisproccmd += ' --logdir=' + logdir
             
         for rcinst in idlist:
-            rcinstpath = os.path.join(logdir, rcinst)
-            
-            # be sure that the utdirpath exists and is empty
-            if not os.path.exists(rcinstpath):
-                os.makedirs(rcinstpath)
-            for filename in os.listdir(rcinstpath):
-                os.remove(os.path.join(rcinstpath, filename))
-            
             thisproccmd = proccmd
-            if a.sharelog:
-                thisproccmd += ' --log=' + logpath
-            else:
-                thisproccmd += ' --logdir=' + rcinstpath
 
             thisproccmd += (' dp:' + rcinst)
         
