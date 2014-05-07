@@ -158,17 +158,19 @@ def run():
         for obsidfile in sorted(list(obsidset)):
             cmd = rawcmd
             obsidbase = os.path.basename(obsidfile)
-            obsidlog =  os.path.join(self.logdir, obsidbase + '.log')
-            obsidcsh = os.path.join(self.logdir, 'csh_' + obsidbase + '.csh')
+            obsidlog =  os.path.join(logdir, obsidbase + '.log')
+            obsidcsh = os.path.join(logdir, 'csh_' + obsidbase + '.csh')
             
             if a.sharelog:
                 cmd += ' --sharelog'
         
-            obsidlogs = os.path.join(self.logdir, obsidbase + '.logs')
-            os.makedirs(obsidlogs)
-            # make sure obsidlogs is empty
-            for f in os.listdir(obsidlogs):
-                os.remove(f)
+            obsidlogs = os.path.join(logdir, obsidbase + '.logs')
+            if not os.path.isdir(obsidlogs):
+                os.makedirs(obsidlogs)
+            else:
+                # make sure obsidlogs is empty
+                for f in os.listdir(obsidlogs):
+                    os.remove(os.path.join(obsidlogs, f))
                 
             cmd += ' --log=' + obsidlog
             cmd += ' --logdir=' + obsidlogs

@@ -59,7 +59,7 @@ def run():
     
     # logging
     ap.add_argument('--log',
-                    default='jcmt_recipe_instances.log',
+                    default='jcmt_rcinst_files.log',
                     help='(optional) name of log file')
     ap.add_argument('--logdir',
                     help='(optional) directory to hold log file')
@@ -157,7 +157,7 @@ def run():
                 m = re.match(r'^\s*(\d+)([^\d].*)?$', line)
                 if m:
                     thisid = m.group(1)
-                    log.console('from includes: ' + thisid,
+                    log.console('from includes: "' + thisid + '"',
                                 logging.DEBUG)
                     fromset.add(thisid)
     

@@ -65,11 +65,12 @@ def run():
     ap.add_argument('--qsub',
                     action='store_true',
                     help='rsubmit ingestion jobs to gridengine')
-    ap.add_argument('--qsubrequirements',
-                    help='(optional) requirements to pass to gridengine')
     ap.add_argument('--queue',
                     default='cadcproc',
                     help='gridengine queue to use if --qsub is set')
+    ap.add_argument('--big',
+                    action='store_true',
+                    help='(optional) request extra heap space and RAM')
     ap.add_argument('--test',
                     action='store_true',
                     help='do not submit to gridengine or run commnands')
@@ -126,10 +127,10 @@ def run():
             log.console('%-15s= %s' % (attr, getattr(a, attr)))
     log.console('id = ' + repr(a.id))
 
-    if a.qsubrequirements:
+    if a.big:
         mygridengine = gridengine(log, 
                                   queue=a.queue,
-                                  options=a.qsubrequirements)
+                                  options='-cwd -j yes -l cmem=32')
     else:
         mygridengine = gridengine(log, queue=a.queue)
     
@@ -166,6 +167,8 @@ def run():
         proccmd += ' --outdir=${TMPDIR}'
         if a.collection:
             proccmd += ' --collection=' + a.collection
+        if a.big:
+            proccmd += ' --big'
         if a.debug:
             proccmd += ' --debug'
         if a.keeplog or a.sharelog:
@@ -176,17 +179,19 @@ def run():
         for rcinstfile in sorted(list(rcinstset)):
             cmd = proccmd
             rcinstbase = os.path.basename(rcinstfile)
-            rcinstlog =  os.path.join(self.logdir, rcinstbase + '.log')
-            rcinstcsh = os.path.join(self.logdir, 'csh_' + rcinstbase + '.csh')
+            rcinstlog = os.path.join(logdir, rcinstbase + '.log')
+            rcinstcsh = os.path.join(logdir, rcinstbase + '.csh')
             
             if a.sharelog:
                 cmd += ' --sharelog'
             
-            rcinstlogs = os.path.join(self.logdir, rcinstbase + '.logs')
-            os.makedirs(rcinstlogs)
-            # make sure rcinstlogs is empty
-            for f in os.listdir(rcinstlogs):
-                os.remove(f)
+            rcinstlogs = os.path.join(logdir, rcinstbase + '.logs')
+            if not os.path.isdir(rcinstlogs):
+                os.makedirs(rcinstlogs)
+            else:
+                # make sure rcinstlogs is empty
+                for f in os.listdir(rcinstlogs):
+                    os.remove(os.path.join(rcinstlogs, f))
             
             cmd += ' --log=' + rcinstlog
             cmd += ' --logdir=' + rcinstlogs
@@ -231,14 +236,16 @@ def run():
         proccmd = 'jcmt2caom2proc'
         if a.collection:
             proccmd += ' --collection=' + a.collection
+        if a.big:
+            proccmd += ' --big'
         if a.debug:
             proccmd += ' --debug'
         if a.keeplog or a.sharelog:
             proccmd += ' --keeplog'
         if a.sharelog:
-            thisproccmd += ' --log=' + logpath
+            proccmd += ' --log=' + logpath
         else:
-            thisproccmd += ' --logdir=' + logdir
+            proccmd += ' --logdir=' + logdir
             
         for rcinst in idlist:
             thisproccmd = proccmd
