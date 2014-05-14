@@ -1563,6 +1563,7 @@ class stdpipe(ingest2caom2):
                     'POL_FAXS',
                     'POL_MODE',
                     'PROCVERS',
+                    'PRODID',
                     'PRODUCER',
                     'PRODUCT',
                     'PROJECT',
