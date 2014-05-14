@@ -4,16 +4,19 @@
 # Import required Python modules
 #################################
 import argparse
+#import re
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
 import exceptions
+import gzip
+import logging
 import os
 import os.path
+import re
 import sys
 import string
-import re
-import commands 
+import time
 import urllib
 import smtplib
 
@@ -43,11 +46,10 @@ def utdate( dt):
 
 def concatenate( listOfTuples):
     s = '('
-    if type(listOfTuples) == list and len(listOfTuples)!=0 and type(listOfTuples[0])==tuple:
-        for tup in listOfTuples:
-            if s!='(':
-                s += ',\n'
-            s += '"'+str(tup[0])+'"'
+    if (type(listOfTuples) == list and 
+        len(listOfTuples)!=0 and 
+        type(listOfTuples[0])==tuple):
+        s += '\n,'.join([str(t[0]) for t in listOfTuples])
     s += ')'
     return s
 
@@ -106,18 +108,33 @@ class mon(object):
     Daily and weekly monitoring tools for JSA CAOM-2 tables.
     This routine is only intended to work at the CADC.
     """
+    @staticmethod
+    def offset_utdate(dt, offset):
+        """
+        Calculate a UTDATE as a string in the format YYYYMMDD
+        offset into the past by an integer number of days.
+        
+        Arguments:
+        dt: a date or datetime object from which a date can be derived
+        offset: an integer number of days to offset into the past
+        """
+        d = dt.date() + timedelta(-offset)
+        return re.sub(r'-', '', d.isoformat())
+        
+
     def __init__(self):
         """
         Initialize the monitor, but not the database connection.
         """
-        self.now = datetime.utcnow()
-        self.nowiso = self.now.isoformat()
-        self.nowday = re.sub(r'-', '', self.nowiso[:10])
-        self.nowsuffix = re.sub(r':', '-', self.nowiso)
+        now = datetime.utcnow()
+        self.midnight = now.replace(hour=10, minute=0, second=0, microsecond=0)
+        if self.midnight > now:
+            self.midnight += timedelta(-1)
+        self.midnightiso = self.midnight.isoformat()
+        self.midnightdate = re.sub(r'-', '', self.midnightiso[:10])
+        self.midnightsuffix = re.sub(r':', '-', self.midnightiso)
         self.skip_processed = False
                 
-        self.begin = None
-        self.end = None
         self.date = None
         self.datestring = ''
         self.topclause = ''
@@ -129,34 +146,19 @@ class mon(object):
         self.log = None
         self.logdir = os.path.abspath('.')
         self.logfile = None
+        self.loglevel = logging.INFO
         self.sender = ''
         self.to = []
         self.subject = 'JSA Monitor'
         
         self.db = None
 
-    def offset_utdate(dt, offset):
-        """
-        Calculate a UTDATE as a string in the format YYYYMMDD
-        offset into the past by an integer number of days.
-        
-        Arguments:
-        dt: a date or datetime object from which a date can be derived
-        offset: an integer number of days to offset into the past
-        """
-        d = dt.date() - timedelta(offset)
-        return re.sub(r'-', '', d.isoformat())
-        
     def parse_command_line(self):
         """
         Read command line arguments.
         """
-        ap = argparse.ArgumentParser(
-                description='Values for --begin, --end, and '
-                            '--date can be given as absolute dates in the '
-                            'format YYYYMMDD as an integer giving the offset '
-                            'in days from today.  Giving --date overrides '
-                            'the --begin and --end switches')
+        ap = argparse.ArgumentParser('jcmt2mon')
+
         ap.add_argument('--userconfig',
                         default=self.userconfigpath,
                         help='Optional user configuration file '
@@ -165,6 +167,9 @@ class mon(object):
         # Logging arguments
         ap.add_argument('--logdir',
                         help='(optional) name of log directory (default=".")')
+        ap.add_argument('--debug',
+                        action='store_true',
+                        help='More verbose output')
         ap.add_argument('--log',
                         help='log file name (absolute or relative to logdir)')
         ap.add_argument('--sender',
@@ -175,16 +180,12 @@ class mon(object):
         ap.add_argument('--subject',
                         help='subject line for report')
         
-        # Date ranges in COMMON
-        ap.add_argument('-b', '--begin',
-                        type=str,
-                        help='utdate >= begin in the format YYYYMMDD')
-        ap.add_argument('-e', '--end',
-                        type=str,
-                        help='utdate <= end in the format YYYYMMDD')
         ap.add_argument('-d', '--date',
                         type=str,
-                        help='utdate = date in the format YYYYMMDD')
+                        default=self.midnightdate,
+                        help='absolute date formated as YYYYMMDD, or integer '
+                             'offset in days from last midnight HST')
+
         ap.add_argument('--top',
                         type=int,
                         default=100,
@@ -204,28 +205,12 @@ class mon(object):
         if args.top > 0:
             self.topclause = ' TOP %d' % (args.top)
 
-        if args.date:
-            if args.date < '19800101':
-                self.date = self.utdate_offset(self.now, int(args.date))
-            else:
-                self.date = args.date
-            self.datestring = 'utdate_eq_' + self.date
+        if args.date < '19800101':
+            self.date = mon.offset_utdate(self.midnight, int(args.date))
         else:
-            if args.begin or args.end:
-                self.datestring = 'utdate'
-            if args.begin:
-                if args.begin < '19800101':
-                    self.begin = self.utdate_offset(self.now, int(args.begin))
-                else:
-                    self.begin = args.begin
-                self.datestring = (args.begin + '_ge_' + self.datestring)
-            if args.end:
-                if args.end < '19800101':
-                    self.end = self.utdate_offset(self.now, int(args.end))
-                else:
-                    self.end = args.end
-                self.datestring = (self.datestring + '_le_' + args.end)
-        
+            self.date = args.date
+        self.datestring = 'utdate_eq_' + self.date
+            
         if args.sender:
             self.sender = args.sender
         if args.to:
@@ -233,7 +218,9 @@ class mon(object):
         if args.subject:
             self.subject = args.subject
         
-        self.logfile = '_'.join(['jcmt2mon', self.datestring, self.nowsuffix]) \
+        self.logfile = '_'.join(['jcmt2mon', 
+                                 self.datestring, 
+                                 self.midnightsuffix]) \
                        + '.log'
         if args.log:
             if re.match(r'^/.*', args.log):
@@ -250,6 +237,8 @@ class mon(object):
                             os.path.expanduser(
                                 os.path.expandvars(
                                     os.path.join(self.logdir, self.logfile))))
+        if args.debug:
+            self.loglevel = logging.DEBUG
     
     def log_command_line_switches(self):
         """
@@ -258,17 +247,11 @@ class mon(object):
         self.log.console('jcmt2caom2 version ' + jcmt2caom2version)
         self.log.console('tools4caom2 version ' + tools4caom2version)
         if self.sender and self.to and self.subject:
-            self.log.console('%-20s = %s' % ('now', self.now))
-            self.log.console('%-20s = %s' % ('nowday', self.nowday))
-            self.log.console('%-20s = %s' % ('nowsuffix', self.nowsuffix))
+            self.log.console('%-20s = %s' % ('now', self.midnight))
+            self.log.console('%-20s = %s' % ('nowday', self.midnightdate))
+            self.log.console('%-20s = %s' % ('nowsuffix', self.midnightsuffix))
         self.log.console('%-20s = %s' % ('topclause', self.topclause))
-        if self.date:
-            self.log.console('%-20s = %s' % ('date', self.date))
-        else:
-            if self.begin:
-                self.log.console('%-20s = %s' % ('begin', self.begin))
-            if self.end:
-                self.log.console('%-20s = %s' % ('end', self.end))
+        self.log.console('%-20s = %s' % ('date', self.date))
         self.log.console('%-20s = %s' % ('datestring', self.datestring))
 
     def print_query_table(self, label, header, format, sqlcmd):
@@ -302,36 +285,30 @@ class mon(object):
             '        s.obsid',
             '    FROM (',
             '        SELECT',
-            '            c.obsid,',
-            '            ISNULL(ool.commentstatus, 0) as qa',
-            '        FROM jcmtmd.dbo.COMMON c',
-            '            LEFT JOIN jcmtmd.dbo.ompobslog ool',
-            '                ON c.obsid=ool.obsid',
-            '        WHERE',
-            '            ool.obsactive = 1',
-            '            AND ool.commentstatus <= 4',])
-        
-        if self.date:
-            sqlcmd += '\n            AND c.utdate=' + self.date
-        else:
-            if self.begin:
-                sqlcmd += '\n            AND c.utdate >= ' + self.begin
-            if self.end:
-                sqlcmd += '\n            AND c.utdate <= ' + self.end
-                
-        sqlcmd = '\n'.join([sqlcmd,
-            '        GROUP BY c.obsid',
-            '        HAVING ool.commentdate=max(ool.commentdate)',
-            '        ) s',
+            '            u.obsid,',
+            '            max(u.qa) as qa',
+            '        FROM (',
+            '            SELECT',
+            '                c.obsid,',
+            '                ISNULL(ool.commentstatus, 0) as qa,',
+            '                ISNULL(ool.commentdate, "1980-01-01 00:00:00") as commentdate',
+            '            FROM jcmtmd.dbo.COMMON c',
+            '                LEFT JOIN jcmtmd.dbo.ompobslog ool',
+            '                    ON c.obsid=ool.obsid',
+            '                        AND ool.obsactive = 1',
+            '                        AND ool.commentstatus <= 4',
+            '            WHERE',
+            '                c.utdate=' + self.date + ') u',
+            '        GROUP BY u.obsid',
+            '        HAVING u.commentdate=max(u.commentdate)) s',
             '        LEFT JOIN jcmt.dbo.caom2_Observation co',
-            '            ON s.obsid=co.observationID',
-            '    ) t',
+            '            ON s.obsid=co.observationID) t',
             'GROUP BY t.present, t.qa',
             'ORDER BY t.present, t.qa',
             ])
 
         self.print_query_table(
-            'QACOUNT: Observations counted by quality',
+            'QACOUNT: Observations counted by presence, quality',
             'present qa      count',
             '%7d %2d %10d',
             sqlcmd)
@@ -341,44 +318,40 @@ class mon(object):
             '    t.present,',
             '    t.qa,',
             '    t.obsid',
-            'FROM (',
-            '    SELECT',
+            'FROM (SELECT',
             '        s.qa,',
             '        CASE WHEN s.obsid=co.observationID THEN 1',
             '             ELSE 0',
             '        END as present,',
-            '        s.obsid',
-            '    FROM (',
-            '        SELECT',
-            '            c.obsid,',
-            '            ISNULL(ool.commentstatus, 0) as qa',
-            '        FROM jcmtmd.dbo.COMMON c',
-            '            LEFT JOIN jcmtmd.dbo.ompobslog ool',
-            '                ON c.obsid=ool.obsid',
-            '        WHERE',
-            '            ool.obsactive = 1',
-            '            AND ool.commentstatus <= 4'])
-        
-        if self.date:
-            sqlcmd += '\n            AND c.utdate=' + self.date
-        else:
-            if self.begin:
-                sqlcmd += '\n            AND c.utdate >= ' + self.begin
-            if self.end:
-                sqlcmd += '\n            AND c.utdate <= ' + self.end
-                            
-        sqlcmd = '\n'.join([sqlcmd,
-            '        GROUP BY c.obsid',
-            '        HAVING ool.commentdate=max(ool.commentdate)',
+            '        s.obsid,',
+            '        s.date_obs',
+            '    FROM (SELECT',
+            '            u.obsid,',
+            '            u.date_obs,',
+            '            max(u.qa) as qa',
+            '        FROM (SELECT',
+            '                c.obsid,',
+            '                c.date_obs,',
+            '                ISNULL(ool.commentstatus, 0) as qa,',
+            '                ISNULL(ool.commentdate, "1980-01-01 00:00:00") as commentdate',
+            '            FROM jcmtmd.dbo.COMMON c',
+            '                LEFT JOIN jcmtmd.dbo.ompobslog ool',
+            '                    ON c.obsid=ool.obsid',
+            '                        AND ool.obsactive = 1',
+            '                        AND ool.commentstatus <= 4',
+            '            WHERE',
+            '                c.utdate=' + self.date + ') u',
+            '        GROUP BY u.obsid, u.date_obs',
+            '        HAVING u.commentdate=max(u.commentdate)',
             '        ) s',
             '        LEFT JOIN jcmt.dbo.caom2_Observation co',
             '            ON s.obsid=co.observationID',
             '    ) t',
-            'GROUP BY t.present, t.qa',
-            'ORDER BY t.present, t.qa',
+            'HAVING t.present=0 or (t.present=1 AND t.qa=4)',
+            'ORDER BY t.present, t.qa, t.date_obs',
             ])
         self.print_query_table(
-            'QACOUNT: Observations listed by presence, quality',
+            'QACOUNT: Problem observations listed by presence, quality',
             'present qa      obsid',
             '%7d %2d %40s',
             sqlcmd)
@@ -388,18 +361,9 @@ class mon(object):
                 '    (SELECT substring(f.file_id, 1, len(f.file_id)-4) as file_id',
                 '     FROM jcmtmd.dbo.FILES f',
                 '         INNER JOIN jcmtmd.dbo.COMMON c',
-                '             ON f.obsid=c.obsid']
-        whereClause = '     WHERE '
-        if self.date:
-            fileSelect.append(whereClause + 'c.utdate=' + self.date)
-            whereClause = '         AND '
-        else:
-            if self.begin:
-                dateClauses.append(whereClause + 'c.utdate >= ' + self.begin)
-                whereClause = '         AND '
-            if self.end:
-                dateClauses.append(whereClause + 'c.utdate <= ' + self.end)
-        fileSelect.append('    ) s')
+                '             ON f.obsid=c.obsid',
+                '     WHERE c.utdate=' + self.date,
+                '    ) s']
         self.fileString = '\n'.join(fileSelect)
         
         # Count raw data files
@@ -463,7 +427,35 @@ class mon(object):
                 self.log.file('file_id: ' + row[0])
         else:
             self.log.console('All files in FILES and ad have been received')
-
+        
+        raw_daily = '/staging/gimli2/1/jcmtops/logs/raw_daily'
+        if os.path.isdir(os.path.join(raw_daily, self.date)):
+            raw_daily = os.path.join(raw_daily, self.date)
+        self.log.console('Search for logs in ' + raw_daily,
+                         logging.DEBUG)
+        
+        # Floating point time stamp for now - 30 hours
+        time_boundary = time.time() - 30 * 3600.0
+        if os.path.isdir(raw_daily):
+            # Scrape the logs for error and warning messages
+            errorwarning = []
+            for filename in os.listdir(raw_daily):
+                fullname = os.path.join(raw_daily, filename)
+                if re.match(r'.*\.log\.gz', filename):
+                    if (self.date != self.midnightdate or
+                        os.stat(fullname).st_mtime > time_boundary):
+                        
+                        with gzip.open(fullname) as LOG:
+                            for line in LOG:
+                                if re.match(r'^(ERROR|WARNING).*', line):
+                                    errorwarning.append(fullname + ': ' +
+                                                        line.strip())
+            if errorwarning:
+                self.log.console('ERRORS and WARNINGS from raw ingestions')
+                for line in errorwarning:
+                    self.log.console(line)
+            else:
+                self.log.console('No errors or warnings from raw ingestions')
     
     def analyze_proc_data(self):
         """
@@ -483,8 +475,7 @@ class mon(object):
                             '                 substring(dri.parameters,',
                             '                 8, len(dri.parameters))) - 1),',
                             '   dri.state,',
-                            '   dri.identity_instance_id,',
-                            '   dri.recipe_instance_id',
+                            '   dri.identity_instance_id',
                             'FROM',
                             self.fileString,
                             '    INNER JOIN data_proc.dbo.dp_file_input dfi',
@@ -494,15 +485,13 @@ class mon(object):
             
             recipeInstances = self.db.read(sqlcmd)
             recipeDict = {}
-            for mode, state, ii_id, ri_id in recipeInstances:
+            for mode, state, ii_id in recipeInstances:
                 idinst = str(ii_id)
-                rcinst = str(ri_id)
                 if mode not in recipeDict:
                     recipeDict[mode] = {}
                 if state not in recipeDict[mode]:
-                    recipeDict[mode][state] = {}
-                if idinst not in recipeDict[mode][state]:
-                    recipeDict[mode][state][idinst] = rcinst
+                    recipeDict[mode][state] = set()
+                recipeDict[mode][state].add(idinst)
             
             self.log.console('Count of all recipe instances = %d' % 
                              (len(recipeInstances),))
@@ -517,10 +506,10 @@ class mon(object):
                                           state,
                                           len(recipeDict[mode][state])))
                         if state != 'Y':
-                            for idinst in sorted(recipeDict[mode][state]):
-                                self.log.console('        identity_instance_id = ' +
-                                                 idinst + '  recipe_instance_id = ' +
-                                                 recipeDict[mode][state][idinst])
+                            for idinst in sorted(list(recipeDict[mode][state])):
+                                self.log.console(
+                                    '         identity_instance_id = ' +
+                                    idinst)
 
 
     def run(self):
@@ -529,6 +518,7 @@ class mon(object):
         """
         self.parse_command_line()
         with logger(self.logfile,
+                    loglevel = self.loglevel,
                     sender=self.sender,
                     to=self.to,
                     subject=self.subject).record() as self.log:

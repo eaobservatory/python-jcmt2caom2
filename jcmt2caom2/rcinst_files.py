@@ -45,9 +45,6 @@ def run():
     ap.add_argument('--end',
                     type=str,
                     help='include only utdays on or before end')
-    ap.add_argument('--month',
-                    action='store_true',
-                    help='group by month instead of day')
 
     # subsets
     ap.add_argument('--fromset',
@@ -57,6 +54,14 @@ def run():
                     action='store_true',
                     help='include recipe instance not already in CAOM-2')
     
+    # Output options, default = stdout
+    ap.add_argument('--daily',
+                    action='store_true',
+                    help='group by day and output to daily files')
+    ap.add_argument('--monthly',
+                    action='store_true',
+                    help='group by month and output to monthly files')
+
     # logging
     ap.add_argument('--log',
                     default='jcmt_rcinst_files.log',
@@ -100,22 +105,25 @@ def run():
     log.file('tools4caom2version   = ' + tools4caom2version)
     for attr in dir(a):
         if attr != 'id' and attr[0] != '_':
-            log.console('%-15s= %s' % (attr, getattr(a, attr)))
+            log.file('%-15s= %s' % (attr, getattr(a, attr)))
 
     # specifying utdate precludes begin and end
     if a.utdate and (a.begin or a.end):
         log.console('specify either utdate or begin/end, not both',
                     logging.ERROR)
     
-    # if begin or end is present, both must be
-    if (a.begin and not a.end) or (not a.begin and a.end):
-        log.console('specify both of begin and end or neither',
-                    logging.ERROR)
+    # if begin is present, but end is not, set end=now
+    if (a.begin is not None and a.end is None):
+        a.end = '0'
+    
+    # if end is present, but bot begin, set begin before start of observatory
+    if (a.end is not None and a.begin is None):
+        a.begin = '19880101'
     
     # utdate and begin/end can be absolute or relative to now
     now = datetime.utcnow()
     this_utdate = None
-    if a.utdate:
+    if a.utdate is not None:
         if a.utdate > '19800101':
             this_utdate = a.utdate
         else:
@@ -123,9 +131,10 @@ def run():
             this_utdate = '%04d%02d%02d' % (thisutc.year, 
                                             thisutc.month, 
                                             thisutc.day)
+            log.file('%-15s= %s' % ('utdate -> ', this_utdate))
     
     this_begin = None
-    if a.begin:
+    if a.begin is not None:
         if a.begin > '19800101':
             this_begin = a.begin
         else:
@@ -133,9 +142,10 @@ def run():
             this_begin = '%04d%02d%02d' % (thisutc.year, 
                                            thisutc.month, 
                                            thisutc.day)
+            log.file('%-15s= %s' % ('begin -> ', this_begin))
 
     this_end = None
-    if a.end:
+    if a.end is not None:
         if a.end > '19800101':
             this_end = a.end
         else:
@@ -143,6 +153,7 @@ def run():
             this_end = '%04d%02d%02d' % (thisutc.year, 
                                            thisutc.month, 
                                            thisutc.day)
+            log.file('%-15s= %s' % ('end -> ', this_end))
     
     if this_begin and this_end:
         if this_begin > this_end:
@@ -157,7 +168,7 @@ def run():
                 m = re.match(r'^\s*(\d+)([^\d].*)?$', line)
                 if m:
                     thisid = m.group(1)
-                    log.console('from includes: "' + thisid + '"',
+                    log.file('from includes: "' + thisid + '"',
                                 logging.DEBUG)
                     fromset.add(thisid)
     
@@ -180,15 +191,16 @@ def run():
             '    FROM (',
             '        SELECT dri.identity_instance_id,',
             '               dri.state, ',
-            '               dri.date_processed,',
-            '               count(dro.dp_output) AS outcount',
+            '               MAX(ISNULL(dri.date_processed,',
+            '                          "1979-12-31 00:00:00")) as date_processed,',
+            '               COUNT(dro.dp_output) AS outcount',
             '        FROM data_proc.dbo.dp_recipe_instance dri',
             '            INNER JOIN data_proc.dbo.dp_recipe dr',
             '                ON dr.recipe_id=dri.recipe_id',
             '            LEFT JOIN data_proc.dbo.dp_recipe_output dro',
             '                ON dri.identity_instance_id=dro.identity_instance_id',
             '        WHERE  dr.script_name="jsawrapdr"',
-            '        GROUP BY dri.identity_instance_id',
+            '        GROUP BY dri.identity_instance_id, dri.state',
             '         ) s',
             '        INNER JOIN data_proc.dbo.dp_file_input dfi',
             '            ON s.identity_instance_id=dfi.identity_instance_id',
@@ -199,8 +211,7 @@ def run():
             '                   END as identity_instance_id,',
             '                   lastModified',
             '            FROM jcmt.dbo.caom2_Plane',
-            '            WHERE productID like "reduced%" ',
-            '                  OR productID like "cube%") u',
+            '            WHERE productID not like "raw%") u',
             '                ON s.identity_instance_id=u.identity_instance_id',            
             '    GROUP BY s.identity_instance_id,',
             '             s.state,',
@@ -249,15 +260,22 @@ def run():
                             continue
                         
                         utdatestr = str(utdate)
-                        if a.month:
+                        if a.monthly:
                             utdatestr = utdatestr[0:6]
+                        elif not a.daily:
+                            utdatestr = 'all'
+                        
                         if utdatestr not in rcinst_dict:
                             rcinst_dict[utdatestr] = []
                         rcinst_dict[utdatestr].append(rcinst)
-                        log.console('PROGRESS: add ' + rcinst + ' on ' + 
+                        log.file('PROGRESS: add ' + rcinst + ' on ' + 
                                     utdatestr)
             
             for utdate in rcinst_dict:
-                with open('ut' + utdate + '.rcinst', 'w') as RC:
+                if utdate == 'all':
                     for rcinst in sorted(rcinst_dict[utdate]):
-                        print >>RC, rcinst
+                        print rcinst
+                else:
+                    with open('ut' + utdate + '.rcinst', 'w') as RC:
+                        for rcinst in sorted(rcinst_dict[utdate]):
+                            print >>RC, rcinst

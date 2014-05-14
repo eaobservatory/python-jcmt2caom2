@@ -2,13 +2,14 @@
 
 import argparse
 import commands
-import datetime
+from datetime import datetime
 import logging
 import os.path
 import re
 import stat
 import string
 import subprocess
+import sys
 
 from tools4caom2.config import config
 from tools4caom2.logger import logger
@@ -138,26 +139,37 @@ def run():
     idset = set()
     # rcinstset is a set of abspaths to rcinst files
     rcinstset = set()
-    for id in a.id:
-        # if id is a directory, add any rcinst files it contains to rcinstset
-        if os.path.isdir(id):
-            idpath = os.path.abspath(id)
-            for filename in os.listdir(idpath):
-                basename, ext = os.path.splitext(filename)
+    if a.id:
+        for id in a.id:
+            # if id is a directory, 
+            # add any rcinst files it contains to rcinstset
+            if os.path.isdir(id):
+                idpath = os.path.abspath(id)
+                for filename in os.listdir(idpath):
+                    basename, ext = os.path.splitext(filename)
+                    if ext == '.rcinst':
+                        rcinstset.add(os.path.join(idpath, filename))
+            elif os.path.exists(id):
+                # if id is an rcinst file add it to rcinstset
+                basename, ext = os.path.splitext(id)
                 if ext == '.rcinst':
-                    rcinstset.add(os.path.join(idpath, filename))
-        elif os.path.exists(id):
-            # if id is an rcinst file add it to rcinstset
-            basename, ext = os.path.splitext(id)
-            if ext == '.rcinst':
-                rcinstset.add(os.path.abspath(id))
-        elif re.match(r'^\d+$', id):
-            # if id is an identity_instance_id string, add it to idset
-            idset.add(id)
-        else:
-            log.console(id + ' is not a directory, and rcinst file, nor an '
-                        'identity_instance_id value',
-                        logging.WARN)
+                    rcinstset.add(os.path.abspath(id))
+            elif re.match(r'^\d+$', id):
+                # if id is an identity_instance_id string, add it to idset
+                idset.add(id)
+            else:
+                log.console(id + ' is not a directory, and rcinst file, nor an '
+                            'identity_instance_id value',
+                            logging.WARN)
+    else:
+        # Try to read a list of recipe instances from stdin
+        for line in sys.stdin:
+            # if the line starts with an identity_instance_id string, 
+            # add it to idset
+            m = re.match(r'^\s*(\d+)\s.*$', line) 
+            if m:
+                log.file('Add to idset: ' + m.group(1))
+                idset.add(m.group(1))
     
     log.file('idset = ' + repr(idset))
     log.file('rcinstset = ' + repr(rcinstset))
@@ -173,6 +185,21 @@ def run():
             proccmd += ' --debug'
         if a.keeplog or a.sharelog:
             proccmd += ' --keeplog'
+            
+        if idset:
+            # Write the contents of idset into a file and 
+            # add the file to rcinstset
+            log.console('Write idset to a file and add it to rcinstset',
+                        logging.DEBUG)
+            
+            nowstr = re.sub(r':', '', datetime.now().isoformat())
+            idsetfile = os.path.join(
+                            logdir, 
+                            'idset_' + nowstr + '.rcinst')
+            with open(idsetfile, 'w') as IDS:
+                for id in list(idset):
+                    print >>IDS, id
+            rcinstset.add(idsetfile)
             
         # submit rcinst sets to gridengine
         # compose the jcmtprocwrap command
@@ -200,21 +227,7 @@ def run():
             log.console('SUBMIT: ' + cmd)
             if not a.test:
                 mygridengine.submit(cmd, rcinstcsh, rcinstlog)
-        
-        # If any rcinst values were specified in the command line, 
-        # submit them as well
-        if idset:
-            idlist = [proccmd]
-            idlist.extend(sorted(list(idset), key=int, reverse=True))
-            cmd = ' '.join(idlist)
 
-            rcinstcsh = os.path.join(logdir, 'rcinst_list.csh')
-            rcinstlog = os.path.join(logdir, 'rcinst_list.log')
-            
-            log.console('SUBMIT: ' + cmd)
-            if not a.test:
-                mygridengine.submit(cmd, rcinstcsh, rcinstlog)
-            
     else:
         # ingest the recipe instances in subprocesses
         for rcinstfile in list(rcinstset):
@@ -273,10 +286,10 @@ def run():
                     if ext in ['.fits', '.xml', '.override']:
                         os.remove(filepath)
                                 
-                for filename in os.listdir(rcinstpath):
-                    filepath = os.path.join(rcinstpath, filename)
+                for filename in os.listdir(logdir):
+                    filepath = os.path.join(logdir, filename)
                     basename, ext = os.path.splitext(filename)
-                    if ext == '.log':
+                    if basename[0:2] == 'dp' and ext == '.log':
                         gzipcmd = 'gzip ' + filepath
                         output = subprocess.check_output(
                                             gzipcmd,
