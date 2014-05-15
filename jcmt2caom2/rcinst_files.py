@@ -10,6 +10,7 @@ import re
 import stat
 import string
 import subprocess
+import textwrap
 
 from tools4caom2.config import config
 from tools4caom2.logger import logger
@@ -28,8 +29,66 @@ def run():
     """
     userconfig = None
     userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+    
+    wrapper = textwrap.TextWrapper(initial_indent='',
+                                   subsequent_indent='')
+    description = '\n\n'.join([
+            wrapper.fill(textwrap.dedent(
+            """
+            Generate rcinst files for input to jcmtprocwrap.
+            Output goes to stdout by default, so jcmt_rcinst_files can be
+            piped to jcmtprocwrap:
+            """)),
+            'EXAMPLE: jcmt_rcinst_files --new | jcmtprocwrap --keeeplog --qsub',
+            wrapper.fill(textwrap.dedent(
+            """
+            The options --daily and --monthly generate rcinst files in the 
+            current directory that can also be picked up by jcmtprocwrap,
+            which can be useful if there are a large number of recipe instances.
+            Recipe instances will be grouped by days or months respectively.
+            """)),
+            'EXAMPLE: jcmt_rcinst_files --new --daily\n'
+            '         jcmtprocwrap --qsub --keeplog *.rcinst',
+            wrapper.fill(textwrap.dedent(
+            """
+            The list of recipe instances to be considered can be restricted 
+            with --fromset=<filepath>
+            where the file contains a list of identity_instance_id values as 
+            decimal integers, one per line as the first token on each line.
+            Lines that do not match this pattern (blank, or a token that is not
+            an integer at the start of the line) will be ignored.
+            """)),
+            wrapper.fill(textwrap.dedent(
+            """
+            The --utdate, --begin and --end arguments can be used to restrict the 
+            range of UT dates to be considered, where recipe instances are dated by 
+            the utdate for the earliest observation in their inputs.  For obs and
+            night recipe instances, this is always the utdate on which all the 
+            data was taken.
+            """)),
+            wrapper.fill(textwrap.dedent(
+            """
+            UT dates can be entered as integers in the format YYYYMMDD, or as small
+            integer offsets from the coming night, i.e. the UT date at 
+            midnight HST tonight.  Thus --utdate=0 is tonight, --utdate=1 is
+            last night, and so forth.  If none of --utdate --begin, --end, or 
+            --fromset is specified, the default is equivalent to --begin=1 --end=0.
+            """)),
+            wrapper.fill(textwrap.dedent(
+            """
+            The --new switch includes only recipe instances that are not already 
+            present in CAOM-2, or have bee reprocessed since their last ingestion.
+            """)),
+            wrapper.fill(textwrap.dedent(
+            """
+            It is possible to combine --fromset with --utdate, --begin, --end, and 
+            --new. 
+            """))])
 
-    ap = argparse.ArgumentParser('jcmt_rcinst_files')
+    ap = argparse.ArgumentParser(
+                description=description,
+                formatter_class=argparse.RawDescriptionHelpFormatter)
+    
     ap.add_argument('--userconfig',
                     default=userconfigpath,
                     help='Optional user configuration file '
@@ -52,7 +111,7 @@ def run():
                     help='file containing a list of recipe instances')
     ap.add_argument('--new',
                     action='store_true',
-                    help='include recipe instance not already in CAOM-2')
+                    help='include new or reprocessed recipe instances')
     
     # Output options, default = stdout
     ap.add_argument('--daily',
@@ -112,6 +171,14 @@ def run():
         log.console('specify either utdate or begin/end, not both',
                     logging.ERROR)
     
+    if (a.utdate is None and 
+        a.begin is None and
+        a.end is None and
+        a.fromset is None):
+        
+        a.begin = '1'
+        a.end = '0'
+    
     # if begin is present, but end is not, set end=now
     if (a.begin is not None and a.end is None):
         a.end = '0'
@@ -119,7 +186,7 @@ def run():
     # if end is present, but bot begin, set begin before start of observatory
     if (a.end is not None and a.begin is None):
         a.begin = '19880101'
-    
+            
     # utdate and begin/end can be absolute or relative to now
     now = datetime.utcnow()
     this_utdate = None
@@ -237,7 +304,7 @@ def run():
                     utdate and 
                     (not this_utdate or (this_utdate == utdate)) and
                     (not this_begin or ((this_begin <= utdate) and
-                                        (this_end >= utdate)))):
+                                        (utdate <= this_end)))):
 
                     if state != 'Y':
                         log.console('RCINST = ' + rcinst + ' has state=' + 
