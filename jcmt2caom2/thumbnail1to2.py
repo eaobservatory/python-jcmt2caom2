@@ -24,11 +24,11 @@ def thumbnail_name(collection, observationID, productID, size):
     """
     Return a properly formatted file name for a CAOM-2 thumbnail
     """
-    return '_'.join([collection,
+    return ('_'.join([collection,
                      observationID,
                      productID, 
                      'preview', 
-                     size]) + '.png'
+                     size]) + '.png').lower()
 
 class thumb1to2(object):
     """

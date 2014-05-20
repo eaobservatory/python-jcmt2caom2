@@ -7,6 +7,7 @@ import logging
 import os.path
 import re
 import stat
+import subprocess
 import sys
 
 from tools4caom2.config import config
@@ -68,7 +69,7 @@ def run():
 
     ap.add_argument('id',
                     nargs='*',
-                    help='list of directories, rcinst files, or '
+                    help='list of directories, obsid files, or '
                     'OBSID values')
     a = ap.parse_args()
 
@@ -209,6 +210,8 @@ def run():
         rawcmd = 'jcmt2Caom2DA --full'
         if a.debug:
             rawcmd += ' --debug'
+        
+        idlist = sorted(list(idset))
 
         for obsid in idlist:
             thisrawcmd = rawcmd
@@ -220,8 +223,11 @@ def run():
                                        'raw_' + obsid + '.log')
                 thisrawcmd += ' --log=' + thislog
             
-            thisrawcmd += (' --begin=' + obsid)
+            thisrawcmd += (' --start=' + obsid)
             thisrawcmd += (' --end=' + obsid)
+            thisrawcmd += ' --mode=raw'
+            thisrawcmd += (' --script=' + os.path.join(sys.path[0],
+                                                       'jcmt2caom2raw'))
         
             log.console('PROGRESS: ' + thisrawcmd)
             
@@ -242,10 +248,13 @@ def run():
                     filepath = os.path.join(cwd, filename)
                     basename, ext = os.path.splitext(filename)
                     if ext == '.xml':
+                        log.console('rm ' + filepath, logging.DEBUG)
                         os.remove(filepath)
-                                
-                gzipcmd = 'gzip ' + thislog
-                output = subprocess.check_output(
-                                    gzipcmd,
-                                    shell=True,
-                                    stderr=subprocess.STDOUT)
+
+                #if not a.sharelog:
+                #    gzipcmd = 'gzip ' + thislog
+                #    log.console(gzipcmd, logging.DEBUG)
+                #    output = subprocess.check_output(
+                #                        gzipcmd,
+                #                        shell=True,
+                #                        stderr=subprocess.STDOUT)
