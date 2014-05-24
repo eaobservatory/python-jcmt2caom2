@@ -1,6 +1,8 @@
 #!/usr/bin/env python2.7
 
 import argparse
+from ConfigParser import SafeConfigParser
+import ftplib
 import getpass
 import logging
 from PIL import Image
@@ -12,7 +14,6 @@ import subprocess
 import sys
 from threading import Event
 
-from tools4caom2.config import config
 from tools4caom2.logger import logger
 from tools4caom2.database import database
 from tools4caom2.database import connection
@@ -39,7 +40,9 @@ class thumb1to2(object):
         """
         Create a thumb1to2 object.
         """
-        self.userconfig = None
+        self.userconfig = {'server' : 'SYBASE',
+                           'caom_db': 'jcmt'}
+
         self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
 
         self.loglevel = logging.INFO
@@ -108,6 +111,9 @@ class thumb1to2(object):
                         help='beginning date to convert thumbnails')
         ap.add_argument('--end',
                         help='ending date to convert thumbnails')
+        ap.add_argument('--fromset',
+                        type=str,
+                        help='file containing a list of recipe instances')
 
         ap.add_argument('--scuba2',
                         action='store_true',
@@ -134,14 +140,13 @@ class thumb1to2(object):
                         action='store_true',
                         help='copy png files to e-transfer directory')
         
-        ap.add_argument('--user',
-                        help='username for copy to transfer directory')
         ap.add_argument('--transdir',
-                        default='/staging/proc/cadcops/jcmtdp/pickup_lowpriority',
-                        help='host name for transfer directory')
+#                        default='/staging/proc/cadcops/jcmtdp/pickup_lowpriority',
+                        default='jcmtdp/pickup_lowpriority',
+                        help='e-transfer directory')
         ap.add_argument('--transhost',
                         default='etranscache1',
-                        help='host name for transfer directory')
+                        help='host name for e-transfer directory')
         ap.add_argument('--transcount',
                         type=int,
                         default=100,
@@ -155,12 +160,50 @@ class thumb1to2(object):
                         action='store_true',
                         help='set loglevel = debug')
 
+        ap.add_argument('id',
+                        nargs='*',
+                        help='list of directories, rcinst files, or '
+                        'identity_instance_id values')
+
         a = ap.parse_args()
 
-        self.userconfig = config(args.userconfig)
-        self.userconfig['server'] = 'SYBASE'
-        self.userconfig['caom_db'] = 'jcmt'
-        self.userconfig.read()
+        # Read the user configuration
+        self.userconfigpath = os.path.abspath(
+                                os.path.expanduser(
+                                    os.path.expandvars(a.userconfig)))
+        config_parser = SafeConfigParser()
+        if os.path.isfile(self.userconfigpath):
+            with open(self.userconfigpath) as cp:
+                config_parser.readfp(cp)
+        
+        # Thumbnail credentials for e-transfer are mandatory
+        if not config_parser.has_section('thumbnail'):
+            self.log.console('userconfig sections: ' + 
+                             repr(config_parser.sections()))
+            self.log.console('userconfig does not have a thumbnail section',
+                             logging.ERROR)
+        else:
+            if (config_parser.has_option('thumbnail', 'thumb_id') and
+                config_parser.has_option('thumbnail', 'thumb_key')):
+                    
+                self.userconfig['thumb_id'] = config_parser.get('thumbnail',
+                                                                'thumb_id')
+                self.userconfig['thumb_key'] = config_parser.get('thumbnail',
+                                                                 'thumb_key')
+            else:
+                self.log.console('userconfig does not have e-transfer '
+                                 'credentials thumb_id and thumb_key',
+                                 logging.ERROR)
+        
+        # Database credentials are optional and not needed at CADC
+        if config_parser.has_section('database'):
+            if (config_parser.has_option('database', 'caom_id') and
+                config_parser.has_option('database', 'caom_key')):
+                
+                self.userconfig['credid'] = \
+                    config_parser.get('database', 'caom_id')
+                self.userconfig['caomcode'] = \
+                    config_parser.get('database', 'caom_key')
 
         self.loglevel = logging.INFO        
         if a.debug:
@@ -174,21 +217,12 @@ class thumb1to2(object):
             self.scuba2 = True
             self.loglevel = logging.DEBUG
             basename += 'scuba-2_'
-        
-        if a.obs:
-            self.obs = a.obs
-            self.logname = basename + a.obs
-        elif a.utdate:
-            self.utdate = a.utdate
-            self.logname = basename + a.utdate
-        elif a.begin and a.end:
-            self.begin = a.begin
-            self.end = a.end
-            self.logname = basename + a.begin + '_' + a.end
+            self.prod_regex = re.compile(r'(raw|reduced)-[48]50um')
         else:
-            raise RuntimeError(
-                'Must set --obs or --utdate or both of --begin and --end')
-            
+            self.prod_regex = re.compile(r'(raw|raw-hybrid|cube|reduced)-'
+                                         '(\d{6})MHz-'
+                                         '(\d+)MHzx(\d+)-[0-4]')
+        
         if a.log:
             self.logfile = os.path.abspath(
                                 os.path.expanduser(
@@ -226,36 +260,137 @@ class thumb1to2(object):
             self.transcount = a.transcount
             self.transpause = a.transpause
             
-            if a.user:
-                self.user = a.user
+        if (a.utdate is None and 
+            a.begin is None and
+            a.end is None and
+            a.fromset is None):
+            
+            a.begin = '19800101'
+            a.end = '0'
+        
+        # if begin is present, but end is not, set end=midnight
+        if (a.begin is not None and a.end is None):
+            a.end = '0'
+        
+        # if end is present, but bot begin, set begin before start of observatory
+        if (a.end is not None and a.begin is None):
+            a.begin = '19880101'
+                
+        # utdate and begin/end can be absolute or relative to midnight HST tonight
+        now = datetime.utcnow()
+        midnight = now.replace(hour=10, minute=0, second=0, microsecond=0)
+        if self.midnight < now:
+            midnight += timedelta(1)
+        
+        this_utdate = None
+        if a.utdate is not None:
+            if a.utdate > '19800101':
+                this_utdate = a.utdate
             else:
-                self.user = getpass.getuser()
+                thisutc = midnight - timedelta(int(a.utdate))
+                this_utdate = '%04d%02d%02d' % (thisutc.year, 
+                                                thisutc.month, 
+                                                thisutc.day)
+                self.log.file('%-15s= %s' % ('utdate -> ', this_utdate))
+        
+        this_begin = None
+        if a.begin is not None:
+            if a.begin > '19800101':
+                this_begin = a.begin
+            else:
+                thisutc = midnight - timedelta(int(a.begin))
+                this_begin = '%04d%02d%02d' % (thisutc.year, 
+                                               thisutc.month, 
+                                               thisutc.day)
+                self.log.file('%-15s= %s' % ('begin -> ', this_begin))
 
-        self.log.console('logfile =     ' + self.logfile)
+        this_end = None
+        if a.end is not None:
+            if a.end > '19800101':
+                this_end = a.end
+            else:
+                thisutc = midnight - timedelta(int(a.end))
+                this_end = '%04d%02d%02d' % (thisutc.year, 
+                                               thisutc.month, 
+                                               thisutc.day)
+                self.log.file('%-15s= %s' % ('end -> ', this_end))
+        
+        if this_begin and this_end and this_begin > this_end:
+            store = this_begin
+            this_begin = this_end
+            this_end = store
+
+        if a.obs:
+            self.obs = a.obs
+            self.logname = basename + a.obs
+        elif a.utdate:
+            self.utdate = a.utdate
+            self.logname = basename + a.utdate
+        elif this_begin or this_end:
+            self.logname = basename + a.begin + '_' + a.end
+            if this_begin:
+                self.begin = a.begin
+                self.logname += ('_ge' + this_begin)
+            if this_end:
+                self.end = a.end
+                self.logname += ('_le' + this_end)
+        else:
+            raise RuntimeError(
+                'Must set --obs or --utdate or both of --begin and --end')
+
+        fromset = set()
+        if a.fromset:
+            with open(a.fromset) as RCF:
+                for line in RCF:
+                    m = re.match(r'^\s*(\d+)([^\d].*)?$', line)
+                    if m:
+                        thisid = m.group(1)
+                        self.log.file('from includes: "' + thisid + '"',
+                                    logging.DEBUG)
+                        fromset.add(thisid)
+    
+        self.log.console('logfile =     ' + self.logfile, 
+                         logging.DEBUG)
         self.log.file('tools4caom2 = ' + 
-                      tools4caom2version)
+                      tools4caom2version, 
+                      logging.DEBUG)
         self.log.file('jcmt2caom2  = ' + 
-                      jcmt2caom2version)
-        self.log.file('logdir =      ' + str(self.loglevel))
-        self.log.file('pngdir =      ' + self.pngdir)
+                      jcmt2caom2version, 
+                      logging.DEBUG)
+        self.log.file('logdir =      ' + str(self.loglevel), 
+                      logging.DEBUG)
+        self.log.file('pngdir =      ' + self.pngdir, 
+                      logging.DEBUG)
         
         if self.obs:
-            self.log.file('obs =         ' + self.obs)
+            self.log.file('obs =         ' + self.obs, 
+                          logging.DEBUG)
         if self.utdate:
-            self.log.file('utdate =      ' + self.utdate)
+            self.log.file('utdate =      ' + self.utdate, 
+                          logging.DEBUG)
         if self.begin:
-            self.log.file('begin =       ' + self.begin)
-            self.log.file('end =         ' + self.end)
-        self.log.file('scuba2 =      ' + str(self.scuba2))
+            self.log.file('begin =       ' + self.begin, 
+                          logging.DEBUG)
+            self.log.file('end =         ' + self.end, 
+                          logging.DEBUG)
+        self.log.file('scuba2 =      ' + str(self.scuba2), 
+                      logging.DEBUG)
         
-        self.log.file('debug =       ' + str(self.debug))
-        self.log.file('persist =     ' + str(self.persist))
+        self.log.file('debug =       ' + str(self.debug), 
+                      logging.DEBUG)
+        self.log.file('persist =     ' + str(self.persist), 
+                      logging.DEBUG)
         if self.persist:
-            self.log.file('user     =    ' + str(self.user))
-            self.log.file('transdir  =   ' + str(self.transdir))
-            self.log.file('transhost  =  ' + str(self.transhost))
-            self.log.file('transcount  = ' + str(self.transcount))
-            self.log.file('transpause  = ' + str(self.transpause))
+            self.log.file('user     =    ' + self.userconfig['thumb_id'], 
+                          logging.DEBUG)
+            self.log.file('transdir  =   ' + str(self.transdir), 
+                          logging.DEBUG)
+            self.log.file('transhost  =  ' + str(self.transhost), 
+                          logging.DEBUG)
+            self.log.file('transcount  = ' + str(self.transcount), 
+                          logging.DEBUG)
+            self.log.file('transpause  = ' + str(self.transpause), 
+                          logging.DEBUG)
         
     def convertThumbnails(self):
         """
@@ -269,7 +404,7 @@ class thumb1to2(object):
         rawset = set([])
         procset = set([])
         daylist = []
-        
+                
         with connection(self.userconfig, self.log) as db:
             count = 0
             if self.obs:
@@ -292,14 +427,16 @@ class thumb1to2(object):
                     daylist = [str(x[0]) for x in results]
             
             if not daylist:
-                self.log.console('No entries to process')
+                self.log.console('DONE: No entries to process')
+                sys.exit(0)
             
             for day in daylist:
                 if self.logdir:
                     mylogdir = os.path.join(self.logdir, str(day))
                 else:
                     mylogdir = os.path.abspath(str(day))
-                self.log.console('PROGRESS: mkdir ' + mylogdir)
+                self.log.console('PROGRESS: mkdir ' + mylogdir, 
+                                 logging.DEBUG)
                 if not os.path.exists(mylogdir):
                     os.makedirs(mylogdir)
                         
@@ -309,7 +446,8 @@ class thumb1to2(object):
                         base, ext = os.path.splitext(f)
                         if ext == '.log':
                             ff = os.path.join(mylogdir, f)
-                            self.log.file('PROGRESS: remove ' + ff)
+                            self.log.file('PROGRESS: remove ' + ff, 
+                                          logging.DEBUG)
                             os.remove(ff)
                         
                     sqlcmd = '\n'.join([
@@ -383,6 +521,7 @@ class thumb1to2(object):
                                                      logging.WARN)
                                     self.log.file(e.output)
         
+                # This query only finds reduced planes, not raw or cube
                 sqllist = [
                     'SELECT o.observationID,',
                     '       o.algorithm_name,',
@@ -413,12 +552,26 @@ class thumb1to2(object):
                 oldprod = None
                 uridict = {}
                 
-                for obs, algorithm, prod, prov_inputs, prov_runid, uri in retvals:
+                for (obs, 
+                     algorithm, 
+                     prod, 
+                     prov_inputs, 
+                     str_prov_runid, 
+                     uri) in retvals:
+                    
+                    # runid needs to be a string representation of a decimal
+                    # identity_instance_id
+                    prov_runid = str(eval(str_prov_runid))
+                    
+                    if idset and prov_runid not in idset:
+                        # if idset has been entered, process only members
+                        break
+                     
                     self.log.file('observationID         = ' + obs)
                     self.log.file('  algorithm           = ' + algorithm)
                     self.log.file('  productID           = ' + prod)
                     if prov_inputs:
-                        self.log.file('    provenance_inputs = ' + prov_inputs,)
+                        self.log.file('    provenance_inputs = ' + prov_inputs)
                     else:
                         self.log.file('Cannot create image for raw plane because'
                                       ' provenance_inputs = NULL for ' +
@@ -426,6 +579,12 @@ class thumb1to2(object):
                                       logging.WARN)
                     self.log.file('    provenance_runID  = ' + prov_runid)
                     self.log.file('    artifact_uri      = ' + uri)
+                    
+                    if not self.prod_regex.match(prod):
+                        self.log.file('productID is not up to date so '
+                                      'skip thumbnail for: ' + obs +
+                                      ' / ' + prod)
+                        continue
                     
                     if obs not in uridict:
                         uridict[obs] = {}
@@ -443,12 +602,19 @@ class thumb1to2(object):
                         # matching a raw plane.
                         rawprod = 'zzzzzzzzz'
                         if prov_inputs:
-                            for in_uri in re.split(r'\s+', prov_inputs):
+                            # This should eliminate duplicate entries
+                            urilist = list(set(re.split(r'\s+', prov_inputs)))
+                            if len(urilist) > 1:
+                                self.log.console('more than one input plane '
+                                                 'for obsid=' + obs +
+                                                 ' prod=' + prod,
+                                                 logging.WARN) 
+                            for in_uri in urilist:
                                 this_rawprod = re.split(r'/', in_uri)[2]
-                                if re.match(r'^raw_(\w+_)?\d+$', this_rawprod):
+                                if re.match(r'^raw.+$', this_rawprod):
                                     if this_rawprod < rawprod:
                                         rawprod = this_rawprod
-                            if re.match(r'^raw_(\w+_)?\d+$', rawprod):
+                            if re.match(r'^raw.+$', rawprod):
                                 uridict[obs][prod]['rawprod'] = rawprod
                     
                     if self.scuba2:
@@ -517,6 +683,7 @@ class thumb1to2(object):
                                 shutil.copyfile(old_png, 
                                                 os.path.join(self.pngdir,
                                                              reduced_png))
+                                self.log.console('make ' + reduced_png)
                                 
                                 if 'rawprod' in uridict[obs][prod]:
                                     rawprod = uridict[obs][prod]['rawprod']
@@ -528,6 +695,7 @@ class thumb1to2(object):
                                                                  reduced_png), 
                                                     os.path.join(self.pngdir,
                                                                  raw_png))
+                                    self.log.console('make ' + raw_png)
                                 os.remove(old_png)
                                 
                             else:
@@ -591,6 +759,7 @@ class thumb1to2(object):
                                                                prod,
                                                                size))
                                 thumb.save(reduced_png)
+                                self.log.console('make ' + reduced_png)
 
                                 if 'rawprod' in uridict[obs][prod]:
                                     rawprod = uridict[obs][prod]['rawprod']
@@ -601,9 +770,10 @@ class thumb1to2(object):
                                                                    rawprod,
                                                                    size))
                                     shutil.copyfile(reduced_png, raw_png)
+                                    self.log.console('make ' + raw_png)
                         
-                                    cubeprod = re.sub(r'^reduced_(\d+)$', 
-                                                      r'cube_\1', 
+                                    cubeprod = re.sub(r'^reduced-(.+)$', 
+                                                      r'cube-\1', 
                                                       prod)
                                     cube_png = os.path.join(
                                                     self.pngdir,
@@ -612,6 +782,7 @@ class thumb1to2(object):
                                                                    cubeprod,
                                                                    size))
                                     shutil.copyfile(reduced_png, cube_png)
+                                    self.log.console('make ' + cube_png)
                     
                     # persist in batches, if requested
                     count += 1
@@ -621,31 +792,38 @@ class thumb1to2(object):
                         if self.transpause > 0.0:
                             self.timer.wait(self.transpause)
         
-        if self.persist and count:
-            self.persistpng()
+        if self.persist:
+            if count:
+                self.persistpng()
+            else:
+                self.log.console('count = 0')
             
     def persistpng(self):
         """
-        Persist png files through e-transfer.
+        Persist png files through e-transfer by using ftp to copy files
+        from pngdir to the lowpriority pickup directory.
         """
-        cmd = ' '.join(['scp', 
-                        os.path.join(self.pngdir, '*.png'),
-                        self.user + "@" + self.transhost + ":" +
-                        self.transdir])
-        self.log.console('copy png files to transdir: ' + cmd)
-        
-        try:
-            output = subprocess.check_output(cmd,
-                                             shell=True,
-                                             stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError as e:
-            output = e.output
-        if output:
-            self.log.console(output)
 
-        for f in os.listdir(self.pngdir):
-            fpath = os.path.join(self.pngdir, f)
-            os.remove(fpath)
+        try:
+            ftpclient = ftplib.FTP(self.transhost,
+                                   self.userconfig['thumb_id'],
+                                   self.userconfig['thumb_key'])
+            
+            ftpclient.cwd(self.transdir)
+            for f in os.listdir(self.pngdir):
+                basename, ext = os.path.splitext(f)
+                if ext == '.png':
+                    fpath = os.path.join(self.pngdir, f)
+                    with open(fpath, 'rb') as RB:
+                        ftpclient.storbinary('STOR ' + f, RB)
+                    os.remove(fpath)
+#            ftpclient.dir()
+            ftpclient.quit()
+                
+        except ftplib.all_errors as e:
+            self.log.console(str(e.output),
+                             logging.ERROR)
+        
 
     def run(self):
         """

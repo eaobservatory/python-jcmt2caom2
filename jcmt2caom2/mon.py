@@ -127,6 +127,7 @@ class mon(object):
         Initialize the monitor, but not the database connection.
         """
         now = datetime.utcnow()
+        # midnight HST, expressed in UTC
         self.midnight = now.replace(hour=10, minute=0, second=0, microsecond=0)
         if self.midnight > now:
             self.midnight += timedelta(-1)

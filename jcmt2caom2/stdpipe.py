@@ -313,8 +313,11 @@ class stdpipe(ingest2caom2):
                 '    o.collection,',
                 '    o.observationID,',
                 '    p.productID,',
-                '    CASE WHEN p.provenance_runID="' + run_id + \
-                    '" THEN 1 ELSE 0 END',
+                '    CASE WHEN p.provenance_runID="' + run_id + '" THEN 1',
+                '         WHEN hextobigint(p.provenance_runID)="' + run_id + \
+                '" THEN 1',
+                '         ELSE 0',
+                '    END',
                 'FROM',
                 '    ' + dbsch + '.caom2_Observation o'
                 '        INNER JOIN ' + dbsch + '.caom2_Plane p',
@@ -322,7 +325,9 @@ class stdpipe(ingest2caom2):
                 'WHERE',
                 '    o.obsID in (SELECT pp.obsID',
                 '                FROM caom2_Plane pp'
-                '                WHERE p.provenance_runID = "' + run_id + '")',
+                '                WHERE p.provenance_runID = "' + run_id + '"',
+                '                      OR hextobigint(p.provenance_runID) '
+                '= ' + run_id + ')',
                 'ORDER BY o.collection, o.observationID, p.productID'])
             result = self.conn.read(sqlcmd)
             if result:
@@ -964,9 +969,11 @@ class stdpipe(ingest2caom2):
 
             if ('DPRCINST' in header and
                 header['DPRCINST'] != pyfits.card.UNDEFINED):
-                self.add_to_plane_dict('provenance.runID',
-                                       str(header['DPRCINST']))
-                self.build_remove_dict(str(header['DPRCINST']))
+                # str(eval() converts hex values to arbitrary-size int
+                # then back to decimal string holding identity_instance_id
+                dprcinst = str(eval(header['DPRCINST']))
+                self.add_to_plane_dict('provenance.runID', dprcinst)
+                self.build_remove_dict(dprcinst)
 
             if ('DPDATE' in header and
                 header['DPDATE'] != pyfits.card.UNDEFINED):
