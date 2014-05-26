@@ -12,6 +12,7 @@ makes SYBASE access problematic.
 
 __author__ = "Russell O. Redman"
 
+from ConfigParser import SafeConfigParser
 from contextlib import contextmanager
 import datetime
 import logging
@@ -41,12 +42,12 @@ from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.timezone import UTC
 from tools4caom2.mjd import utc2mjd
 
-from jcmt2caom2.jsa.intent import intent
-from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
+from jcmt2caom2.jsa.intent import intent
 from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
+from jcmt2caom2.jsa.target_name import target_name
 
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
@@ -136,12 +137,15 @@ class stdpipe(ingest2caom2):
         ingest2caom2.__init__(self)
         self.archive = 'JCMT'
         self.stream = 'product'
-        self.server = 'SYBASE'
-        self.database = 'jcmt'
-        self.needs_connection = True
         
-        self.userconfig = None
-        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+        # Defaults are correct for CADC, but can be overriden in userconfig.
+        # Other site should also supply cred_id, cred_key.
+        self.userconfig = {'server': 'SYBASE',
+                           'cred_db': 'jcmt',
+                           'caom_db': 'jcmt',
+                           'jcmt_db': 'jcmtmd',
+                           'omp_db': 'jcmtmd'}
+        self.database = 'jcmt'
 
         # set default locations for the config files, if they can be found
         if not os.path.isdir(self.configpath):
@@ -209,21 +213,13 @@ class stdpipe(ingest2caom2):
         if self.switches.check:
             self.validitylevel = logging.WARN
 
+        self.caom_db = self.userconfig['caom_db'] + '.' + self.schema + '.'
+        self.jcmt_db = self.userconfig['jcmt_db'] + '.' + self.schema + '.'
+        self.omp_db = self.userconfig['omp_db'] + '.' + self.schema + '.'
+
         self.log.file('check                = ' + str(self.switches.check))
         self.log.file('collection           = ' + self.switches.collection)
         self.log.file('')
-
-    #************************************************************************
-    # Connect to the database for JCMT-specific metadata
-    #************************************************************************
-    def connection(self):
-        '''
-        JCMT-specific code to connect to the JSA to read additional metadata from
-        the TDM.
-        '''
-        return database(self.server,
-                        self.database,
-                        self.log)
 
     # Utility for checking missing headers
     def check_missing(self, key, head):
@@ -302,36 +298,41 @@ class stdpipe(ingest2caom2):
         current recipe instance.
         
         Arguments:
-        identity_instance_id: a bigint to be compared with 
-                              Plane.provenance_runID
+        run_id: an identity_instance_id as a decimal string to be compared 
+                with Plane.provenance_runID
         """
         if run_id not in self.remove_id:
             self.remove_id.append(run_id)
-            dbsch = '.'.join([self.database, self.schema])
             sqlcmd = '\n'.join([
                 'SELECT',
                 '    o.collection,',
                 '    o.observationID,',
                 '    p.productID,',
-                '    CASE WHEN p.provenance_runID="' + run_id + '" THEN 1',
-                '         WHEN hextobigint(p.provenance_runID)="' + run_id + \
-                '" THEN 1',
-                '         ELSE 0',
-                '    END',
+                '    p.provenance_runID',
                 'FROM',
-                '    ' + dbsch + '.caom2_Observation o'
-                '        INNER JOIN ' + dbsch + '.caom2_Plane p',
+                '    ' + self.caom_db + 'caom2_Observation o',
+                '        INNER JOIN ' + self.caom_db + 'caom2_Plane p',
                 '            ON o.obsID=p.obsID',
                 'WHERE',
-                '    o.obsID in (SELECT pp.obsID',
-                '                FROM caom2_Plane pp'
-                '                WHERE p.provenance_runID = "' + run_id + '"',
-                '                      OR hextobigint(p.provenance_runID) '
-                '= ' + run_id + ')',
+                '    o.obsID in (',
+                '        SELECT obsID',
+                '        FROM (',
+                '            SELECT ',
+                '                obsID,',
+                '                CASE WHEN charindex("x", provenance_runID) = 2', 
+                '                     THEN hextobigint(provenance_runID)',
+                '                     ELSE convert(bigint, provenance_runID)',
+                '                     END as identity_instance_id',
+                '            FROM ' + self.caom_db +'caom2_Plane',
+                '            ) s',
+                '        WHERE s.identity_instance_id = ' + run_id + ')',
                 'ORDER BY o.collection, o.observationID, p.productID'])
             result = self.conn.read(sqlcmd)
             if result:
-                for coll, obsid, prodid, eq in result:
+                for coll, obsid, prodid, run in result:
+                    this_runID = str(eval(run) if isinstance(run, str) 
+                                     else run)
+                    eq = (1 if this_runID == run_id else 0)
                     # Ignore entries in other collections
                     if coll == self.collection:
                         if coll not in self.remove_dict:
@@ -339,7 +340,7 @@ class stdpipe(ingest2caom2):
                         if obsid not in self.remove_dict[coll]:
                             self.remove_dict[coll][obsid] = {}
                         if prodid not in self.remove_dict[coll][obsid]:
-                            self.remove_dict[coll][obsid][prodid] = int(eq)
+                            self.remove_dict[coll][obsid][prodid] = eq
 
     #************************************************************************
     # archive-specific structures to write override files
@@ -549,16 +550,15 @@ class stdpipe(ingest2caom2):
                                           'for ' + obsn,
                                           logging.DEBUG)
                         else:
-                            sqlcmd = """
-                                     SELECT distinct f.obsid,
-                                                     c.release_date,
-                                                     c.date_obs,
-                                                     c.date_end
-                                     FROM jcmtmd.dbo.FILES f
-                                        inner join jcmtmd.dbo.COMMON c
-                                             on f.obsid=c.obsid
-                                     WHERE f.obsid_subsysnr = '%s'
-                                     """ % (obsn,)
+                            sqlcmd = '\n'.join([
+                                'SELECT distinct f.obsid,',
+                                '       c.release_date,',
+                                '       c.date_obs,',
+                                '       c.date_end',
+                                'FROM ' + self.jcmt_db + 'FILES f',
+                                '    INNER JOIN ' + self.jcmt_db + 'COMMON c',
+                                '        ON f.obsid=c.obsid',
+                                'WHERE f.obsid_subsysnr = "%s"' % (obsn,)])
                             result = self.conn.read(sqlcmd)
                             if len(result):
                                 obsid, release_date, date_obs, date_end = \
@@ -726,8 +726,8 @@ class stdpipe(ingest2caom2):
                 'SELECT ',
                 '    ou.uname,',
                 '    op.title',
-                'FROM jcmtmd.dbo.ompproj op',
-                '    left join jcmtmd.dbo.ompuser ou on op.pi=ou.userid',
+                'FROM ' + self.omp_db + 'ompproj op',
+                '    LEFT JOIN ' + self.omp_db + 'ompuser ou ON op.pi=ou.userid',
                 'WHERE op.projectid="%s"' % (header['PROJECT'],)])
             answer = self.conn.read(sqlcmd)
 
@@ -880,13 +880,13 @@ class stdpipe(ingest2caom2):
                 # the observation does not include hybrid mode sybsystems.
                 sqlcmd = '\n'.join(
                     ['SELECT min(a.subsysnr)',
-                     'FROM jcmtmd.dbo.ACSIS a',
+                     'FROM ' + self.omp_db + 'ACSIS a',
                      '    INNER JOIN (',
                      '        SELECT aa.obsid,',
                      '               aa.restfreq,',
                      '               aa.iffreq,',
                      '               aa.ifchansp',
-                     '        FROM jcmtmd.dbo.ACSIS aa',
+                     '        FROM ' + self.omp_db + 'ACSIS aa',
                      '        WHERE aa.obsid="%s" AND' % (header['OBSID'], ),
                      '              aa.subsysnr=%s) s' % (header['SUBSYSNR'], ),
                      '            ON a.obsid=s.obsid AND',
@@ -971,7 +971,10 @@ class stdpipe(ingest2caom2):
                 header['DPRCINST'] != pyfits.card.UNDEFINED):
                 # str(eval() converts hex values to arbitrary-size int
                 # then back to decimal string holding identity_instance_id
-                dprcinst = str(eval(header['DPRCINST']))
+                if isinstance(header['DPRCINST'], str):
+                    dprcinst = str(eval(header['DPRCINST']))
+                else:
+                    dprcinst = str(header['DPRCINST'])
                 self.add_to_plane_dict('provenance.runID', dprcinst)
                 self.build_remove_dict(dprcinst)
 

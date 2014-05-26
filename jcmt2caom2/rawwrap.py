@@ -2,6 +2,7 @@
 
 import argparse
 import commands
+from ConfigParser import SafeConfigParser
 import datetime
 import logging
 import os.path
@@ -10,11 +11,11 @@ import stat
 import subprocess
 import sys
 
-from tools4caom2.config import config
 from tools4caom2.logger import logger
 from tools4caom2.database import database
-from tools4caom2.database import connection
 from tools4caom2.gridengine import gridengine
+
+from jcmt2caom2.jsa.utdate_string import utdate_string
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
@@ -28,17 +29,11 @@ def run():
     Examples:
     rawutdate --debug --start=20100123 --end=20100131
     """
-    userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
     obsid_regex = re.compile('^\s*((acsis|scuba2|DAS|AOSC)_\d{5}_\d{8}T\d{6})')
     
     ap = argparse.ArgumentParser('jcmtrawwrap')
-    ap.add_argument('--userconfig',
-                    default=userconfigpath,
-                    help='Optional user configuration file '
-                    '(default=' + userconfigpath + ')')
-
     ap.add_argument('--log',
-                    default='jcmtrawwrap.log',
+                    default='jcmtrawwrap_' + utdate_string() + '.log',
                     help='(optional) name of log file')
     ap.add_argument('--logdir',
                     help='(optional) directory to hold log files')
@@ -73,12 +68,7 @@ def run():
                     'OBSID values')
     a = ap.parse_args()
 
-    userconfig = config(a.userconfig)
-    userconfig['server'] = 'SYBASE'
-    userconfig['caom_db'] = 'jcmt'
-    userconfig.read()
-        
-    # Open log and record switches
+        # Open log and record switches
     cwd = os.path.abspath(
                 os.path.expanduser(
                     os.path.expandvars('.')))

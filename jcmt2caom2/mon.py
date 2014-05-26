@@ -4,7 +4,7 @@
 # Import required Python modules
 #################################
 import argparse
-#import re
+from ConfigParser import SafeConfigParser
 from datetime import date
 from datetime import datetime
 from datetime import timedelta
@@ -20,7 +20,6 @@ import time
 import urllib
 import smtplib
 
-from tools4caom2.config import config
 from tools4caom2.logger import logger
 from tools4caom2.database import database
 from tools4caom2.database import connection
@@ -141,8 +140,11 @@ class mon(object):
         self.topclause = ''
         self.fileString = ''
         
-        self.userconfig = None
-        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+        self.userconfig = {'server': 'SYBASE',
+                           'cred_db': 'jcmt',
+                           'caom_db': 'jcmt',
+                           'jcmt_db': 'jcmtmd',
+                           'omp_db': 'jcmtmd'}
 
         self.log = None
         self.logdir = os.path.abspath('.')
@@ -161,7 +163,7 @@ class mon(object):
         ap = argparse.ArgumentParser('jcmt2mon')
 
         ap.add_argument('--userconfig',
-                        default=self.userconfigpath,
+                        default='~/.tools4caom2/jcmt2caom2.config',
                         help='Optional user configuration file '
                         '(default=' + self.userconfigpath + ')')
 
@@ -193,11 +195,21 @@ class mon(object):
                         help='max rows in large queries (0 = all)')
         
         args = ap.parse_args()
-        self.userconfig = config(args.userconfig)
-        self.userconfig['server'] = 'SYBASE'
-        self.userconfig['caom_db'] = 'jcmt'
-        self.userconfig.read()
+
+        if os.path.isfile(args.userconfigpath):
+            config_parser = SafeConfigParser()
+            with open(args.userconfigpath) as UC:
+                config_parser.readfp(UC)
         
+            if config_parser.has_section('database'):
+                for option in config_parser.options('database'):
+                    self.userconfig[option] = config_parser.get('database', 
+                                                                option)
+
+        self.caom_db = self.userconfig['caom_db'] + '.dbo.'
+        self.jcmt_db = self.userconfig['jcmt_db'] + '.dbo.'
+        self.omp_db = self.userconfig['omp_db'] + '.dbo.'
+
         if args.logdir:
             self.logdir = os.path.abspath(
                             os.path.expanduser(
@@ -210,7 +222,7 @@ class mon(object):
             self.date = mon.offset_utdate(self.midnight, int(args.date))
         else:
             self.date = args.date
-        self.datestring = 'utdate_eq_' + self.date
+        self.datestring = 'ut-' + self.date
             
         if args.sender:
             self.sender = args.sender
@@ -220,9 +232,8 @@ class mon(object):
             self.subject = args.subject
         
         self.logfile = '_'.join(['jcmt2mon', 
-                                 self.datestring, 
-                                 self.midnightsuffix]) \
-                       + '.log'
+                                 'today-' + self.datestring, 
+                                 utdate_string()]) + '.log'
         if args.log:
             if re.match(r'^/.*', args.log):
                 self.logfile = os.path.abspath(
@@ -250,7 +261,6 @@ class mon(object):
         if self.sender and self.to and self.subject:
             self.log.console('%-20s = %s' % ('now', self.midnight))
             self.log.console('%-20s = %s' % ('nowday', self.midnightdate))
-            self.log.console('%-20s = %s' % ('nowsuffix', self.midnightsuffix))
         self.log.console('%-20s = %s' % ('topclause', self.topclause))
         self.log.console('%-20s = %s' % ('date', self.date))
         self.log.console('%-20s = %s' % ('datestring', self.datestring))
@@ -293,8 +303,8 @@ class mon(object):
             '                c.obsid,',
             '                ISNULL(ool.commentstatus, 0) as qa,',
             '                ISNULL(ool.commentdate, "1980-01-01 00:00:00") as commentdate',
-            '            FROM jcmtmd.dbo.COMMON c',
-            '                LEFT JOIN jcmtmd.dbo.ompobslog ool',
+            '            FROM ' + self.jcmt_db + 'COMMON c',
+            '                LEFT JOIN ' + self.omp_db + 'ompobslog ool',
             '                    ON c.obsid=ool.obsid',
             '                        AND ool.obsactive = 1',
             '                        AND ool.commentstatus <= 4',
@@ -302,7 +312,7 @@ class mon(object):
             '                c.utdate=' + self.date + ') u',
             '        GROUP BY u.obsid',
             '        HAVING u.commentdate=max(u.commentdate)) s',
-            '        LEFT JOIN jcmt.dbo.caom2_Observation co',
+            '        LEFT JOIN ' + self.caom_db + 'caom2_Observation co',
             '            ON s.obsid=co.observationID) t',
             'GROUP BY t.present, t.qa',
             'ORDER BY t.present, t.qa',
@@ -335,8 +345,8 @@ class mon(object):
             '                c.date_obs,',
             '                ISNULL(ool.commentstatus, 0) as qa,',
             '                ISNULL(ool.commentdate, "1980-01-01 00:00:00") as commentdate',
-            '            FROM jcmtmd.dbo.COMMON c',
-            '                LEFT JOIN jcmtmd.dbo.ompobslog ool',
+            '            FROM ' + self.jcmt_db + 'COMMON c',
+            '                LEFT JOIN ' + self.omp_db + 'ompobslog ool',
             '                    ON c.obsid=ool.obsid',
             '                        AND ool.obsactive = 1',
             '                        AND ool.commentstatus <= 4',
@@ -360,8 +370,8 @@ class mon(object):
         # file queries need the file_id without the .sdf extension
         fileSelect = [
                 '    (SELECT substring(f.file_id, 1, len(f.file_id)-4) as file_id',
-                '     FROM jcmtmd.dbo.FILES f',
-                '         INNER JOIN jcmtmd.dbo.COMMON c',
+                '     FROM ' + self.jcmt_db + 'FILES f',
+                '         INNER JOIN ' + self.jcmt_db + 'COMMON c',
                 '             ON f.obsid=c.obsid',
                 '     WHERE c.utdate=' + self.date,
                 '    ) s']
@@ -411,7 +421,7 @@ class mon(object):
                       '    INNER JOIN ad.dbo.mfs_files m',
                       '        ON s.file_id = m.file_id',
                       '            AND m.status = "C"',
-                      '    LEFT JOIN jcmt.dbo.jcmt_received_new jrn',
+                      '    LEFT JOIN ' + self.caom_db + 'jcmt_received_new jrn',
                       '        ON s.file_id=jrn.file_id',
                       'WHERE ISNULL(jrn.received,"NULL")!="Y"',
                       'GROUP BY s.file_id',

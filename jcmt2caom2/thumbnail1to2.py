@@ -2,6 +2,7 @@
 
 import argparse
 from ConfigParser import SafeConfigParser
+from datetime import datetime
 import ftplib
 import getpass
 import logging
@@ -17,6 +18,8 @@ from threading import Event
 from tools4caom2.logger import logger
 from tools4caom2.database import database
 from tools4caom2.database import connection
+
+from jcmt2caom2.jsa.utdate_string import utdate_string
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
@@ -40,8 +43,11 @@ class thumb1to2(object):
         """
         Create a thumb1to2 object.
         """
-        self.userconfig = {'server' : 'SYBASE',
-                           'caom_db': 'jcmt'}
+        self.userconfig = {'server': 'SYBASE',
+                           'cred_db': 'jcmt',
+                           'caom_db': 'jcmt',
+                           'jcmt_db': 'jcmtmd',
+                           'omp_db': 'jcmtmd'}
 
         self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
 
@@ -54,6 +60,7 @@ class thumb1to2(object):
         self.utdate = None
         self.begin = None
         self.end = None
+        self.fromset = None
         
         self.rawingest = False
         self.procingest = False
@@ -177,40 +184,35 @@ class thumb1to2(object):
                 config_parser.readfp(cp)
         
         # Thumbnail credentials for e-transfer are mandatory
-        if not config_parser.has_section('thumbnail'):
-            self.log.console('userconfig sections: ' + 
-                             repr(config_parser.sections()))
-            self.log.console('userconfig does not have a thumbnail section',
-                             logging.ERROR)
+        # Thumbnail must supply values for thumb_is and thumb_key
+        if config_parser.has_section('thumbnail'):
+            for option in config_parser.options('thumbnail'):
+                self.userconfig[option] = config_parser.get('thumbnail', 
+                                                            option)
+            if not ('thumb_id' in self.userconfig and 
+                    'thumb_key'in self.userconfig):
+                raise RuntimeError('userconfig section [thumbnail]: '
+                                   ' must define thumb_id and thumb_key')
         else:
-            if (config_parser.has_option('thumbnail', 'thumb_id') and
-                config_parser.has_option('thumbnail', 'thumb_key')):
-                    
-                self.userconfig['thumb_id'] = config_parser.get('thumbnail',
-                                                                'thumb_id')
-                self.userconfig['thumb_key'] = config_parser.get('thumbnail',
-                                                                 'thumb_key')
-            else:
-                self.log.console('userconfig does not have e-transfer '
-                                 'credentials thumb_id and thumb_key',
-                                 logging.ERROR)
+            raise RuntimeError('userconfig sections: ' + 
+                               repr(config_parser.sections()) + 
+                               ' does not include a thumbnail section')
         
         # Database credentials are optional and not needed at CADC
         if config_parser.has_section('database'):
-            if (config_parser.has_option('database', 'caom_id') and
-                config_parser.has_option('database', 'caom_key')):
-                
-                self.userconfig['credid'] = \
-                    config_parser.get('database', 'caom_id')
-                self.userconfig['caomcode'] = \
-                    config_parser.get('database', 'caom_key')
+            for option in config_parser.options('database'):
+                self.userconfig[option] = config_parser.get('database', 
+                                                            option)
+
+        self.caom_db = self.userconfig['caom_db'] + '.dbo.'
+        self.jcmt_db = self.userconfig['jcmt_db'] + '.dbo.'
+        self.omp_db = self.userconfig['omp_db'] + '.dbo.'
 
         self.loglevel = logging.INFO        
         if a.debug:
             self.debug = True
             self.loglevel = logging.DEBUG
         
-        logname = None
         basename = 'thumbnail_'
         
         if a.scuba2:
@@ -223,36 +225,11 @@ class thumb1to2(object):
                                          '(\d{6})MHz-'
                                          '(\d+)MHzx(\d+)-[0-4]')
         
-        if a.log:
-            self.logfile = os.path.abspath(
-                                os.path.expanduser(
-                                    os.path.expandvars(self.a.log)))
-        else:
-            self.logdir = os.path.abspath(
-                                os.path.expanduser(
-                                    os.path.expandvars(a.logdir)))
-            self.logfile = os.path.join(self.logdir, self.logname + '.log')
-            
-        self.log = logger(self.logfile, loglevel=self.loglevel)
-        self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
-        self.log.file('tools4caom2version   = ' + tools4caom2version)
-        for attr in dir(a):
-            if attr != 'id' and attr[0] != '_':
-                self.log.file('%-15s= %s' % (attr, getattr(a, attr)))
-        
         if a.rawingest:
             self.rawingest = a.rawingest
         if a.procingest:
             self.procingest = a.procingest
             
-        self.pngdir = os.path.abspath(
-                        os.path.expanduser(
-                            os.path.expandvars(a.pngdir)))
-        if not os.path.exists(self.pngdir):
-            os.makedirs(self.pngdir)
-        if not os.path.isdir(self.pngdir):
-            self.log.console('png dir does not exist: ' + self.pngdir)
-        
         if a.persist:
             self.persist = True
             self.transdir = a.transdir
@@ -279,7 +256,7 @@ class thumb1to2(object):
         # utdate and begin/end can be absolute or relative to midnight HST tonight
         now = datetime.utcnow()
         midnight = now.replace(hour=10, minute=0, second=0, microsecond=0)
-        if self.midnight < now:
+        if midnight < now:
             midnight += timedelta(1)
         
         this_utdate = None
@@ -291,7 +268,6 @@ class thumb1to2(object):
                 this_utdate = '%04d%02d%02d' % (thisutc.year, 
                                                 thisutc.month, 
                                                 thisutc.day)
-                self.log.file('%-15s= %s' % ('utdate -> ', this_utdate))
         
         this_begin = None
         if a.begin is not None:
@@ -302,7 +278,6 @@ class thumb1to2(object):
                 this_begin = '%04d%02d%02d' % (thisutc.year, 
                                                thisutc.month, 
                                                thisutc.day)
-                self.log.file('%-15s= %s' % ('begin -> ', this_begin))
 
         this_end = None
         if a.end is not None:
@@ -313,7 +288,6 @@ class thumb1to2(object):
                 this_end = '%04d%02d%02d' % (thisutc.year, 
                                                thisutc.month, 
                                                thisutc.day)
-                self.log.file('%-15s= %s' % ('end -> ', this_end))
         
         if this_begin and this_end and this_begin > this_end:
             store = this_begin
@@ -327,7 +301,7 @@ class thumb1to2(object):
             self.utdate = a.utdate
             self.logname = basename + a.utdate
         elif this_begin or this_end:
-            self.logname = basename + a.begin + '_' + a.end
+            self.logname = basename
             if this_begin:
                 self.begin = a.begin
                 self.logname += ('_ge' + this_begin)
@@ -338,7 +312,34 @@ class thumb1to2(object):
             raise RuntimeError(
                 'Must set --obs or --utdate or both of --begin and --end')
 
-        fromset = set()
+        if a.log:
+            self.logfile = os.path.abspath(
+                                os.path.expanduser(
+                                    os.path.expandvars(self.a.log)))
+        else:
+            self.logdir = os.path.abspath(
+                              os.path.expanduser(
+                                  os.path.expandvars(a.logdir)))
+            self.logfile = os.path.join(self.logdir, 
+                                        self.logname + '_' + utdate_string() + 
+                                        '.log')
+            
+        self.log = logger(self.logfile, loglevel=self.loglevel)
+        self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
+        self.log.file('tools4caom2version   = ' + tools4caom2version)
+        for attr in dir(a):
+            if attr != 'id' and attr[0] != '_':
+                self.log.file('%-15s= %s' % (attr, getattr(a, attr)))
+        
+        self.pngdir = os.path.abspath(
+                        os.path.expanduser(
+                            os.path.expandvars(a.pngdir)))
+        if not os.path.exists(self.pngdir):
+            os.makedirs(self.pngdir)
+        if not os.path.isdir(self.pngdir):
+            self.log.console('png dir does not exist: ' + self.pngdir)
+        
+        self.fromset = set()
         if a.fromset:
             with open(a.fromset) as RCF:
                 for line in RCF:
@@ -347,7 +348,7 @@ class thumb1to2(object):
                         thisid = m.group(1)
                         self.log.file('from includes: "' + thisid + '"',
                                     logging.DEBUG)
-                        fromset.add(thisid)
+                        self.fromset.add(thisid)
     
         self.log.console('logfile =     ' + self.logfile, 
                          logging.DEBUG)
@@ -357,7 +358,7 @@ class thumb1to2(object):
         self.log.file('jcmt2caom2  = ' + 
                       jcmt2caom2version, 
                       logging.DEBUG)
-        self.log.file('logdir =      ' + str(self.loglevel), 
+        self.log.file('logdir =      ' + str(self.logdir), 
                       logging.DEBUG)
         self.log.file('pngdir =      ' + self.pngdir, 
                       logging.DEBUG)
@@ -413,7 +414,7 @@ class thumb1to2(object):
                 daylist = [self.utdate]
             elif self.begin and self.end:
                 sqlcmd = '\n'.join([
-                    'SELECT utdate',
+                    'SELECT DISTINCT utdate',
                     'FROM jcmtmd.dbo.COMMON',
                     'WHERE utdate >= ' + str(self.begin),
                     '      AND utdate <= ' + str(self.end)])
@@ -563,8 +564,8 @@ class thumb1to2(object):
                     # identity_instance_id
                     prov_runid = str(eval(str_prov_runid))
                     
-                    if idset and prov_runid not in idset:
-                        # if idset has been entered, process only members
+                    if self.fromset and prov_runid not in self.fromset:
+                        # if fromset has been entered, process only members
                         break
                      
                     self.log.file('observationID         = ' + obs)
@@ -596,25 +597,28 @@ class thumb1to2(object):
                     uridict[obs][prod]['runid'] = prov_runid
                     
                     if simple:
-                        # There should only be one input for a reduced plane in a
-                        # single exposure observation, but in case there are
-                        # more (bad hybrid processing) keep only the smallest
-                        # matching a raw plane.
+                        # There should only be one raw input for a reduced 
+                        # plane in a single exposure observation, but in case 
+                        # there are more (bad hybrid processing) keep only the 
+                        # smallest matching a raw plane.
                         rawprod = 'zzzzzzzzz'
                         if prov_inputs:
                             # This should eliminate duplicate entries
                             urilist = list(set(re.split(r'\s+', prov_inputs)))
-                            if len(urilist) > 1:
-                                self.log.console('more than one input plane '
-                                                 'for obsid=' + obs +
-                                                 ' prod=' + prod,
-                                                 logging.WARN) 
+                            rawcount = 0
                             for in_uri in urilist:
                                 this_rawprod = re.split(r'/', in_uri)[2]
                                 if re.match(r'^raw.+$', this_rawprod):
                                     if this_rawprod < rawprod:
+                                        rawcount += 1
                                         rawprod = this_rawprod
-                            if re.match(r'^raw.+$', rawprod):
+                            if rawcount > 1:
+                                self.log.console('more than one input plane '
+                                                 'for obsid=' + obs +
+                                                 ' prod=' + prod,
+                                                 logging.WARN) 
+
+                            if rawcount > 0:
                                 uridict[obs][prod]['rawprod'] = rawprod
                     
                     if self.scuba2:
@@ -790,6 +794,9 @@ class thumb1to2(object):
                         self.persistpng()
                         count = 0
                         if self.transpause > 0.0:
+                            self.log.console('pause for %6.0f seconds' %
+                                             (self.transpause,))
+                            self.timer.clear()
                             self.timer.wait(self.transpause)
         
         if self.persist:
@@ -803,12 +810,12 @@ class thumb1to2(object):
         Persist png files through e-transfer by using ftp to copy files
         from pngdir to the lowpriority pickup directory.
         """
-
+        self.log.console('persist png files')
         try:
             ftpclient = ftplib.FTP(self.transhost,
                                    self.userconfig['thumb_id'],
                                    self.userconfig['thumb_key'])
-            
+            pngcount = 0
             ftpclient.cwd(self.transdir)
             for f in os.listdir(self.pngdir):
                 basename, ext = os.path.splitext(f)
@@ -817,7 +824,9 @@ class thumb1to2(object):
                     with open(fpath, 'rb') as RB:
                         ftpclient.storbinary('STOR ' + f, RB)
                     os.remove(fpath)
+                    pngcount += 1
 #            ftpclient.dir()
+            self.log.console('done persisting ' + str(pngcount) + ' png files')
             ftpclient.quit()
                 
         except ftplib.all_errors as e:

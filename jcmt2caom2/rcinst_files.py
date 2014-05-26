@@ -1,7 +1,7 @@
 #!/usr/bin/env python2.7
 
 import argparse
-import commands
+from ConfigParser import SafeConfigParser
 from datetime import datetime
 from datetime import timedelta
 import logging
@@ -12,11 +12,12 @@ import string
 import subprocess
 import textwrap
 
-from tools4caom2.config import config
 from tools4caom2.logger import logger
 from tools4caom2.database import database
 from tools4caom2.database import connection
 from tools4caom2.gridengine import gridengine
+
+from jcmt2caom2.jsa.utdate_string import utdate_string
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
@@ -27,7 +28,11 @@ def run():
     files by the utdate of the earliest (alphabetiaclly smallest) input file
     in dp_file_input.
     """
-    userconfig = None
+    userconfig = {'server': 'SYBASE',
+                  'cred_db': 'jcmt',
+                  'caom_db': 'jcmt',
+                  'jcmt_db': 'jcmtmd',
+                  'omp_db': 'jcmtmd'}
     userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
     
     wrapper = textwrap.TextWrapper(initial_indent='',
@@ -123,7 +128,7 @@ def run():
 
     # logging
     ap.add_argument('--log',
-                    default='jcmt_rcinst_files.log',
+                    default='jcmt_rcinst_files_' + utdate_string() + '.log',
                     help='(optional) name of log file')
     ap.add_argument('--logdir',
                     help='(optional) directory to hold log file')
@@ -132,11 +137,20 @@ def run():
                     help='run ingestion commands in debug mode')
     a = ap.parse_args()
     
-    userconfig = config(a.userconfig)
-    userconfig['server'] = 'SYBASE'
-    userconfig['caom_db'] = 'jcmt'
-    userconfig.read()
-            
+    if os.path.isfile(a.userconfigpath):
+        config_parser = SafeConfigParser()
+        with open(a.userconfigpath) as UC:
+            config_parser.readfp(UC)
+    
+        if config_parser.has_section('database'):
+            for option in config_parser.options('database'):
+                userconfig[option] = config_parser.get('database', option)
+
+    caom_db = self.userconfig['caom_db'] + '.dbo.'
+    jcmt_db = self.userconfig['jcmt_db'] + '.dbo.'
+    omp_db = self.userconfig['omp_db'] + '.dbo.'
+
+           
     cwd = os.path.abspath(
                 os.path.expanduser(
                     os.path.expandvars('.')))
@@ -165,6 +179,7 @@ def run():
     for attr in dir(a):
         if attr != 'id' and attr[0] != '_':
             log.file('%-15s= %s' % (attr, getattr(a, attr)))
+    log.console('logfile = ' + logpath)
 
     # specifying utdate precludes begin and end
     if a.utdate and (a.begin or a.end):
@@ -277,7 +292,7 @@ def run():
             '                        ELSE convert(bigint, provenance_runID) ',
             '                   END as identity_instance_id,',
             '                   lastModified',
-            '            FROM jcmt.dbo.caom2_Plane',
+            '            FROM ' + caom_db + 'caom2_Plane',
             '            WHERE productID not like "raw%") u',
             '                ON s.identity_instance_id=u.identity_instance_id',            
             '    GROUP BY s.identity_instance_id,',

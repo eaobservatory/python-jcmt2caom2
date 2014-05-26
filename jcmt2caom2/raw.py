@@ -3,6 +3,7 @@
 __author__ = "Russell O. Redman"
 
 import argparse
+from ConfigParser import SafeConfigParser
 import errno
 import logging
 import math
@@ -47,7 +48,6 @@ from caom2.wcs.caom2_coord_range2d import CoordRange2D
 from caom2.wcs.caom2_temporal_wcs import TemporalWCS
 from caom2.caom2_enums import ProductType
 
-from tools4caom2.config import config
 from tools4caom2.database import database
 from tools4caom2.database import connection
 from tools4caom2.caom2repo_wrapper import Repository
@@ -66,6 +66,7 @@ from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.twod import TwoD
 from jcmt2caom2.jsa.threed import ThreeD
+from jcmt2caom2.jsa.utdate_string import utdate_string
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
@@ -204,7 +205,15 @@ class raw(object):
         self.loglevel = logging.INFO
         self.log = None
         
-        self.userconfig = None
+        # Defaults are correct for CADC, but can be overriden in userconfig.
+        # Other site should also supply cred_id, cred_key.
+        self.userconfig = {'server': 'SYBASE',
+                           'cred_db': 'jcmt',
+                           'caom_db': 'jcmt',
+                           'jcmt_db': 'jcmtmd',
+                           'omp_db': 'jcmtmd',
+                           'collection': 'JCMT'}
+        
         self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
 
         self.reader = ObservationReader(True)
@@ -257,12 +266,16 @@ class raw(object):
             const=logging.DEBUG)
         args = ap.parse_args()
 
-        self.userconfig = config(args.userconfig)
-        self.userconfig['server'] = 'SYBASE'
-        self.userconfig['caom_db'] = 'jcmtmd'        
-        self.userconfig['collection'] = 'JCMT'        
-        self.userconfig.read()
-                
+        if os.path.isfile(self.userconfigpath):
+            config_parser = SafeConfigParser()
+            with open(userconfigpath) as UC:
+                config_parser.readfp(UC)
+        
+            if config_parser.has_section('database'):
+                for option in config_parser.options('database'):
+                    self.userconfig[option] = config_parser.get('database', 
+                                                                option)
+
         if args.server:
             self.userconfig['server'] = args.server
             self.server = args.server
@@ -270,10 +283,11 @@ class raw(object):
             self.server = self.userconfig['server']
         
         if args.database:
-            self.userconfig['caom_db'] = args.database
+            self.userconfig['jcmt_db'] = args.database
+            self.userconfig['omp_db'] = args.database
             self.database = args.database
-        else:
-            self.database = self.userconfig['caom_db']
+        elif 'jcmt_db' in self.userconfig:
+            self.database = self.userconfig['jcmt_db']
 
         if args.collection:
             self.userconfig['collection'] = args.collection
@@ -283,7 +297,10 @@ class raw(object):
 
         self.obsid = args.key
         self.schema = args.schema
-        self.db = self.database + '.' + self.schema + '.'
+        
+        self.caom_db = self.userconfig['caom_db'] + '.' + self.schema + '.'
+        self.jcmt_db = self.userconfig['jcmt_db'] + '.' + self.schema + '.'
+        self.omp_db = self.userconfig['omp_db'] + '.' + self.schema + '.'
         
         if args.outdir:
             self.outdir = os.path.abspath(
@@ -296,9 +313,7 @@ class raw(object):
                                    os.path.expandvars(args.logdir)))
         
         if args.log:
-            self.logfile = os.path.abspath(
-                               os.path.expanduser(
-                                   os.path.expandvars(args.log)))
+            self.logfile = args.log
 
         if args.loglevel:
             self.loglevel = args.loglevel
@@ -320,7 +335,8 @@ class raw(object):
         else:
             defaultlogname = '_'.join(['caom',
                                        self.collection,
-                                       self.obsid]) + '.log'
+                                       self.obsid,
+                                       utdate_string()]) + '.log'
             if self.logdir:
                 if not os.path.isdir(self.logdir):
                     raise RuntimeError('logdir = ' + self.logdir +
@@ -365,7 +381,7 @@ class raw(object):
         """
         sqlcmd = '\n'.join(['SELECT',
                             '    count(obsid)',
-                            'FROM ' + self.db + 'COMMON',
+                            'FROM ' + self.jcmt_db + 'COMMON',
                             'WHERE',
                             '    obsid = "%s"' % (self.obsid,)])
         return self.conn.read(sqlcmd)[0][0]
@@ -389,7 +405,7 @@ class raw(object):
                                 for key in columns])
         sqlcmd = '\n'.join(['SELECT',
                             '%s' % (selection,),
-                            'FROM ' + self.db + table,
+                            'FROM ' + table,
                             'WHERE obsid = "%s"' % (self.obsid,)])
 
         answer = self.conn.read(sqlcmd)
@@ -415,9 +431,9 @@ class raw(object):
             'SELECT ',
             '    ou.uname,',
             '    op.title',
-            'FROM ' + self.db + 'COMMON c',
-            '    left join ' + self.db + 'ompproj op on c.project=op.projectid',
-            '    left join ' + self.db + 'ompuser ou on op.pi=ou.userid',
+            'FROM ' + self.jcmt_db + 'COMMON c',
+            '    left join ' + self.omp_db + 'ompproj op on c.project=op.projectid',
+            '    left join ' + self.omp_db + 'ompuser ou on op.pi=ou.userid',
             'WHERE c.obsid="%s"' % (obsid,)])
         answer = self.conn.read(sqlcmd)
 
@@ -442,7 +458,7 @@ class raw(object):
         sqlcmd = '\n'.join([
             'SELECT ',
             '    isnull(commentstatus, 0)',
-            'FROM ' + self.db + 'ompobslog',
+            'FROM ' + self.omp_db + 'ompobslog',
             'WHERE obsid="%s"' % (obsid,),
             '    AND obsactive=1',
             '    AND commentstatus <= %d' % (JCMT_QA.JUNK),
@@ -469,7 +485,7 @@ class raw(object):
             'SELECT ',
             '    obsid_subsysnr,',
             '    file_id',
-            'FROM ' + self.db + 'FILES',
+            'FROM ' + self.jcmt_db + 'FILES',
             'WHERE obsid="%s"' % (obsid,),
             'ORDER BY obsid_subsysnr, file_id'])
         answer = self.conn.read(sqlcmd)
@@ -1043,7 +1059,7 @@ class raw(object):
                              logging.ERROR)
 
         # get the dictionary of common metadata
-        common = self.query_table('COMMON',
+        common = self.query_table(self.jcmt_db + 'COMMON',
                                   raw.COMMON)
         if len(common):
             common = common[0]
@@ -1061,7 +1077,7 @@ class raw(object):
         # get a list of rows for the subsystems in this observation
         backend = common['backend']
         if backend in ['ACSIS', 'DAS', 'AOSC']:
-            subsystemlist = self.query_table('ACSIS',
+            subsystemlist = self.query_table(self.jcmt_db + 'ACSIS',
                                              raw.ACSIS)
             # Convert the list of rows into a dictionary
             subsystem = {}
@@ -1070,7 +1086,7 @@ class raw(object):
                 subsystem[subsysnr] = row
 
         elif backend == 'SCUBA-2':
-            subsystemlist = self.query_table('SCUBA2',
+            subsystemlist = self.query_table(self.jcmt_db + 'SCUBA2',
                                              raw.SCUBA2)
             # Convert the list of rows into a dictionary
             subsystem = {}

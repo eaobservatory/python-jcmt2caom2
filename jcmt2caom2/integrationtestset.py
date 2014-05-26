@@ -12,7 +12,6 @@ import urllib2
 from caom2.xml.caom2_observation_reader import ObservationReader
 from caom2.xml.caom2_observation_writer import ObservationWriter
 
-from tools4caom2.config import config
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.logger import logger
 
@@ -45,9 +44,6 @@ class integrationtestset(object):
         """
         # get xml file reader and writer, to allow insertion of the
         # time structures for chunks with WCS
-        self.userconfig = None
-        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
-
         self.reader = ObservationReader(True)
         self.writer = ObservationWriter()
         self.logfile = None
@@ -69,10 +65,6 @@ class integrationtestset(object):
         """
         ap = argparse.ArgumentParser()
         # logging options
-        ap.add_argument('--userconfig',
-                        default=self.userconfigpath,
-                        help='Optional user configuration file '
-                        '(default=' + self.userconfigpath + ')')
         ap.add_argument('--log',
                         default='integrationtestset.log',
                         help='log file for integrationtestset')
@@ -106,11 +98,6 @@ class integrationtestset(object):
             nargs='*',
             help='file(s) or container(s) to ingest')
         self.args = ap.parse_args()
-
-        self.userconfig = config(self.args.userconfig)
-        self.userconfig['server'] = 'SYBASE'
-        self.userconfig['caom_db'] = 'jcmt'
-        self.userconfig.read()
 
         self.logfile = os.path.expanduser(
                         os.path.expandvars(self.args.log))

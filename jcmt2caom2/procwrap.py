@@ -2,6 +2,7 @@
 
 import argparse
 import commands
+from ConfigParser import SafeConfigParser
 from datetime import datetime
 import logging
 import os.path
@@ -11,11 +12,10 @@ import string
 import subprocess
 import sys
 
-from tools4caom2.config import config
 from tools4caom2.logger import logger
-from tools4caom2.database import database
-from tools4caom2.database import connection
 from tools4caom2.gridengine import gridengine
+
+from jcmt2caom2.jsa.utdate_string import utdate_string
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
@@ -39,17 +39,9 @@ def run():
     jcmtprocwrap --qsub --algorithm=project
     jcmtprocwrap --qsub --backend=SCUBA-2 --existing
     """
-    userconfig = None
-    userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
-
     ap = argparse.ArgumentParser('jcmtprocwrap')
-    ap.add_argument('--userconfig',
-                    default=userconfigpath,
-                    help='Optional user configuration file '
-                    '(default=' + userconfigpath + ')')
-    
     ap.add_argument('--log',
-                    default='jcmtprocwrap.log',
+                    default='jcmtprocwrap_' + utdate_string() + '.log',
                     help='(optional) name of log file')
     ap.add_argument('--logdir',
                     help='(optional) directory to hold log and xml files')
@@ -89,11 +81,6 @@ def run():
                     help='list of directories, rcinst files, or '
                     'identity_instance_id values')
     a = ap.parse_args()
-    
-    userconfig = config(a.userconfig)
-    userconfig['server'] = 'SYBASE'
-    userconfig['caom_db'] = 'jcmt'
-    userconfig.read()
     
     if a.outdir and os.path.isdir(a.outdir):
         os.chdir(a.outdir)
