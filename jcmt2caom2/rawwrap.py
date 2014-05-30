@@ -111,27 +111,37 @@ def run():
         idset = set()
         # obsidset is a set of abspaths to obsid files
         obsidset = set()
-        for id in a.id:
-            # if id is a directory, add any obsid files it contains to obsidset
-            if os.path.isdir(id):
-                idpath = os.path.abspath(id)
-                for filename in os.listdir(idpath):
-                    basename, ext = os.path.splitext(filename)
+        if a.id:
+            for id in a.id:
+                # if id is a directory, add any obsid files in it to obsidset
+                if os.path.isdir(id):
+                    idpath = os.path.abspath(id)
+                    for filename in os.listdir(idpath):
+                        basename, ext = os.path.splitext(filename)
+                        if ext == '.obsid':
+                            obsidset.add(os.path.join(idpath, filename))
+                elif os.path.exists(id):
+                    # if id is an obsid file add it to obsidset
+                    basename, ext = os.path.splitext(id)
                     if ext == '.obsid':
-                        obsidset.add(os.path.join(idpath, filename))
-            elif os.path.exists(id):
-                # if id is an obsid file add it to obsidset
-                basename, ext = os.path.splitext(id)
-                if ext == '.obsid':
-                    obsidset.add(os.path.abspath(id))
-            elif obsid_regex.search(id):
-                # if id is an observationID string, add it to idset
+                        obsidset.add(os.path.abspath(id))
+                elif obsid_regex.search(id):
+                    # if id is an observationID string, add it to idset
+                    m = obsid_regex.search(id)
+                    idset.add(id.group[1])
+                else:
+                    log.console(id + ' is not a directory, an obsid file, '
+                                'nor an OBSID value',
+                                logging.WARN)
+        else:
+            # Try to read a list of obsids from stdin
+            for line in sys.stdin:
+                # if the line starts with an obsid string, 
+                # add it to idset
                 m = obsid_regex.search(id)
-                idset.add(id.group[1])
-            else:
-                log.console(id + ' is not a directory, and obsid file, nor an '
-                            'OBSID value',
-                            logging.WARN)
+                if m:
+                    log.file('Add to idset: ' + m.group(1))
+                    idset.add(m.group(1))
         
         log.file('idset = ' + repr(idset))
         log.file('obsidset = ' + repr(obsidset))

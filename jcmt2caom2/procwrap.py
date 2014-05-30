@@ -191,7 +191,7 @@ def run():
             
         # submit rcinst sets to gridengine
         # compose the jcmtprocwrap command
-        for rcinstfile in sorted(list(rcinstset)):
+        for rcinstfile in sorted(list(rcinstset), reverse=True):
             cmd = proccmd
             rcinstbase = os.path.basename(rcinstfile)
             rcinstlog = os.path.join(logdir, rcinstbase + '.log')
