@@ -108,6 +108,7 @@ def run():
         logpath = os.path.join(logdir, a.log)
 
     log = logger(logpath, loglevel, True)
+    log.file(sys.argv[0])
     log.file('jcmt2caom2version    = ' + jcmt2caom2version)
     log.file('tools4caom2version   = ' + tools4caom2version)
     for attr in dir(a):
@@ -162,7 +163,7 @@ def run():
     log.file('rcinstset = ' + repr(rcinstset))
     
     if a.qsub:
-        proccmd = 'jcmtprocwrap'
+        proccmd = os.path.join(sys.path[0], 'jcmtprocwrap')
         proccmd += ' --outdir=${TMPDIR}'
         if a.collection:
             proccmd += ' --collection=' + a.collection
@@ -233,7 +234,7 @@ def run():
             idlist = sorted(list(idset), key=int, reverse=True)
         
         # process one recipe instance at a time
-        proccmd = 'jcmt2caom2proc'
+        proccmd = os.path.join(sys.path[0], 'jcmt2caom2proc')
         if a.collection:
             proccmd += ' --collection=' + a.collection
         if a.big:
