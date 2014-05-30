@@ -145,7 +145,7 @@ def run():
                 
             # submit obsid sets to gridengine
             # compose the jcmtrawwrap command
-            for obsidfile in sorted(list(obsidset)):
+            for obsidfile in sorted(list(obsidset), reverse=True):
                 cmd = rawcmd
                 obsidbase = '_'.join([
                                 os.path.splitext(
@@ -182,7 +182,18 @@ def run():
 
         else:
             # ingest the recipe instances in subprocesses
-            for obsidfile in list(obsidset):
+            rawpath = os.path.join(sys.path[0], 'jcmt2caom2raw')
+            rawcmd = 'jcmt2Caom2DA --full'
+            if a.debug:
+                rawcmd += ' --debug'
+
+            # jcmt2Caom2DA does not pass --log or --logdir to 
+            # jcmt2caom2raw, so it is necessary for logdir to be the
+            # current directory
+            os.chdir(logdir)
+
+            for obsidfile in sorted(list(obsidset), reverse=True):
+                idlist = []
                 with open(obsidfile) as OF:
                     for line in OF:
                         m = obsid_regex.search(line)
@@ -190,51 +201,44 @@ def run():
                             thisid = m.group(1)
                             log.console('found ' + thisid,
                                         logging.DEBUG)
-                            idset.add(thisid)
+                            idlist.append(thisid)
 
-            rawpath = os.path.join(sys.path[0], 'jcmt2caom2raw')
-            rawcmd = 'jcmt2Caom2DA --full'
-            if a.debug:
-                rawcmd += ' --debug'
             
-            idlist = sorted(list(idset))
-
-            # jcmt2Caom2DA does not pass --log or --logdir to 
-            # jcmt2caom2raw, so it is necessary for logdir to be the
-            # current directory
-            os.chdir(logdir)
-            
-            for obsid in idlist:
-                thisrawcmd = rawcmd
-
-                # jcmt2Caom2DA does not log much and does not share a log with 
-                # jcmt2caom2raw, so append any output to the current log
-                thisrawcmd += (' --log=' + logpath)
-                thisrawcmd += (' --start=' + obsid)
-                thisrawcmd += (' --end=' + obsid)
-                thisrawcmd += ' --mode=raw'
-                thisrawcmd += (' --script=' + rawpath)
-            
-                log.console('PROGRESS: ' + thisrawcmd)
+                idlist = sorted(idlist, 
+                                key=lambda x: x.split('_')[2],
+                                reverse=True)
                 
-                if not a.test:
-                    try:
-                        output = subprocess.check_output(
-                                                    thisrawcmd,
-                                                    shell=True,
-                                                    stderr=subprocess.STDOUT)
-                    except subprocess.CalledProcessError as e:
-                        log.console('FAILED: ' + obsid,
-                                    logging.WARN)
-                        log.file('status = ' + str(e.returncode) + 
-                                 ' output = \n' + e.output)
+                for obsid in idlist:
+                    thisrawcmd = rawcmd
+
+                    # jcmt2Caom2DA only logs errors and does not share a log 
+                    # with jcmt2caom2raw, so it can share the current log
+                    thisrawcmd += (' --log=' + logpath)
+                    thisrawcmd += (' --start=' + obsid)
+                    thisrawcmd += (' --end=' + obsid)
+                    thisrawcmd += ' --mode=raw'
+                    thisrawcmd += (' --script=' + rawpath)
+                
+                    log.console('PROGRESS: ' + thisrawcmd)
                     
-                    # clean up
-                    for filename in os.listdir(cwd):
-                        filepath = os.path.join(cwd, filename)
-                        basename, ext = os.path.splitext(filename)
-                        if ext == '.xml':
-                            log.console('rm ' + filepath, logging.DEBUG)
-                            os.remove(filepath)
+                    if not a.test:
+                        try:
+                            output = subprocess.check_output(
+                                                        thisrawcmd,
+                                                        shell=True,
+                                                        stderr=subprocess.STDOUT)
+                        except subprocess.CalledProcessError as e:
+                            log.console('FAILED: ' + obsid,
+                                        logging.WARN)
+                            log.file('status = ' + str(e.returncode) + 
+                                     ' output = \n' + e.output)
+                        
+                        # clean up
+                        for filename in os.listdir(cwd):
+                            filepath = os.path.join(cwd, filename)
+                            basename, ext = os.path.splitext(filename)
+                            if ext == '.xml':
+                                log.console('rm ' + filepath, logging.DEBUG)
+                                os.remove(filepath)
 
         log.console('DONE')
