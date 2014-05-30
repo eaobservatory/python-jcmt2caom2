@@ -333,10 +333,10 @@ class raw(object):
                                os.path.expanduser(
                                    os.path.expandvars(self.logfile)))
         else:
-            defaultlogname = '_'.join(['caom',
-                                       self.collection,
-                                       self.obsid,
-                                       utdate_string()]) + '.log'
+            defaultlogname = ('-'.join(['caom',
+                                        self.collection,
+                                        self.obsid]) + 
+                              '_' + utdate_string() + '.log')
             if self.logdir:
                 if not os.path.isdir(self.logdir):
                     raise RuntimeError('logdir = ' + self.logdir +
