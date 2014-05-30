@@ -217,22 +217,6 @@ def run():
                 mygridengine.submit(cmd, rcinstcsh, rcinstlog)
 
     else:
-        # ingest the recipe instances in subprocesses
-        for rcinstfile in list(rcinstset):
-            with open(rcinstfile) as RCF:
-                for line in RCF:
-                    m = re.match(r'^\s*(\d+)([^\d].*)?$', line)
-                    if m:
-                        thisid = m.group(1)
-                        log.console('found ' + thisid,
-                                    logging.DEBUG)
-                        idset.add(thisid)
-
-        # Handle one rcinst file at a time and adjust the logdir
-        idlist = []
-        if idset:
-            idlist = sorted(list(idset), key=int, reverse=True)
-        
         # process one recipe instance at a time
         proccmd = os.path.join(sys.path[0], 'jcmt2caom2proc')
         if a.collection:
@@ -248,38 +232,43 @@ def run():
         else:
             proccmd += ' --logdir=' + logdir
             
-        for rcinst in idlist:
-            thisproccmd = proccmd
+        # ingest the recipe instances in subprocesses
+        for rcinstfile in list(rcinstset):
+            # Handle one rcinst file at a time and adjust the logdir
+            idlist = []
+            with open(rcinstfile) as RCF:
+                for line in RCF:
+                    m = re.match(r'^\s*(\d+)([^\d].*)?$', line)
+                    if m:
+                        thisid = m.group(1)
+                        log.console('found ' + thisid,
+                                    logging.DEBUG)
+                        idset.add(thisid)
 
-            thisproccmd += (' dp:' + rcinst)
+            idlist = sorted(idlist, reverse=True)
         
-            log.console('PROGRESS: ' + thisproccmd)
+            for rcinst in idlist:
+                thisproccmd = proccmd
+
+                thisproccmd += (' dp:' + rcinst)
             
-            if not a.test:
-                try:
-                    output = subprocess.check_output(
-                                                thisproccmd,
-                                                shell=True,
-                                                stderr=subprocess.STDOUT)
-                except subprocess.CalledProcessError as e:
-                    log.console('FAILED: ' + rcinst,
-                                logging.WARN)
-                    log.file('status = ' + str(e.returncode) + 
-                             ' output = \n' + e.output)
+                log.console('PROGRESS: ' + thisproccmd)
                 
-                # clean up
-                for filename in os.listdir(cwd):
-                    filepath = os.path.join(cwd, filename)
-                    basename, ext = os.path.splitext(filename)
-                    if ext in ['.fits', '.xml', '.override']:
-                        os.remove(filepath)
-                                
-                for filename in os.listdir(logdir):
-                    filepath = os.path.join(logdir, filename)
-                    basename, ext = os.path.splitext(filename)
-                    if basename[0:2] == 'dp' and ext == '.log':
-                        gzipcmd = 'gzip ' + filepath
+                if not a.test:
+                    try:
                         output = subprocess.check_output(
-                                            gzipcmd,
-                                            shell=True,
-                                            stderr=subprocess.STDOUT)
+                                                    thisproccmd,
+                                                    shell=True,
+                                                    stderr=subprocess.STDOUT)
+                    except subprocess.CalledProcessError as e:
+                        log.console('FAILED: ' + rcinst,
+                                    logging.WARN)
+                        log.file('status = ' + str(e.returncode) + 
+                                 ' output = \n' + e.output)
+                    
+                    # clean up
+                    for filename in os.listdir(cwd):
+                        filepath = os.path.join(cwd, filename)
+                        basename, ext = os.path.splitext(filename)
+                        if ext in ['.fits', '.xml', '.override']:
+                            os.remove(filepath)
