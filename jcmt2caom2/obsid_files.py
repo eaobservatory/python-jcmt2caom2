@@ -258,6 +258,7 @@ def run():
                                         logging.DEBUG)
                             fromset[thisid] = thisut
             
+        obsid_dict = {}
         retvals = None
         if a.new or a.utdate or a.begin or a.end:
             # Query the database only if necessary
@@ -349,7 +350,6 @@ def run():
                 log.console('PROGRESS: len(results) = ' + str(len(retvals)))
                 
                 jcmt_start = datetime(1980, 01, 01, 0, 0, 1)
-                obsid_dict = {}
                 if retvals:
                     log.file(repr(retvals))
                     lastmod = 0

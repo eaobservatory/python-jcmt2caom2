@@ -141,8 +141,8 @@ def run():
         rawcmd += ' --outdir=${TMPDIR}'
         if a.debug:
             rawcmd += ' --debug'
-        if a.keeplog or a.sharelog:
-            rawcmd += ' --keeplog'
+        if a.sharelog:
+            rawcmd += ' --sharelog'
             
         # submit obsid sets to gridengine
         # compose the jcmtrawwrap command
@@ -203,6 +203,10 @@ def run():
         
         idlist = sorted(list(idset))
 
+        # jcmt2Caom2DA does not pass --log or --logdir to 
+        # jcmt2caom2raw, so it is necessary to be in the logdir
+        os.chmod(logdir)
+        
         for obsid in idlist:
             thisrawcmd = rawcmd
 
