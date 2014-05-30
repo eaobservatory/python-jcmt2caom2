@@ -138,7 +138,7 @@ def run():
         
         retvals = None
         if a.qsub:
-            rawcmd = 'jcmtrawwrap'
+            rawcmd = os.path.join(sys.path[0], 'jcmtrawwrap')
             rawcmd += ' --outdir=${TMPDIR}'
             if a.debug:
                 rawcmd += ' --debug'
