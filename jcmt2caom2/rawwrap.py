@@ -95,8 +95,10 @@ def run():
         log.file('jcmt2caom2version    = ' + jcmt2caom2version)
         for attr in dir(a):
             if attr != 'id' and attr[0] != '_':
-                log.console('%-15s= %s' % (attr, getattr(a, attr)))
-        log.console('id = ' + repr(a.id))
+                log.console('%-15s= %s' % (attr, getattr(a, attr)),
+                            logging.DEBUG)
+        log.console('id = ' + repr(a.id),
+                    logging.DEBUG)
         
         if a.qsubrequirements:
             mygridengine = gridengine(log, 
