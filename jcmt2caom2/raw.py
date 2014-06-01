@@ -1173,3 +1173,4 @@ class raw(object):
                 # Be sure that every error message is logged
                 self.log.console('ERROR: ' + traceback.format_exc(),
                                  logging.ERROR)
+            self.log.console('DONE')

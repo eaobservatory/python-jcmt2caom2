@@ -272,3 +272,4 @@ def run():
                         basename, ext = os.path.splitext(filename)
                         if ext in ['.fits', '.xml', '.override']:
                             os.remove(filepath)
+    log.console('DONE')
