@@ -29,7 +29,7 @@ def run():
     Examples:
     rawutdate --debug --start=20100123 --end=20100131
     """
-    obsid_regex = re.compile('^\s*((acsis|scuba2|DAS|AOSC)_\d{5}_\d{8}T\d{6})')
+    obsid_regex = re.compile('^\s*((acsis|scuba2|DAS|AOSC)_\d{1,5}_\d{8}T\d{6})')
     utdate_str = utdate_string()
     
     ap = argparse.ArgumentParser('jcmtrawwrap')
@@ -93,6 +93,7 @@ def run():
         log.file(sys.argv[0])
         log.file('tools4caom2version   = ' + tools4caom2version)
         log.file('jcmt2caom2version    = ' + jcmt2caom2version)
+        log.console('log = ' + logpath)
         for attr in dir(a):
             if attr != 'id' and attr[0] != '_':
                 log.console('%-15s= %s' % (attr, getattr(a, attr)),
