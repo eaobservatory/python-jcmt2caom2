@@ -35,7 +35,6 @@ from caom2.wcs.caom2_temporal_wcs import TemporalWCS
 from caom2.caom2_enums import ProductType
 from caom2.caom2_simple_observation import SimpleObservation as SimpleObservation
 
-from tools4caom2.config import config
 from tools4caom2.database import database
 from tools4caom2.ingest2caom2 import ingest2caom2
 from tools4caom2.caom2repo_wrapper import Repository
@@ -1504,6 +1503,7 @@ class stdpipe(ingest2caom2):
                     'LONG',
                     'LONG-OBS',
                     'LONGSTRN',
+                    'LONPOLE',
                     'LSTEND',
                     'LSTSTART',
                     'MAP_HGHT',
@@ -1583,6 +1583,7 @@ class stdpipe(ingest2caom2):
                     'PROJECT',
                     'PROJ_ID',
                     'PRVCNT',
+                    'PV1_3',
                     'RADESYS',
                     'RADESYSA',
                     'RECIPE',
