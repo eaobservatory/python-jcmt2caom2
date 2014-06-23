@@ -278,6 +278,9 @@ class raw(object):
             const=logging.DEBUG)
         args = ap.parse_args()
 
+        if args.userconfig:
+            self.userconfigpath = args.userconfig
+        
         if os.path.isfile(self.userconfigpath):
             with open(self.userconfigpath) as UC:
                 self.userconfig.readfp(UC)

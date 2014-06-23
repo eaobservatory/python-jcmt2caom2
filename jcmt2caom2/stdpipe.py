@@ -1010,8 +1010,8 @@ class stdpipe(ingest2caom2):
 
             # ENGVERS and PIPEVERS are mandatory
             self.add_to_plane_dict('provenance.version',
-                                    header['ENGVERS'][:30] + '+' +
-                                    header['PIPEVERS'][:30])
+                                    'ENG:' + header['ENGVERS'][:25] + 
+                                    ' PIPE:' + header['PIPEVERS'][:25])
 
             if ('PRODUCER' in header and
                 header['PRODUCER'] != pyfits.card.UNDEFINED):
