@@ -28,13 +28,26 @@ def run():
     files by the utdate of the earliest (alphabetiaclly smallest) input file
     in dp_file_input.
     """
-    userconfig = {'server': 'SYBASE',
-                  'cred_db': 'jcmt',
-                  'caom_db': 'jcmt',
-                  'jcmt_db': 'jcmtmd',
-                  'omp_db': 'jcmtmd'}
+
     userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
-    
+    userconfig = SafeConfigParser()
+    # The server and cred_db are used to get database credentials at the CADC.
+    # Other sites should supply cadc_id, cadc_key in the section [cadc] of
+    # the userconfig file.
+    if not userconfig.has_section('cadc'):
+        userconfig.add_section('cadc')
+    userconfig.set('cadc', 'server', 'SYBASE')
+    userconfig.set('cadc', 'cred_db', 'jcmt')
+    userconfig.set('cadc', 'read_db', 'jcmt')
+    userconfig.set('cadc', 'write_db', 'jcmt')
+
+    # Set the site-dependent databases containing necessary tables
+    if not userconfig.has_section('jcmt'):
+        userconfig.add_section('jcmt')
+    userconfig.set('jcmt', 'caom_db', 'jcmt')
+    userconfig.set('jcmt', 'jcmt_db', 'jcmtmd')
+    userconfig.set('jcmt', 'omp_db', 'jcmtmd')
+        
     wrapper = textwrap.TextWrapper(initial_indent='',
                                    subsequent_indent='')
     description = '\n\n'.join([
@@ -127,24 +140,19 @@ def run():
                     help='(optional) directory to hold log file')
     ap.add_argument('--debug', '-d',
                     action='store_true',
-                    help='run ingestion commands in debug mode')
+                    help='run in debug mode')
     a = ap.parse_args()
     
     if a.userconfig:
         userconfigpath = a.userconfig
     
     if os.path.isfile(userconfigpath):
-        config_parser = SafeConfigParser()
         with open(userconfigpath) as UC:
-            config_parser.readfp(UC)
-    
-        if config_parser.has_section('database'):
-            for option in config_parser.options('database'):
-                userconfig[option] = config_parser.get('database', option)
+            userconfig.readfp(UC)
 
-    caom_db = userconfig['caom_db'] + '.dbo.'
-    jcmt_db = userconfig['jcmt_db'] + '.dbo.'
-    omp_db = userconfig['omp_db'] + '.dbo.'
+    caom_db = userconfig.get('jcmt', 'caom_db') + '.dbo.'
+    jcmt_db = userconfig.get('jcmt', 'jcmt_db') + '.dbo.'
+    omp_db =  userconfig.get('jcmt', 'omp_db')  + '.dbo.'
 
     cwd = os.path.abspath(
                 os.path.expanduser(
@@ -384,7 +392,7 @@ def run():
                                         utdatestr)
 
         else:
-            # on;y fromset to process
+            # only fromset to process
             log.console('PROGRESS: Sort fromset = ' + fromsetfile)
             utdatestr = 'all'
             for obsid in fromset:

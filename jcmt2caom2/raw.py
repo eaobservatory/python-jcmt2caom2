@@ -53,6 +53,7 @@ from tools4caom2.database import connection
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.mjd import utc2mjd
 from tools4caom2.logger import logger
+from tools4caom2.utdate_string import utdate_string
 import tools4caom2.__version__
 
 from jcmt2caom2.jsa.quality import JCMT_QA
@@ -66,7 +67,6 @@ from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.twod import TwoD
 from jcmt2caom2.jsa.threed import ThreeD
-from jcmt2caom2.jsa.utdate_string import utdate_string
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version

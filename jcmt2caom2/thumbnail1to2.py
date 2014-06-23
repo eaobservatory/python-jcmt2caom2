@@ -18,8 +18,7 @@ from threading import Event
 from tools4caom2.logger import logger
 from tools4caom2.database import database
 from tools4caom2.database import connection
-
-from jcmt2caom2.jsa.utdate_string import utdate_string
+from tools4caom2.utdate_string import utdate_string
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
@@ -43,13 +42,24 @@ class thumb1to2(object):
         """
         Create a thumb1to2 object.
         """
-        self.userconfig = {'server': 'SYBASE',
-                           'cred_db': 'jcmt',
-                           'caom_db': 'jcmt',
-                           'jcmt_db': 'jcmtmd',
-                           'omp_db': 'jcmtmd'}
-
+        # config object optionally contains a user configuration object
+        # this can be left undefined at the CADC, but is needed at other sites
         self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+        self.userconfig = SafeConfigParser()
+
+        if not self.userconfig.has_section('cadc'):
+            self.userconfig.add_section('cadc')
+        self.userconfig.set('cadc', 'server', 'SYBASE')
+        self.userconfig.set('cadc', 'cred_db', 'jcmt')
+        self.userconfig.set('cadc', 'read_db', 'jcmt')
+        self.userconfig.set('cadc', 'write_db', 'jcmt')
+
+        # Set the site-dependent databases containing necessary tables
+        if not self.userconfig.has_section('jcmt'):
+            self.userconfig.add_section('jcmt')
+        self.userconfig.set('jcmt', 'caom_db', 'jcmt')
+        self.userconfig.set('jcmt', 'jcmt_db', 'jcmtmd')
+        self.userconfig.set('jcmt', 'omp_db', 'jcmtmd')
 
         self.loglevel = logging.INFO
         self.logname = None
@@ -175,39 +185,24 @@ class thumb1to2(object):
         a = ap.parse_args()
 
         # Read the user configuration
-        self.userconfigpath = os.path.abspath(
-                                os.path.expanduser(
-                                    os.path.expandvars(a.userconfig)))
-        config_parser = SafeConfigParser()
-        if os.path.isfile(self.userconfigpath):
-            with open(self.userconfigpath) as cp:
-                config_parser.readfp(cp)
+        if args.userconfig:
+            self.userconfigpath = args.userconfig
         
+        if os.path.isfile(self.userconfigpath):
+            with open(self.userconfigpath) as UC:
+                self.userconfig.readfp(UC)
+
         # Thumbnail credentials for e-transfer are mandatory
         # Thumbnail must supply values for thumb_is and thumb_key
-        if config_parser.has_section('thumbnail'):
-            for option in config_parser.options('thumbnail'):
-                self.userconfig[option] = config_parser.get('thumbnail', 
-                                                            option)
-            if not ('thumb_id' in self.userconfig and 
-                    'thumb_key'in self.userconfig):
-                raise RuntimeError('userconfig section [thumbnail]: '
-                                   ' must define thumb_id and thumb_key')
-        else:
-            raise RuntimeError('userconfig sections: ' + 
-                               repr(config_parser.sections()) + 
-                               ' does not include a thumbnail section')
+        if not (self.userconfig.has_option('thumbnail', 'thumb_id') and
+                self.userconfig.has_option('thumbnail', 'thumb_key')):
+            raise RuntimeError('userconfig section [thumbnail]: '
+                               ' must define thumb_id and thumb_key')
         
-        # Database credentials are optional and not needed at CADC
-        if config_parser.has_section('database'):
-            for option in config_parser.options('database'):
-                self.userconfig[option] = config_parser.get('database', 
-                                                            option)
-
-        self.caom_db = self.userconfig['caom_db'] + '.dbo.'
-        self.jcmt_db = self.userconfig['jcmt_db'] + '.dbo.'
-        self.omp_db = self.userconfig['omp_db'] + '.dbo.'
-
+        self.caom_db = self.userconfig.get('jcmt', 'caom_db') + '.dbo.'
+        self.jcmt_db = self.userconfig.get('jcmt', 'jcmt_db') + '.dbo.'
+        self.omp_db =  self.userconfig.get('jcmt', 'omp_db')  + '.dbo.'
+        
         self.loglevel = logging.INFO        
         if a.debug:
             self.debug = True
@@ -382,7 +377,8 @@ class thumb1to2(object):
         self.log.file('persist =     ' + str(self.persist), 
                       logging.DEBUG)
         if self.persist:
-            self.log.file('user     =    ' + self.userconfig['thumb_id'], 
+            self.log.file('user     =    ' + self.userconfig.get('thumbnail', 
+                                                                 'thumb_id'), 
                           logging.DEBUG)
             self.log.file('transdir  =   ' + str(self.transdir), 
                           logging.DEBUG)
@@ -813,8 +809,8 @@ class thumb1to2(object):
         self.log.console('persist png files')
         try:
             ftpclient = ftplib.FTP(self.transhost,
-                                   self.userconfig['thumb_id'],
-                                   self.userconfig['thumb_key'])
+                                   self.userconfig.get('thumbnail', 'thumb_id'),
+                                   self.userconfig.get('thumbnail', 'thumb_key'))
             pngcount = 0
             ftpclient.cwd(self.transdir)
             for f in os.listdir(self.pngdir):

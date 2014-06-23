@@ -91,21 +91,14 @@ def jcmtcmp(f1, f2):
         print f1, f2
         raise
     
-    
-    if re.match(r'[a-z]+\d{3}', prod1):
-        tile1 = prod1[-3:]
-        prod1 = prod1[:-3]
-    else:
-        tile1 = ''
+    m1 = re.match(r'([a-z]+)(\d*)', prod1)
+    prod1, tile1 = m1.groups()
     text1 = orderasn[date1[0:5]][asntype1] + date1 + obs1 + subsys1 + tile1
 
     (date2, obs2, subsys2, prod2, asntype2, version2) = \
         re.split(r'_', os.path.splitext(os.path.basename(f2))[0])
-    if re.match(r'[a-z]+\d{3}', prod2):
-        tile2 = prod2[-3:]
-        prod2 = prod2[:-3]
-    else:
-        tile2 = ''
+    m2 = re.match(r'([a-z]+)(\d*)', prod1)
+    prod2, tile2 = m2.groups()
     text2 = orderasn[date2[0:5]][asntype2] + date2 + obs2 + subsys2 + tile2
 
     val = cmp(orderprod[prod1], orderprod[prod2])
@@ -141,11 +134,12 @@ class stdpipe(ingest2caom2):
         self.archive = 'JCMT'
         self.stream = 'product'
         
-        # These defaults are correct for CADC, but can be overriden in userconfig.
-                
+        # These defaults are for CADC use, but can be overriden in userconfig.
+
         # The server and cred_db are used to get database credentials at the CADC.
         # Other sites should supply cadc_id, cadc_key in the section [cadc] of
         # the userconfig file.
+        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
         if not self.userconfig.has_section('cadc'):
             self.userconfig.add_section('cadc')
         self.userconfig.set('cadc', 'server', 'SYBASE')
@@ -438,6 +432,7 @@ class stdpipe(ingest2caom2):
                      'OBSGEO-X',
                      'OBSGEO-Y',
                      'OBSGEO-Z',
+                     'ENGVERS',
                      'PIPEVERS',
                      'PROCVERS',
                      'PRODUCT',
@@ -1013,10 +1008,10 @@ class stdpipe(ingest2caom2):
             self.add_to_plane_dict('provenance.project',
                                    'JCMT_STANDARD_PIPELINE')
 
-            if ('ENGVERS' in header and
-                header['ENGVERS'] != pyfits.card.UNDEFINED):
-                self.add_to_plane_dict('provenance.version',
-                                       header['ENGVERS'])
+            # ENGVERS and PIPEVERS are mandatory
+            self.add_to_plane_dict('provenance.version',
+                                    header['ENGVERS'][:30] + '+' +
+                                    header['PIPEVERS'][:30])
 
             if ('PRODUCER' in header and
                 header['PRODUCER'] != pyfits.card.UNDEFINED):

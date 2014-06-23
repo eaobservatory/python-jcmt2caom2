@@ -23,6 +23,7 @@ import smtplib
 from tools4caom2.logger import logger
 from tools4caom2.database import database
 from tools4caom2.database import connection
+from tools4caom2.utdate_string import utdate_string
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
@@ -84,9 +85,10 @@ backend = {'ACSIS'  : 'ACSIS',
            'DAS' : 'DAS',
            'SCUBA2' : 'SCUBA-2'}
 
-productList = {'ACSIS'  : ['cube', 'reduced', 'rimg', 'rsp'],
+productList = {'ACSIS'  : ['cube', 'reduced', 'rimg', 'rsp',
+                           'healpix', 'hpxrsp', 'hpxrimg'],
                'DAS'  : ['cube', 'reduced', 'rimg', 'rsp'],
-               'SCUBA2' : ['reduced'] }
+               'SCUBA2' : ['reduced', 'healpix', 'hpxrimg'] }
                
 associationList = ['obs', 'nit', 'pro', 'pub']
 
@@ -140,11 +142,24 @@ class mon(object):
         self.topclause = ''
         self.fileString = ''
         
-        self.userconfig = {'server': 'SYBASE',
-                           'cred_db': 'jcmt',
-                           'caom_db': 'jcmt',
-                           'jcmt_db': 'jcmtmd',
-                           'omp_db': 'jcmtmd'}
+        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+        self.userconfig = SafeConfigParser()
+        # The server and cred_db are used to get database credentials at the CADC.
+        # Other sites should supply cadc_id, cadc_key in the section [cadc] of
+        # the userconfig file.
+        if not self.userconfig.has_section('cadc'):
+            self.userconfig.add_section('cadc')
+        self.userconfig.set('cadc', 'server', 'SYBASE')
+        self.userconfig.set('cadc', 'cred_db', 'jcmt')
+        self.userconfig.set('cadc', 'read_db', 'jcmt')
+        self.userconfig.set('cadc', 'write_db', 'jcmt')
+
+        # Set the site-dependent databases containing necessary tables
+        if not self.userconfig.has_section('jcmt'):
+            self.userconfig.add_section('jcmt')
+        self.userconfig.set('jcmt', 'caom_db', 'jcmt')
+        self.userconfig.set('jcmt', 'jcmt_db', 'jcmtmd')
+        self.userconfig.set('jcmt', 'omp_db', 'jcmtmd')
 
         self.log = None
         self.logdir = os.path.abspath('.')
@@ -163,7 +178,7 @@ class mon(object):
         ap = argparse.ArgumentParser('jcmt2mon')
 
         ap.add_argument('--userconfig',
-                        default='~/.tools4caom2/jcmt2caom2.config',
+                        default=self.userconfigpath,
                         help='Optional user configuration file '
                         '(default=' + self.userconfigpath + ')')
 
@@ -196,19 +211,16 @@ class mon(object):
         
         args = ap.parse_args()
 
-        if os.path.isfile(args.userconfigpath):
-            config_parser = SafeConfigParser()
-            with open(args.userconfigpath) as UC:
-                config_parser.readfp(UC)
+        if args.userconfig:
+            self.userconfigpath = args.userconfig
         
-            if config_parser.has_section('database'):
-                for option in config_parser.options('database'):
-                    self.userconfig[option] = config_parser.get('database', 
-                                                                option)
+        if os.path.isfile(self.userconfigpath):
+            with open(self.userconfigpath) as UC:
+                self.userconfig.readfp(UC)
 
-        self.caom_db = self.userconfig['caom_db'] + '.dbo.'
-        self.jcmt_db = self.userconfig['jcmt_db'] + '.dbo.'
-        self.omp_db = self.userconfig['omp_db'] + '.dbo.'
+        self.caom_db = self.userconfig.get('jcmt', 'caom_db') + '.dbo.'
+        self.jcmt_db = self.userconfig.get('jcmt', 'jcmt_db') + '.dbo.'
+        self.omp_db =  self.userconfig.get('jcmt', 'omp_db')  + '.dbo.'
 
         if args.logdir:
             self.logdir = os.path.abspath(
