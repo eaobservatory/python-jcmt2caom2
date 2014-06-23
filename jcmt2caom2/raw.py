@@ -189,6 +189,29 @@ class raw(object):
         Arguments:
         outdir:      working directory for output files
         """
+        self.exedir = os.path.abspath(os.path.dirname(sys.argv[0]))
+        self.configpath = os.path.abspath(self.exedir + '/../config')
+
+        # config object optionally contains a user configuration object
+        # this can be left undefined at the CADC, but is needed at other sites
+        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+
+        self.userconfig = SafeConfigParser()
+
+        if not self.userconfig.has_section('cadc'):
+            self.userconfig.add_section('cadc')
+        self.userconfig.set('cadc', 'server', 'SYBASE')
+        self.userconfig.set('cadc', 'cred_db', 'jcmt')
+        self.userconfig.set('cadc', 'read_db', 'jcmt')
+        self.userconfig.set('cadc', 'write_db', 'jcmt')
+
+        # Set the site-dependent databases containing necessary tables
+        if not self.userconfig.has_section('jcmt'):
+            self.userconfig.add_section('jcmt')
+        self.userconfig.set('jcmt', 'caom_db', 'jcmt')
+        self.userconfig.set('jcmt', 'jcmt_db', 'jcmtmd')
+        self.userconfig.set('jcmt', 'omp_db', 'jcmtmd')
+        
         self.outdir = os.path.abspath(
                           os.path.expanduser(
                               os.path.expandvars(outdir)))
@@ -205,17 +228,6 @@ class raw(object):
         self.loglevel = logging.INFO
         self.log = None
         
-        # Defaults are correct for CADC, but can be overriden in userconfig.
-        # Other site should also supply cred_id, cred_key.
-        self.userconfig = {'server': 'SYBASE',
-                           'cred_db': 'jcmt',
-                           'caom_db': 'jcmt',
-                           'jcmt_db': 'jcmtmd',
-                           'omp_db': 'jcmtmd',
-                           'collection': 'JCMT'}
-        
-        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
-
         self.reader = ObservationReader(True)
         self.writer = ObservationWriter()
         self.conn = None
@@ -267,40 +279,33 @@ class raw(object):
         args = ap.parse_args()
 
         if os.path.isfile(self.userconfigpath):
-            config_parser = SafeConfigParser()
-            with open(userconfigpath) as UC:
-                config_parser.readfp(UC)
+            with open(self.userconfigpath) as UC:
+                self.userconfig.readfp(UC)
         
-            if config_parser.has_section('database'):
-                for option in config_parser.options('database'):
-                    self.userconfig[option] = config_parser.get('database', 
-                                                                option)
-
         if args.server:
-            self.userconfig['server'] = args.server
             self.server = args.server
         else:
-            self.server = self.userconfig['server']
+            self.server = self.userconfig.get('cadc', 'server')
         
         if args.database:
-            self.userconfig['jcmt_db'] = args.database
-            self.userconfig['omp_db'] = args.database
+            self.userconfig.set('cadc', 'jcmt_db', args.database)
+            self.userconfig.set('cadc', 'omp_db', args.database)
             self.database = args.database
-        elif 'jcmt_db' in self.userconfig:
-            self.database = self.userconfig['jcmt_db']
+        elif self.userconfig.has_option('jcmt', 'jcmt_db'):
+            self.database = self.userconfig.get('jcmt', 'jcmt_db')
 
         if args.collection:
-            self.userconfig['collection'] = args.collection
             self.collection = args.collection
-        else:
-            self.collection = self.userconfig['collection']
 
         self.obsid = args.key
         self.schema = args.schema
         
-        self.caom_db = self.userconfig['caom_db'] + '.' + self.schema + '.'
-        self.jcmt_db = self.userconfig['jcmt_db'] + '.' + self.schema + '.'
-        self.omp_db = self.userconfig['omp_db'] + '.' + self.schema + '.'
+        self.caom_db = (self.userconfig.get('jcmt', 'caom_db') + '.' + 
+                        self.schema + '.')
+        self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' + 
+                        self.schema + '.')
+        self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' + 
+                       self.schema + '.')
         
         if args.outdir:
             self.outdir = os.path.abspath(

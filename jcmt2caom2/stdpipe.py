@@ -63,7 +63,11 @@ def jcmtcmp(f1, f2):
     orderprod = {'cube': 1,
                  'reduced': 2,
                  'rimg': 3,
-                 'rsp': 4}
+                 'rsp': 4,
+                 'healpix': 5,
+                 'hpxrimg': 6,
+                 'hpxrsp': 7
+                 }
     
     # Associations will be ingested in "reverse" order for heteroyne data, 
     # i.e. all nit, pro and pub products will be ingested before obs products,
@@ -137,16 +141,30 @@ class stdpipe(ingest2caom2):
         self.archive = 'JCMT'
         self.stream = 'product'
         
-        # Defaults are correct for CADC, but can be overriden in userconfig.
-        # Other site should also supply cred_id, cred_key.
-        self.userconfig = {'server': 'SYBASE',
-                           'cred_db': 'jcmt',
-                           'caom_db': 'jcmt',
-                           'jcmt_db': 'jcmtmd',
-                           'omp_db': 'jcmtmd'}
+        # These defaults are correct for CADC, but can be overriden in userconfig.
+                
+        # The server and cred_db are used to get database credentials at the CADC.
+        # Other sites should supply cadc_id, cadc_key in the section [cadc] of
+        # the userconfig file.
+        if not self.userconfig.has_section('cadc'):
+            self.userconfig.add_section('cadc')
+        self.userconfig.set('cadc', 'server', 'SYBASE')
+        self.userconfig.set('cadc', 'cred_db', 'jcmt')
+        self.userconfig.set('cadc', 'read_db', 'jcmt')
+        self.userconfig.set('cadc', 'write_db', 'jcmt')
+
+        # Set the site-dependent databases containing necessary tables
+        if not self.userconfig.has_section('jcmt'):
+            self.userconfig.add_section('jcmt')
+        self.userconfig.set('jcmt', 'caom_db', 'jcmt')
+        self.userconfig.set('jcmt', 'jcmt_db', 'jcmtmd')
+        self.userconfig.set('jcmt', 'omp_db', 'jcmtmd')
+        
+        # This is needed for compatability with other uses of ingest2caom2, but
+        # should not be used for the JCMT.
         self.database = 'jcmt'
 
-        # set default locations for the config files, if they can be found
+        # set default locations for the fits2caom2 config files
         if not os.path.isdir(self.configpath):
             raise RuntimeError('The config directory ' + self.configpath +
                                ' does not exist')
@@ -176,15 +194,6 @@ class stdpipe(ingest2caom2):
         # Log level for validity checking
         self.validitylevel = logging.ERROR
 
-        # Append additional arguments to the list of command line switches
-        self.arg.add_argument('--check',
-                              action='store_true',
-                              help='Only do the validity tests for a FITS file')
-        self.arg.add_argument('--collection',
-                              choices=('JCMT', 'SANDBOX'),
-                              default='JCMT',
-                              help='collection to use for ingestion')
-
         # get xml file reader and writer, to allow insertion of the
         # time structures for chunks with WCS
         self.reader = ObservationReader(True)
@@ -197,7 +206,50 @@ class stdpipe(ingest2caom2):
         self.repository = None
 
     #************************************************************************
-    # Include the custome command line switch in the log
+    # Add the custom command line switchs
+    #************************************************************************
+    def defineCommandLineSwitches(self):
+        """
+        Add some JSA-specific switches
+
+        Arguments:
+        <none>
+        """
+        ingest2caom2.defineCommandLineSwitches(self)
+        # Append additional arguments to the list of command line switches
+        self.ap.add_argument('--check',
+                             action='store_true',
+                             help='Only do the validity tests for a FITS file')
+        self.ap.add_argument('--collection',
+                             choices=('JCMT', 'SANDBOX'),
+                             default='JCMT',
+                             help='collection to use for ingestion')
+
+    #************************************************************************
+    # Process the custom command line switchs
+    #************************************************************************
+    def processCommandLineSwitches(self):
+        """
+        Process some JSA-specific switches
+
+        Arguments:
+        <none>
+        """
+        ingest2caom2.processCommandLineSwitches(self)
+        if self.switches.check:
+            self.validitylevel = logging.WARN
+
+        self.collection = self.switches.collection
+        
+        self.caom_db = (self.userconfig.get('jcmt', 'caom_db') + '.' + 
+                        self.schema + '.')
+        self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' + 
+                        self.schema + '.')
+        self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' + 
+                       self.schema + '.')
+
+    #************************************************************************
+    # Include the custom command line switch in the log
     #************************************************************************
     def logCommandLineSwitches(self):
         """
@@ -206,19 +258,9 @@ class stdpipe(ingest2caom2):
         Arguments:
         <none>
         """
-        self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
         ingest2caom2.logCommandLineSwitches(self)
-
-        if self.switches.check:
-            self.validitylevel = logging.WARN
-
-        self.caom_db = self.userconfig['caom_db'] + '.' + self.schema + '.'
-        self.jcmt_db = self.userconfig['jcmt_db'] + '.' + self.schema + '.'
-        self.omp_db = self.userconfig['omp_db'] + '.' + self.schema + '.'
-
-        self.log.file('check                = ' + str(self.switches.check))
-        self.log.file('collection           = ' + self.switches.collection)
-        self.log.file('')
+        self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
+        self.log.console('collection = ' + repr(self.collection))
 
     # Utility for checking missing headers
     def check_missing(self, key, head):
@@ -705,8 +747,6 @@ class stdpipe(ingest2caom2):
         # Only get here if NOT in check mode
         # Begin real ingestion
         #----------------------------------------------------------------------
-        self.collection = self.switches.collection
-        
         # Determine whether this is a simple or composite observation
         self.add_to_plane_dict('algorithm.name', algorithm)
         if algorithm != 'exposure':
@@ -852,7 +892,24 @@ class stdpipe(ingest2caom2):
 
         # Plane metadata
         product = header['PRODUCT']
-        if header['INSTRUME'] == 'SCUBA-2':
+        if ('PRODID' in header and 
+            header['PRODID'] != pyfits.card.UNDEFINED and
+            header['PRODID']):
+            self.productID = header['PRODID']
+            self.log.console('productID = ' + self.productID,
+                             logging.DEBUG)
+            if product == 'cube':
+                self.add_to_plane_dict('plane.calibrationLevel',
+                                       str(CalibrationLevel.RAW_STANDARD.value))
+            elif product in['reduced', 'rsp', 'rimg']: 
+                self.add_to_plane_dict('plane.calibrationLevel',
+                                       str(CalibrationLevel.CALIBRATED.value))
+            elif product in ['healpix', 'hpxrsp', 'hpxrimg', 
+                             'pointcat', 'extendcat', 'peakcat', 'clumpcat']:
+                self.add_to_plane_dict('plane.calibrationLevel',
+                                       str(CalibrationLevel.PRODUCT.value))
+            
+        elif header['INSTRUME'] == 'SCUBA-2':
             self.productID = product_id('SCUBA-2', self.log,
                                         product=product,
                                         filter=str(header['FILTER']))
@@ -1003,17 +1060,22 @@ class stdpipe(ingest2caom2):
                 for prvn in list(prvrawset):
                     # prvn only added to prvrawset if it is in provenance_cache
                     prv_obsID, prv_prodID = self.provenance_cache[prvn]
+                    self.log.console('collection='+repr(self.collection) +
+                                     '  prv_obsID=' + repr(prv_obsID) +  #####
+                                     '  prv_prodID=' + repr(prv_prodID),
+                                     logging.DEBUG)  
                     self.planeURI(self.collection,
                                   prv_obsID,
                                   prv_prodID)
                              
-        max_release_date_str = max_release_date.isoformat()
-        self.add_to_plane_dict('obs.metaRelease',
-                               max_release_date_str)
-        self.add_to_plane_dict('plane.metaRelease',
-                               max_release_date_str)
-        self.add_to_plane_dict('plane.dataRelease',
-                               max_release_date_str)
+        if product in ['reduced', 'cube']:
+            max_release_date_str = max_release_date.isoformat()
+            self.add_to_plane_dict('obs.metaRelease',
+                                   max_release_date_str)
+            self.add_to_plane_dict('plane.metaRelease',
+                                   max_release_date_str)
+            self.add_to_plane_dict('plane.dataRelease',
+                                   max_release_date_str)
         
         # Chunk
         if header['BACKEND'] in ('SCUBA-2',):
