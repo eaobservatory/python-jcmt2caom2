@@ -261,6 +261,7 @@ class raw(object):
 
         ap.add_argument('--collection',
             choices=('JCMT', 'SANDBOX'),
+            default='JCMT',
             help='collection to use for ingestion')
 
         ap.add_argument('-c', '--check',
