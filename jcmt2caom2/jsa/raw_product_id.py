@@ -77,7 +77,7 @@ def raw_product_id(backend, context, obsid, conn, log):
                      '        ON a.obsid=aa.obsid',
                      '        AND a.specid=aa.specid',
                      'WHERE a.obsid = "%s"' % (obsid,),
-                     'GROUP BY a.subsysnr, a.specid'])
+                     'GROUP BY a.subsysnr, a.restfreq, a.bwmode, a.specid'])
         else:
             log.console('backend = ' + backend + ' is not supported',
                         logging.ERROR)
