@@ -360,7 +360,7 @@ def run():
                 if retvals:
                     log.file(repr(retvals))
                     lastmod = 0
-                    caommod = 0
+                    caommod = datetime(1979, 12, 31, 23, 59, 59)
                     quality = 0
                     update = True
                     for row in retvals:
