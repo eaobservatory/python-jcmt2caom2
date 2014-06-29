@@ -119,14 +119,14 @@ class raw_ingestion(tovos):
                        vosroot + '/raw_ingestion', 
                        log)
         self.regex = re.compile(r'(?P<root>'
-                                 '(ERRORS_)?(JUNK_|WARNINGS_)'
                                  'caom-(?P<collection>[^-]+)-'
                                  '(?P<instrument>[^_]+)_'
                                  '(?P<obsnum>\d+)_'
                                  '(?P<utdate>\d{8})[tT]'
                                  '(?P<uttime>\d{6})'
                                  ')_' + 
-                                 UTDATE_REGEX)
+                                 UTDATE_REGEX +
+                                 '(_ERRORS)?(_JUNK|_WARNINGS)')
         self.copy = {}
 
     def match(self, path):
@@ -198,11 +198,11 @@ class stdpipe_ingestion(tovos):
                        vosroot + '/proc_ingestion', 
                        log)
         self.regex = re.compile(r'(?P<root>'
-                                 '(ERRORS_)?(WARNINGS_)?'
                                  'dp_'
                                  '(?P<rcinst>[^_]+)'
                                  ')_+' + 
-                                 UTDATE_REGEX)
+                                 UTDATE_REGEX +
+                                 '(_ERRORS)?(_WARNINGS)?')
         self.copy = {}
 
     def match(self, path):

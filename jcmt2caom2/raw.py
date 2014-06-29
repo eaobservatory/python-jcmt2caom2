@@ -1211,28 +1211,28 @@ class raw(object):
                                          logging.ERROR)
                     except Exception as p:
                         pass
-            
-            logtext = self.log.get_text()
-            if self.errors:
-                prefix = 'ERROR_'
-            if self.junk:
-                prefix = prefix + 'JUNK_'
-            elif self.warnings:
-                prefix = prefix + 'WARNING_'
         
         # beware that errors after this are not logged
         if self.collection == 'JCMT' and not self.checkmode:
             self.voscopy = tovos.raw_ingestion(vos.Client(),
                                                self.vosroot)
+            logsuffix = ''
+            if self.errors:
+                logsuffix = '_ERRORS'
+            if self.junk:
+                logsuffix += '_JUNK'
+            elif self.warnings:
+                logsuffix += '_WARNINGS'
+                
             logcopy = self.logfile
-            if prefix:
-                logdir = os.path.dirname(self.logfile)
-                basename = prefix + os.path.basename(self.logfile)
-                logcopy = os.path.join(logdir, basename)
+            if logsuffix:
+                logid, ext = os.path.splitext(self.logfile)
+                logcopy = logid + logsuffix + ext
                 shutil.copy(self.logfile, logcopy)
-            self.voscopy.match(logcopy)
-            if prefix:
-                os.remove(logcopy)
 
+            self.voscopy.match(logcopy)
             self.voscopy.push()
+
+            if logsuffix:
+                os.remove(logcopy)
                 

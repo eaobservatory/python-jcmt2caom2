@@ -1415,22 +1415,21 @@ class stdpipe(ingest2caom2):
                                                    self.vosroot)
             
             logcopy = self.logfile
-            logprefix = ''
+            logsuffix = ''
             if self.errors:
-                logprefix = 'ERRORS_'
+                logsuffix = '_ERRORS'
             if self.warnings:
-                logprefix += 'WARNINGS_'
+                logsuffix += '_WARNINGS'
                 
-            if logprefix:
-                logdir = os.path.dirname(self.logfile)
-                logbase = logprefix + os.path.basename(self.logfile)
-                logcopy = os.path.join(logdir, logbase)
+            if logsuffix:
+                logid, ext = os.path.splitext(self.logfile)
+                logcopy = logid + logsuffix + ext
                 shutil.copy(self.logfile, logcopy)
 
             self.voscopy.match(logcopy)
             self.voscopy.push()
 
-            if logprefix:
+            if logsuffix:
                 os.remove(logcopy)
         
         ingest2caom2.cleanup(self)
