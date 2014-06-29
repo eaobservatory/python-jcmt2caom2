@@ -19,7 +19,9 @@ import logging
 import os.path
 import pyfits
 import re
+import shutil
 import string
+import vos
 
 from caom2.xml.caom2_observation_reader import ObservationReader
 from caom2.xml.caom2_observation_writer import ObservationWriter
@@ -47,6 +49,8 @@ from jcmt2caom2.jsa.intent import intent
 from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.target_name import target_name
+
+from jcmt2caom2 import tovos 
 
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
@@ -133,6 +137,9 @@ class stdpipe(ingest2caom2):
         ingest2caom2.__init__(self)
         self.archive = 'JCMT'
         self.stream = 'product'
+        
+        self.voscopy = None
+        self.vosroot = 'vos:jsaops'
         
         # These defaults are for CADC use, but can be overriden in userconfig.
 
@@ -276,6 +283,8 @@ class stdpipe(ingest2caom2):
                              loglevel=logging.DEBUG)
         bad = False
         if key not in head or head[key] == pyfits.card.UNDEFINED:
+            self.warnings = True
+            self.errors = True
             self.log.console('Mandatory header ' + key + ' is missing',
                              logging.WARN)
             bad = True
@@ -302,6 +311,8 @@ class stdpipe(ingest2caom2):
                              loglevel=logging.DEBUG)
         bad = False
         if key not in head:
+            self.warnings = True
+            self.errors = True
             self.log.console('Mandatory header ' + key + ' is missing',
                              logging.WARN)
             bad = True
@@ -316,6 +327,8 @@ class stdpipe(ingest2caom2):
                     ['UNDEFINED' if v == pyfits.card.UNDEFINED else v
                      for v in acceptable]
                 acceptable_str = '[' + ', '.join(acceptable_list) + ']'
+                self.warnings = True
+                self.errors = True
                 self.log.console('Mandatory header ' + key + 
                                  ' has the value "' +
                                  value + '" but should be in ' +
@@ -402,6 +415,7 @@ class stdpipe(ingest2caom2):
 
         self.log.file('Entering build_dict')
         if 'file_id' not in header:
+            self.errors = True
             self.log.console('No file_id in ' + repr(header),
                              logging.ERROR)
         file_id = header['file_id']
@@ -619,6 +633,7 @@ class stdpipe(ingest2caom2):
                                               logging.DEBUG)
 
                             else:
+                                self.warnings = True
                                 self.log.console('Member key ' + obsn + ' is '
                                                  'not in jcmtmd.dbo.FILES',
                                                  logging.WARN)
@@ -639,12 +654,14 @@ class stdpipe(ingest2caom2):
                         
             if algorithm != 'exposure' and not obstimes:
                 # It is an error if a composite has no members
+                self.warnings = True
                 self.log.console('No members in a composite '
                                  'observation: ' + self.observationID,
                                  logging.WARN)
                 someBAD = True
 
             if not max_release_date:
+                self.warnings = True
                 self.log.console('Release date could not be '
                                  'calculated from membership: ' +
                                  self.observationID,
@@ -679,6 +696,7 @@ class stdpipe(ingest2caom2):
                         # OK.
                         if prvn == file_id:
                             # add a warning and skip this entry
+                            self.warnings = True
                             self.log.console(
                                 'file_id = ' + file_id + ' includes itself'
                                 ' in its provenance as ' + prvkey,
@@ -699,6 +717,7 @@ class stdpipe(ingest2caom2):
                                 if prv_obsID != self.observationID:
                                     continue
                             else:
+                                self.errors = True
                                 self.log.console('provenance and membership '
                                                  'headers list inconsistent '
                                                  'raw data:' +
@@ -716,6 +735,7 @@ class stdpipe(ingest2caom2):
                         # This should be an error, but it is prudent
                         # to report it as a warning until all of the
                         # otherwise valid recipes have been fixed.
+                        self.warnings = True
                         self.log.console('In file "' + file_id + '", ' +
                                          prvkey + ' = ' + prvn + ' is '
                                          'neither processed nor raw',
@@ -957,6 +977,7 @@ class stdpipe(ingest2caom2):
                                    bwmode=header['BWMODE'],
                                    subsysnr='%d' % result[0])
                 else:
+                    self.errors = True
                     self.log.console('Could not generate productID for ' +
                                      file_id,
                                      logging.ERROR)
@@ -992,6 +1013,7 @@ class stdpipe(ingest2caom2):
             else:
                 # getting here is normally an error in data engineering, 
                 # not a problem with the file
+                self.errors = True
                 self.log.console('unrecognized data array structure' +
                     ': NAXIS=' + str(header['NAXIS']) + ' ' +
                     ' '.join([na + '=' + str(header[na]) 
@@ -1046,6 +1068,7 @@ class stdpipe(ingest2caom2):
                     if c:
                         self.planeURI(c, o, p)
                     else:
+                        self.warnings = True
                         self.log.console('for file_id = ' + file_id + 
                                          ' processed file in provenance has not '
                                          'yet been ingested:' + prvn,
@@ -1229,6 +1252,7 @@ class stdpipe(ingest2caom2):
                                                 RefCoord(1.5, mjdend)))
 
                                 else:
+                                    self.warnings = True
                                     self.log.console('no time ranges defined '
                                                      ' for ' + fitsuri.uri,
                                                      logging.WARN)
@@ -1289,6 +1313,7 @@ class stdpipe(ingest2caom2):
                                             observationID, 
                                             prod,
                                             input=False)
+                        self.warnings = True
                         self.log.console('CLEANUP: remove obsolete plane:' + 
                                          uri.uri,
                                          logging.WARN)
@@ -1345,6 +1370,7 @@ class stdpipe(ingest2caom2):
                         if same:
                             # all planes come from the same recipe instance
                             # so delete the whole observation
+                            self.warnings = True
                             self.log.console('CLEANUP: remove obsolete '
                                              'observation: ' + uri.uri,
                                              logging.WARN)
@@ -1362,6 +1388,7 @@ class stdpipe(ingest2caom2):
                                                                 obsid, 
                                                                 prod,
                                                                 input=False)
+                                            self.warnings = True
                                             self.log.console('CLEANUP: remove '
                                                 'plane: ' + uri.uri,
                                                 logging.WARN)
@@ -1371,6 +1398,42 @@ class stdpipe(ingest2caom2):
                                 if not self.test:
                                     with open(badxmlfile, 'w') as XMLFILE:
                                         self.writer.write(observation, XMLFILE)
+
+    #************************************************************************
+    # JSA cleanup
+    #************************************************************************
+    def cleanup(self):
+        """
+        Save the log file to the jsaops VOspace, then delete the log file from
+        the logdir unless in debug mode or --keeplog was requested.
+        
+        Arguements:
+        <none>
+        """
+        if self.collection == 'JCMT' and self.mode == 'ingest':
+            self.voscopy = tovos.stdpipe_ingestion(vos.Client(),
+                                                   self.vosroot)
+            
+            logcopy = self.logfile
+            logprefix = ''
+            if self.errors:
+                logprefix = 'ERRORS_'
+            if self.warnings:
+                logprefix += 'WARNINGS_'
+                
+            if logprefix:
+                logdir = os.path.dirname(self.logfile)
+                logbase = logprefix + os.path.basename(self.logfile)
+                logcopy = os.path.join(logdir, logbase)
+                shutil.copy(self.logfile, logcopy)
+
+            self.voscopy.match(logcopy)
+            self.voscopy.push()
+
+            if logprefix:
+                os.remove(logcopy)
+        
+        ingest2caom2.cleanup(self)
 
     def check_acceptable_headers(self, head):
         """
@@ -1771,7 +1834,8 @@ class stdpipe(ingest2caom2):
                              keywordBAD = False
             if keywordBAD:
                 someBAD = True
-                self.log.console('Bad keyword: ' + key,
+                self.warnings = True
+                self.log.console('Unexpected keyword: ' + key,
                                  logging.WARN)
 
         return someBAD

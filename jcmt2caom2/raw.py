@@ -9,8 +9,10 @@ import logging
 import math
 import os.path
 import re
+import shutil
 import sys
 import traceback
+import vos
 
 from caom2.xml.caom2_observation_reader import ObservationReader
 from caom2.xml.caom2_observation_writer import ObservationWriter
@@ -67,6 +69,8 @@ from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.twod import TwoD
 from jcmt2caom2.jsa.threed import ThreeD
+
+from jcmt2caom2 import tovos 
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
@@ -227,6 +231,12 @@ class raw(object):
         self.logfile = ''
         self.loglevel = logging.INFO
         self.log = None
+        self.errors = False
+        self.warnings = False
+        self.junk = False
+        
+        self.voscopy = None
+        self.vosroot = 'vos:jsaops'
         
         self.reader = ObservationReader(True)
         self.writer = ObservationWriter()
@@ -507,6 +517,7 @@ class raw(object):
                     results[obsid_subsysnr] = []
                 results[obsid_subsysnr].append(answer[i][1])
         else:
+            self.errors = True
             self.log.console('No rows in ' + self.db + 'FILES for obsid = ' +
                              obsid,
                              logging.ERROR)
@@ -538,6 +549,7 @@ class raw(object):
             if common[field] is None:
                 nullvalues.append(field)
         if nullvalues:
+            self.warnings = True
             self.log.console('The following mandatory fields are NULL:\n' +
                              '\n'.join(sorted(nullvalues)),
                              logging.WARN)
@@ -546,6 +558,7 @@ class raw(object):
         if common['obs_type'] in ('phase', 'RAMP'):
             # do not ingest observations with bogus obs_type
             # this is not an error, but log a warning
+            self.warnings = True
             self.log.console('Observation ' + self.obsid +
                              ' is being skipped because obs_type = ' +
                              common['obs_type'],
@@ -556,6 +569,7 @@ class raw(object):
         # from CAOM-2 if present, whereas a bad observation just cannot be
         # ingested.
         if common['quality'].jsa_value() == JSA_QA.JUNK:
+            self.junk = True
             self.log.console('JUNK QUALITY ASSESSMENT for ' + self.obsid +
                              ' prevents it from being ingested in CAOM-2',
                              logging.WARN)
@@ -939,6 +953,7 @@ class raw(object):
                             sign4 = math.copysign(1,
                                 ThreeD.included_angle(bl3d, tl3d, tr3d))
                         except ValueError as e:
+                            self.errors = True
                             self.log.console('The bounding box for obsid = ' +
                                              self.obsid + ' is degenerate',
                                              logging.ERROR)
@@ -946,6 +961,7 @@ class raw(object):
                         # If the signs are not all the same, the vertices
                         # were recorded in a bowtie order.  Swap any two.
                         if (sign1 != sign2 or sign2 != sign3 or sign3 != sign4):
+                            self.warnings = True
                             self.log.console('For observation ' + 
                                              common['obsid'] + 
                                              ' the bounds are in a bowtie order',
@@ -1063,6 +1079,7 @@ class raw(object):
         """
         # Check that this is a valid observation
         if not self.check_obsid():
+            self.errors = True
             self.log.console('There is no observation with '
                              'obsid = %s' % (self.obsid,),
                              logging.ERROR)
@@ -1104,6 +1121,7 @@ class raw(object):
                 subsystem[subsysnr] = row
 
         else:
+            self.warnings = True
             self.log.console('backend = "' + backend + '" is not one of '
                            '["ACSIS",  "DAS",  "AOSC",  "SCUBA",  '
                            '"SCUBA-2"]',
@@ -1119,6 +1137,7 @@ class raw(object):
         
         ingestibility = self.check_observation(common, subsystem)
         if ingestibility == INGESTIBILITY.BAD:
+            self.errors = True
             self.log.console('SERIOUS ERRORS were found in ' + self.obsid,
                              logging.ERROR)
         if self.checkmode:
@@ -1171,15 +1190,49 @@ class raw(object):
         self.parse_command_line()
         self.setup_logger()
         
+        prefix = ''
+        
         with logger(self.logfile, 
-                    loglevel = self.loglevel).record() as self.log:
+                    loglevel = self.loglevel,
+                    sender='jcmtops').record() as self.log:
             try:
                 self.logCommandLineSwitches()
                 with connection(self.userconfig,
                                 self.log) as self.conn:
                     self.ingest()
+                self.log.console('DONE')
             except Exception as e:
-                # Be sure that every error message is logged
-                self.log.console('ERROR: ' + traceback.format_exc(),
-                                 logging.ERROR)
-            self.log.console('DONE')
+                if not isinstance(e, logger.LoggerError):
+                    # Be sure that every error message is logged
+                    # Logg this error, but pass because we are exitting anyways
+                    try:
+                        self.errors = True
+                        self.log.console('ERROR: ' + traceback.format_exc(),
+                                         logging.ERROR)
+                    except Exception as p:
+                        pass
+            
+            logtext = self.log.get_text()
+            if self.errors:
+                prefix = 'ERROR_'
+            if self.junk:
+                prefix = prefix + 'JUNK_'
+            elif self.warnings:
+                prefix = prefix + 'WARNING_'
+        
+        # beware that errors after this are not logged
+        if self.collection == 'JCMT' and not self.checkmode:
+            self.voscopy = tovos.raw_ingestion(vos.Client(),
+                                               self.vosroot)
+            logcopy = self.logfile
+            if prefix:
+                logdir = os.path.dirname(self.logfile)
+                basename = prefix + os.path.basename(self.logfile)
+                logcopy = os.path.join(logdir, basename)
+                shutil.copy(self.logfile, logcopy)
+            self.voscopy.match(logcopy)
+            if prefix:
+                os.remove(logcopy)
+
+            self.voscopy.push()
+                

@@ -25,28 +25,28 @@ class tovos(object):
     the regex, and the match and push methods for each class of files 
     to be copied.
     """    
-    def __init__(self, keep, vosclient, vosroot, log):
+    def __init__(self, vosclient, vosroot, log=None):
         """
         Set up the log and vos client
         
         Arguments:
-        keep:  boolean, if True keep file on disk else delete after copy
         vosclient: a vos.Client() object
         vosroot: base vos directory for these files, which must exist
-        log: a tools4caom2.looger object
+        log: (optional) a tools4caom2.looger object
         """
-        self.keep = keep
         self.vosclient = vosclient
         self.vosroot = vosroot
         self.log = log
         self.regex = None
         
         self.copylist = {}
-        self.deletelist = []
 
         if not vosclient.isdir(vosroot):
-            self.log.console(vosroot + ' is not a VOspace directory',
-                        logging.ERROR)
+            if self.log:
+                self.log.console(vosroot + ' is not a VOspace directory',
+                            logging.ERROR)
+            else:
+                raise RuntimeError(vosroot + ' is not a VOspace directory')
 
     def make_subdir(self, dir, subdir):
         """
@@ -78,13 +78,15 @@ class tovos(object):
         filesize = os.stat(path).st_size
         for n in range(1000):
             if (filesize == self.vosclient.copy(path, vospath)):
-                self.log.file('copied ' + path)
                 success = True
-                if n:
-                    self.log.file('retries = ' + str(n))
+                if self.log:
+                    self.log.file('copied ' + path)
+                    if n:
+                        self.log.file('retries = ' + str(n))
                 break
         else:
-            self.log.console('failed to copy ' + path)
+            if self.log:
+                self.log.console('failed to copy ' + path)
 
         return success
 
@@ -111,13 +113,13 @@ class raw_ingestion(tovos):
     """
     Identify raw ingestion logs and copy them to VOspace 
     """
-    def __init__(self, keep, vosclient, vosroot, log):
+    def __init__(self, vosclient, vosroot, log=None):
         tovos.__init__(self, 
-                       keep, 
                        vosclient, 
                        vosroot + '/raw_ingestion', 
                        log)
         self.regex = re.compile(r'(?P<root>'
+                                 '(ERRORS_)?(JUNK_|WARNINGS_)'
                                  'caom-(?P<collection>[^-]+)-'
                                  '(?P<instrument>[^_]+)_'
                                  '(?P<obsnum>\d+)_'
@@ -125,7 +127,6 @@ class raw_ingestion(tovos):
                                  '(?P<uttime>\d{6})'
                                  ')_' + 
                                  UTDATE_REGEX)
-        self.delete = []
         self.copy = {}
 
     def match(self, path):
@@ -144,23 +145,21 @@ class raw_ingestion(tovos):
                 root = m.group('root')
                 stamp = m.group('stamp').lower()
                 utdate = m.group('utdate')
-                if not self.keep:
-                    self.delete.append(path)
-                    self.log.file('record for deletion' + path,
-                                  logging.DEBUG)
                 
                 if root not in self.copy:
                     self.copy[root] = {}
                     self.copy[root]['path'] = path
                     self.copy[root]['stamp'] = stamp
                     self.copy[root]['utdate'] = utdate
-                    self.log.file('record for copy' + path,
-                                  logging.DEBUG)
+                    if self.log:
+                        self.log.file('record for copy' + path,
+                                      logging.DEBUG)
                 elif self.copy[root]['stamp'] < stamp:
                     self.copy[root]['path'] = path
                     self.copy[root]['stamp'] = stamp
-                    self.log.file('replace for copy' + path,
-                                  logging.DEBUG)
+                    if self.log:
+                        self.log.file('replace for copy' + path,
+                                      logging.DEBUG)
 
     def push(self):
         """
@@ -170,9 +169,10 @@ class raw_ingestion(tovos):
         <none>
         """
         for root in self.copy:
-            path = self.copy[root]['path']            
-            self.log.console('pushing ' + path,
-                             logging.DEBUG)
+            path = self.copy[root]['path']
+            if self.log:
+                self.log.console('pushing ' + path,
+                                 logging.DEBUG)
             utdate = self.copy[root]['utdate']
             utyear = utdate[:4]
             utmonth = utdate[4:6]
@@ -187,11 +187,78 @@ class raw_ingestion(tovos):
             vospath += ('/' + filename)
             
             success = self.push_file(path, vospath)
-            if not success and path in self.delete:
-                del self.delete[path]
         
-        for path in self.delete:
-            os.remove(path)
+class stdpipe_ingestion(tovos):
+    """
+    Identify stdpipe ingestion logs and copy them to VOspace 
+    """
+    def __init__(self, vosclient, vosroot, log=None):
+        tovos.__init__(self, 
+                       vosclient, 
+                       vosroot + '/proc_ingestion', 
+                       log)
+        self.regex = re.compile(r'(?P<root>'
+                                 '(ERRORS_)?(WARNINGS_)?'
+                                 'dp_'
+                                 '(?P<rcinst>[^_]+)'
+                                 ')_+' + 
+                                 UTDATE_REGEX)
+        self.copy = {}
+
+    def match(self, path):
+        """
+        Identify raw ingestion logs, record them for deletion, and 
+        select the most recent to copy to VOspace.
+        
+        Arguments:
+        path: absolute path to the file to be matched
+        """
+        filename = os.path.basename(path)
+        file_id, ext = os.path.splitext(filename)
+        if ext == '.log':
+            m = self.regex.match(file_id)
+            if m:
+                root = m.group('root')
+                stamp = m.group('stamp').lower()
+                rcinst = m.group('rcinst')
+                
+                if root not in self.copy:
+                    self.copy[root] = {}
+                    self.copy[root]['path'] = path
+                    self.copy[root]['stamp'] = stamp
+                    self.copy[root]['rcinst'] = rcinst
+                    if self.log:
+                        self.log.file('record for copy' + path,
+                                      logging.DEBUG)
+                elif self.copy[root]['stamp'] < stamp:
+                    self.copy[root]['path'] = path
+                    self.copy[root]['stamp'] = stamp
+                    if self.log:
+                        self.log.file('replace for copy' + path,
+                                      logging.DEBUG)
+
+    def push(self):
+        """
+        Copy all files to VOspace and delete any marked for removal.
+        
+        Arguments:
+        <none>
+        """
+        for root in self.copy:
+            path = self.copy[root]['path']  
+            if self.log:
+                self.log.console('pushing ' + path,
+                                 logging.DEBUG)
+            rcinst = self.copy[root]['rcinst']
+            thousands = rcinst[:-3] + '000-' + rcinst[:-3] + '999'
+            
+            # As needed, create the /thousands/ directory
+            vospath = self.make_subdir(self.vosroot, thousands)
+            
+            filename = os.path.basename(path)
+            vospath += ('/' + filename)
+            
+            success = self.push_file(path, vospath)
 
 def run():
     """
@@ -216,9 +283,6 @@ def run():
     ap.add_argument('--vos',
                     default='vos:jsaops',
                     help='root of VOspace in which to store files')
-    ap.add_argument('--keep',
-                    action='store_true',
-                    help='keep original file if true, otherwise remove')
 
     # logging
     ap.add_argument('--log',
@@ -265,7 +329,8 @@ def run():
                 filepath = os.path.join(frompath, filename)
                 filelist.append(filepath)
         
-        filehandlers = [raw_ingestion(a.keep, vosclient, a.vos, log)]
+        filehandlers = [raw_ingestion(vosclient, a.vos, log),
+                        stdpipe_ingestion(vosclient, a.vos, log)]
         
         for filehandler in filehandlers:
             for filepath in filelist:
