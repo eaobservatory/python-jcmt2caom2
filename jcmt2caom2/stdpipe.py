@@ -110,6 +110,15 @@ def jcmtcmp(f1, f2):
         val = cmp(text1, text2)
     return val
 
+def isdefined(key, header):
+    """
+    Test whether a key is present and has a defined value in a FITS header
+    
+    Arguments:
+    key:  a FITS keyword
+    header: a FITS header or other dictiaonary-like structure
+    """
+    return (key in header and header[key] != pyfits.card.UNDEFINED)
 
 # define the jcmt2caom class to manage the ingestions
 class stdpipe(ingest2caom2):
@@ -443,6 +452,7 @@ class stdpipe(ingest2caom2):
                      'DPRCINST',
                      'FILEID',
                      'INSTREAM',
+                     'OBSCNT',
                      'OBSGEO-X',
                      'OBSGEO-Y',
                      'OBSGEO-Z',
@@ -450,6 +460,7 @@ class stdpipe(ingest2caom2):
                      'PIPEVERS',
                      'PROCVERS',
                      'PRODUCT',
+                     'PRVCNT',
                      'RECIPE',
                      'SIMULATE',
                      'TELESCOP')
@@ -485,13 +496,15 @@ class stdpipe(ingest2caom2):
             someBAD |= self.check_missing('RESTFRQ', header)
             someBAD |= self.check_missing('BWMODE', header)
 
-        if int(header['OBSCNT']) > 0:
-            for n in range(int(header['OBSCNT'])):
+        obscnt = int(header['OBSCNT'])
+        if obscnt > 0:
+            for n in range(obscnt):
                 obsn = 'OBS' + str(n+1)
                 someBAD |= self.check_missing(obsn, header)
 
-        if int(header['PRVCNT']) > 0:
-            for n in range(int(header['PRVCNT'])):
+        prvcnt = int(header['PRVCNT'])
+        if prvcnt > 0:
+            for n in range(prvcnt):
                 prvn = 'PRV' + str(n+1)
                 someBAD |= self.check_missing(prvn, header)
 
@@ -533,33 +546,27 @@ class stdpipe(ingest2caom2):
                     [pyfits.card.UNDEFINED,
                      'CLS', 'DDS', 'GBS', 'JPS', 'NGS', 'SASSY'])
 
-            if ('INSTRUME' in header and 
-                header['INSTRUME'] != pyfits.card.UNDEFINED):
+            if isdefined('INSTRUME', header):
                 frontend = header['INSTRUME']
             else:
                 frontend = 'UNKNOWN'
             
             # Check some more detailed values by building instrument_keywords
             keyword_dict = {}
-            if ('SW_MODE' in header and 
-                header['SW_MODE'] != pyfits.card.UNDEFINED):
+            if isdefined('SW_MODE', header):
                 keyword_dict['switching_mode'] = header['SW_MODE']
 
-            if ('INBEAM' in header and 
-                header['INBEAM'] != pyfits.card.UNDEFINED):
+            if isdefined('INBEAM', header):
                 keyword_dict['inbeam'] = header['INBEAM']
             
-            if ('SCAN_PAT' in header and 
-                header['SCAN_PAT'] != pyfits.card.UNDEFINED):
+            if isdefined('SCAN_PAT', header):
                 keyword_dict['x_scan_pat'] = header['SCAN_PAT']
             
             if backend in ('ACSIS', 'DAS', 'AOS-C'):
-                if ('OBS_SB' in header and 
-                    header['OBS_SB'] != pyfits.card.UNDEFINED):
+                if isdefined('OBS_SB', header):
                     keyword_dict['sideband'] = header['OBS_SB']
                 
-                if ('SB_MODE' in header and 
-                    header['SB_MODE'] != pyfits.card.UNDEFINED):
+                if isdefined('SB_MODE', header):
                     keyword_dict['sideband_filter'] = header['SB_MODE']
             
             thisBad, keyword_list = instrument_keywords('stdpipe',
@@ -573,84 +580,80 @@ class stdpipe(ingest2caom2):
             max_release_date = None
             obstimes = {}
 
-            self.log.file('Reading membership',
+            self.log.file('Reading membership, OBSCNT = ' + str(obscnt),
                           logging.DEBUG)
-            if 'OBSCNT' in header:
-                obscnt = int(header['OBSCNT'])
-                self.log.console('OBSCNT = ' + str(obscnt),
-                                 logging.DEBUG)
-                if obscnt > 0:
-                    for i in range(obscnt):
-                        # Starlink records the obsid-subsysnr in OBSn to
-                        # identify the input observation.  There is no ICD
-                        # to parse the obsid_subsysnr; the FILES and ACSIS 
-                        # tables provide the only valid translation from 
-                        # obsid_subsysnr to obsid.  The COMMON table provides 
-                        # the definitive source for raw data release dates,
-                        # from which pipeline product release dates are 
-                        # computed.
-                        obskey = 'OBS' + str(i + 1)
-                        obsn = header[obskey]
-                        obsid = None
-                        
-                        if obsn in self.member_cache:
+            if obscnt > 0:
+                for i in range(obscnt):
+                    # Starlink records the obsid-subsysnr in OBSn to
+                    # identify the input observation.  There is no ICD
+                    # to parse the obsid_subsysnr; the FILES and ACSIS 
+                    # tables provide the only valid translation from 
+                    # obsid_subsysnr to obsid.  The COMMON table provides 
+                    # the definitive source for raw data release dates,
+                    # from which pipeline product release dates are 
+                    # computed.
+                    obskey = 'OBS' + str(i + 1)
+                    obsn = header[obskey]
+                    obsid = None
+                    
+                    if obsn in self.member_cache:
+                        obsid, release_date, date_obs, date_end = \
+                            self.member_cache[obsn]
+                        self.log.file('fetch member metadata from cache '
+                                      'for ' + obsn,
+                                      logging.DEBUG)
+                    else:
+                        sqlcmd = '\n'.join([
+                            'SELECT distinct f.obsid,',
+                            '       c.release_date,',
+                            '       c.date_obs,',
+                            '       c.date_end',
+                            'FROM ' + self.jcmt_db + 'FILES f',
+                            '    INNER JOIN ' + self.jcmt_db + 'COMMON c',
+                            '        ON f.obsid=c.obsid',
+                            'WHERE f.obsid_subsysnr = "%s"' % (obsn,)])
+                        result = self.conn.read(sqlcmd)
+                        if len(result):
                             obsid, release_date, date_obs, date_end = \
-                                self.member_cache[obsn]
-                            self.log.file('fetch member metadata from cache '
+                                result[0]
+                            
+                            # cache the membership metadata
+                            self.member_cache[obsn] = \
+                                (obsid, release_date, date_obs, date_end)
+                            self.log.file('cache member metadata '
                                           'for ' + obsn,
                                           logging.DEBUG)
-                        else:
-                            sqlcmd = '\n'.join([
-                                'SELECT distinct f.obsid,',
-                                '       c.release_date,',
-                                '       c.date_obs,',
-                                '       c.date_end',
-                                'FROM ' + self.jcmt_db + 'FILES f',
-                                '    INNER JOIN ' + self.jcmt_db + 'COMMON c',
-                                '        ON f.obsid=c.obsid',
-                                'WHERE f.obsid_subsysnr = "%s"' % (obsn,)])
-                            result = self.conn.read(sqlcmd)
-                            if len(result):
-                                obsid, release_date, date_obs, date_end = \
-                                    result[0]
                                 
-                                # cache the membership metadata
-                                self.member_cache[obsn] = \
-                                    (obsid, release_date, date_obs, date_end)
-                                self.log.file('cache member metadata '
-                                              'for ' + obsn,
-                                              logging.DEBUG)
-                                    
-                                # Also cache the productID's for each file
-                                fdict = raw_product_id(backend,
-                                                       'prod',
-                                                       obsid,
-                                                       self.conn,
-                                                       self.log)
-                                self.provenance_cache.update(fdict)
-                                self.log.file('cache provenance metadata '
-                                              'for ' + obsn,
-                                              logging.DEBUG)
+                            # Also cache the productID's for each file
+                            fdict = raw_product_id(backend,
+                                                   'prod',
+                                                   obsid,
+                                                   self.conn,
+                                                   self.log)
+                            self.provenance_cache.update(fdict)
+                            self.log.file('cache provenance metadata '
+                                          'for ' + obsn,
+                                          logging.DEBUG)
 
-                            else:
-                                self.warnings = True
-                                self.log.console('Member key ' + obsn + ' is '
-                                                 'not in jcmtmd.dbo.FILES',
-                                                 logging.WARN)
-                                someBAD = True
-                            
-                        if obsid:
-                            # record the time interval
-                            if ((algorithm != 'exposure'
-                                 or obsid == self.observationID)
-                                and obsid not in obstimes):
-                                    obstimes[obsid] = (date_obs, date_end)
+                        else:
+                            self.warnings = True
+                            self.log.console('Member key ' + obsn + ' is '
+                                             'not in jcmtmd.dbo.FILES',
+                                             logging.WARN)
+                            someBAD = True
+                        
+                    if obsid:
+                        # record the time interval
+                        if ((algorithm != 'exposure'
+                             or obsid == self.observationID)
+                            and obsid not in obstimes):
+                                obstimes[obsid] = (date_obs, date_end)
 
-                            if max_release_date:
-                                if max_release_date < release_date:
-                                    max_release_date = release_date
-                            else:
+                        if max_release_date:
+                            if max_release_date < release_date:
                                 max_release_date = release_date
+                        else:
+                            max_release_date = release_date
                         
             if algorithm != 'exposure' and not obstimes:
                 # It is an error if a composite has no members
@@ -676,11 +679,8 @@ class stdpipe(ingest2caom2):
             self.log.file('provenance_cache: ' + repr(self.provenance_cache),
                                                       logging.DEBUG)
 
-            if (product not in ('rimg', 'rsp') and
-                'PRVCNT' in header and
-                header['PRVCNT'] != pyfits.card.UNDEFINED):
+            if product not in ('rimg', 'rsp'):
 
-                prvcnt = max(int(header['PRVCNT']), 0)
                 self.log.file('PRVCNT = ' + str(prvcnt))
                 for i in range(prvcnt):
                     # Verify that files in provenance are being ingested
@@ -770,10 +770,10 @@ class stdpipe(ingest2caom2):
                                               obsid)
 
         # proposal - define this structure only if the proposal is unambiguous
-        if 'PROJECT' in header and header['PROJECT'] != pyfits.card.UNDEFINED:
+        if isdefined('PROJECT', header):
             self.add_to_plane_dict('proposal.id', header['PROJECT'])
 
-            if 'SURVEY' in header and header['SURVEY'] != pyfits.card.UNDEFINED:
+            if isdefined('SURVEY', header):
                 self.add_to_plane_dict('proposal.project', header['SURVEY'])
 
             sqlcmd = '\n'.join([
@@ -792,9 +792,9 @@ class stdpipe(ingest2caom2):
                                        answer[0][1])
         
         # Instrument
-        if 'BACKEND' in header and header['BACKEND'] != pyfits.card.UNDEFINED:
+        if isdefined('BACKEND', header):
             inbeam = ''
-            if 'INBEAM' in header and header['INBEAM'] != pyfits.card.UNDEFINED:
+            if isdefined('INBEAM', header):
                 inbeam = header['INBEAM']
             instrument = instrument_name(header['INSTRUME'],
                                          header['BACKEND'],
@@ -805,11 +805,11 @@ class stdpipe(ingest2caom2):
                                    self.instrument_keywords)
 
         # Environment
-        if 'SEEINGST' in header and header['SEEINGST'] != pyfits.card.UNDEFINED:
+        if isdefined('SEEINGST', header):
             self.add_to_plane_dict('environment.seeing',
                                    '%f' % (header['SEEINGST'],))
 
-        if 'HUMSTART' in header and header['HUMSTART'] != pyfits.card.UNDEFINED:
+        if isdefined('HUMSTART', header):
             # Humity is reported in %, but should be scaled to [0.0, 1.0]
             if header['HUMSTART'] < 0.0:
                 humidity = 0.0
@@ -820,18 +820,18 @@ class stdpipe(ingest2caom2):
             self.add_to_plane_dict('environment.humidity',
                                    '%f' % (humidity,))
 
-        if 'ELSTART' in header and header['ELSTART'] != pyfits.card.UNDEFINED:
+        if isdefined('ELSTART', header):
             self.add_to_plane_dict('environment.elevation',
                                    '%f' % (header['ELSTART'],))
 
-        if 'TAU225ST' in header and header['TAU225ST'] != pyfits.card.UNDEFINED:
+        if isdefined('TAU225ST', header):
             self.add_to_plane_dict('environment.tau',
                                    '%f' % (header['TAU225ST'],))
             wave_tau = '%12.9f' % (stdpipe.speedOfLight/stdpipe.lambda_csotau)
             self.add_to_plane_dict('environment.wavelengthTau',
                                    wave_tau)
 
-        if 'ATSTART' in header and header['ATSTART'] != pyfits.card.UNDEFINED:
+        if isdefined('ATSTART', header):
             self.add_to_plane_dict('environment.ambientTemp',
                                    '%f' % (header['ATSTART'],))
 
@@ -839,13 +839,12 @@ class stdpipe(ingest2caom2):
         # if they are unambiguous, calculate the observation type
         # from OBS_TYPE and SAM_MODE.
         obs_type = None
-        if 'OBS_TYPE' in header and header['OBS_TYPE'] != pyfits.card.UNDEFINED:
+        if isdefined('OBS_TYPE', header):
             obs_type = header['OBS_TYPE'].strip()
             intent_val = intent(obs_type, header['BACKEND']).value
             self.add_to_plane_dict('obs.intent', intent_val)
 
-            if ('SAM_MODE' in header and
-                header['SAM_MODE'] != pyfits.card.UNDEFINED):
+            if isdefined('SAM_MODE', header):
 
                 if obs_type == "science":
                     if header["SAM_MODE"] == "raster":
@@ -861,32 +860,28 @@ class stdpipe(ingest2caom2):
 
         # Target
         if obs_type not in ('flatfield', 'noise', 'setup', 'skydip'):
-            if ('OBJECT' in header and 
-                    header['OBJECT'] != pyfits.card.UNDEFINED):
+            if isdefined('OBJECT', header):
                 self.add_to_plane_dict('target.name',
                                        header['OBJECT'])
             
-            if ('STANDARD' in header 
-                and header['STANDARD'] != pyfits.card.UNDEFINED):
+            if isdefined('STANDARD', header):
                     if header['STANDARD']:
                         self.add_to_plane_dict('STANDARD', 'TRUE')
                     else:
                         self.add_to_plane_dict('STANDARD', 'FALSE')
 
-            if 'OBSRA' in header and 'OBSDEC' in header:
-                if (header['OBSRA'] == pyfits.card.UNDEFINED
-                        or header['OBSDEC'] == pyfits.card.UNDEFINED):
-                    self.add_to_plane_dict('target.moving', 'TRUE')
+            if isdefined('OBSRA', header) or isdefined('OBSDEC', header):
+                self.add_to_plane_dict('target.moving', 'TRUE')
 
-                    # fits2caom2 has trouble with some moving coordinate systems
-                    if (header['CTYPE1'][0:4] == 'OFLN'
-                        and 'CTYPE1A' in header):
-                        # Use the first alternate coordinate system
-                        self.config = os.path.join(self.configpath, 
-                                                   'jcmt_stdpipe_a.config')
-                        self.default = os.path.join(self.configpath, 
-                                                   'jcmt_stdpipe_a.default')
-                        
+                # fits2caom2 has trouble with some moving coordinate systems
+                if (header['CTYPE1'][0:4] == 'OFLN'
+                    and 'CTYPE1A' in header):
+                    # Use the first alternate coordinate system
+                    self.config = os.path.join(self.configpath, 
+                                               'jcmt_stdpipe_a.config')
+                    self.default = os.path.join(self.configpath, 
+                                               'jcmt_stdpipe_a.default')
+                    
                 else:
                     self.add_to_plane_dict('target.moving', 'FALSE')
                     self.add_to_plane_dict('target_position.cval1',
@@ -898,18 +893,14 @@ class stdpipe(ingest2caom2):
                     self.add_to_plane_dict('target_position.equinox',
                                            '2000.0')
                     
-            if (backend != 'SCUBA-2'
-                and 'ZSOURCE' in header 
-                and header['ZSOURCE'] != pyfits.card.UNDEFINED):
+            if backend != 'SCUBA-2' and isdefined('ZSOURCE', header):
                 
                 self.add_to_plane_dict('target.redshift',
                                        str(header['ZSOURCE']))
 
         # Plane metadata
         product = header['PRODUCT']
-        if ('PRODID' in header and 
-            header['PRODID'] != pyfits.card.UNDEFINED and
-            header['PRODID']):
+        if isdefined('PRODID', header) and header['PRODID']:
             self.productID = header['PRODID']
             self.log.console('productID = ' + self.productID,
                              logging.DEBUG)
@@ -1024,24 +1015,29 @@ class stdpipe(ingest2caom2):
             self.add_to_plane_dict('plane.dataProductType',
                                    dataProductType)
         # Provenance
-        if 'RECIPE' in header and header['RECIPE'] != pyfits.card.UNDEFINED:
+        if isdefined('RECIPE', header):
             self.add_to_plane_dict('provenance.name',
                                    header['RECIPE'])
-            self.add_to_plane_dict('provenance.project',
-                                   'JCMT_STANDARD_PIPELINE')
+            if product in ['reduced', 'cube']:
+                self.add_to_plane_dict('provenance.project',
+                                       'JCMT_STANDARD_PIPELINE')
+            else:
+                self.add_to_plane_dict('provenance.project',
+                                       'JCMT_LEGACY_PIPELINE')
+            if isdefined('REFERENC', header):
+                self.add_to_plane_dict('provenance.reference',
+                                       header['REFERENC'])
 
             # ENGVERS and PIPEVERS are mandatory
             self.add_to_plane_dict('provenance.version',
                                     'ENG:' + header['ENGVERS'][:25] + 
                                     ' PIPE:' + header['PIPEVERS'][:25])
 
-            if ('PRODUCER' in header and
-                header['PRODUCER'] != pyfits.card.UNDEFINED):
+            if iddefined('PRODUCER', header):
                 self.add_to_plane_dict('provenance.producer',
                                        header['PRODUCER'])
 
-            if ('DPRCINST' in header and
-                header['DPRCINST'] != pyfits.card.UNDEFINED):
+            if isdefined('DPRCINST', header):
                 # str(eval() converts hex values to arbitrary-size int
                 # then back to decimal string holding identity_instance_id
                 if isinstance(header['DPRCINST'], str):
@@ -1051,8 +1047,7 @@ class stdpipe(ingest2caom2):
                 self.add_to_plane_dict('provenance.runID', dprcinst)
                 self.build_remove_dict(dprcinst)
 
-            if ('DPDATE' in header and
-                header['DPDATE'] != pyfits.card.UNDEFINED):
+            if isdefined('DPDATE', header):
                 self.add_to_plane_dict('provenance.lastExecuted',
                                        header['DPDATE'])
 
@@ -1097,13 +1092,12 @@ class stdpipe(ingest2caom2):
         
         # Chunk
         if header['BACKEND'] in ('SCUBA-2',):
-            if ('FILTER' in header and
-                header['FILTER'] != pyfits.card.UNDEFINED):
+            if isdefined('FILTER', header):
                 self.add_to_plane_dict('bandpassName', 
                                 'SCUBA-2-' + str(header['FILTER']) + 'um')
         elif header['BACKEND'] in ('ACSIS',):
-            if ('MOLECULE' in header and
-                header['MOLECULE'] not in (pyfits.card.UNDEFINED, 'No Line')):
+            if (isdefined('MOLECULE', header) and isdefined('TRANSITI', header)
+                and header['MOLECULE' != 'No Line'):
                 self.add_to_plane_dict('energy.transition.species',
                                        header['MOLECULE'])
                 self.add_to_plane_dict('energy.transition.transition',
