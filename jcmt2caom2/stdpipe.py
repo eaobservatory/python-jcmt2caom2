@@ -1022,6 +1022,7 @@ class stdpipe(ingest2caom2):
                 self.add_to_plane_dict('provenance.project',
                                        'JCMT_STANDARD_PIPELINE')
             else:
+                # healpix and catalogs are from the legacy project
                 self.add_to_plane_dict('provenance.project',
                                        'JCMT_LEGACY_PIPELINE')
             if isdefined('REFERENC', header):
