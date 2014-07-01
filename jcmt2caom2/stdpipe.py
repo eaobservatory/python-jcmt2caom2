@@ -1034,7 +1034,7 @@ class stdpipe(ingest2caom2):
                                     'ENG:' + header['ENGVERS'][:25] + 
                                     ' PIPE:' + header['PIPEVERS'][:25])
 
-            if iddefined('PRODUCER', header):
+            if isdefined('PRODUCER', header):
                 self.add_to_plane_dict('provenance.producer',
                                        header['PRODUCER'])
 
@@ -1098,7 +1098,7 @@ class stdpipe(ingest2caom2):
                                 'SCUBA-2-' + str(header['FILTER']) + 'um')
         elif header['BACKEND'] in ('ACSIS',):
             if (isdefined('MOLECULE', header) and isdefined('TRANSITI', header)
-                and header['MOLECULE' != 'No Line'):
+                and header['MOLECULE'] != 'No Line'):
                 self.add_to_plane_dict('energy.transition.species',
                                        header['MOLECULE'])
                 self.add_to_plane_dict('energy.transition.transition',
@@ -1162,6 +1162,7 @@ class stdpipe(ingest2caom2):
 #            self.add_to_fitsuri_dict(fileURI,
 #                                     'BITPIX',
 #                                     '0')
+
 
     def build_fitsuri_custom(self,
                              xmlfile,

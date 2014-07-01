@@ -97,8 +97,6 @@ def run():
             if attr != 'id' and attr[0] != '_':
                 log.console('%-15s= %s' % (attr, getattr(a, attr)),
                             logging.DEBUG)
-        log.console('id = ' + repr(a.id),
-                    logging.DEBUG)
         
         if a.qsubrequirements:
             mygridengine = gridengine(log, 
@@ -108,7 +106,7 @@ def run():
             mygridengine = gridengine(log, queue=a.queue)
          
         # idset is the set of recipe instances to ingest
-        idset = set()
+        idset = []
         # obsidset is a set of abspaths to obsid files
         obsidset = set()
         if a.id:
@@ -138,10 +136,12 @@ def run():
             for line in sys.stdin:
                 # if the line starts with an obsid string, 
                 # add it to idset
-                m = obsid_regex.search(id)
+                m = obsid_regex.search(line)
                 if m:
-                    log.file('Add to idset: ' + m.group(1))
-                    idset.add(m.group(1))
+                    id = m.group(1)
+                    if id not in idset:
+                        log.file('Add to idset: ' + id)
+                        idset.append(id)
         
         log.file('idset = ' + repr(idset))
         log.file('obsidset = ' + repr(obsidset))
@@ -180,7 +180,7 @@ def run():
             # submit them as well
             if idset:
                 idlist = [rawcmd]
-                idlist.extend(sorted(list(idset), key=int, reverse=True))
+                idlist.extend(idset)
                 cmd = ' '.join(idlist)
 
                 obsidcsh = os.path.join(logdir, 'obsid_list.csh')
@@ -202,23 +202,26 @@ def run():
             # current directory
             os.chdir(logdir)
 
+            idlist = []
+            if idset:
+                idlist.append(sorted(idset, reverse=True))
+            
             for obsidfile in sorted(list(obsidset), reverse=True):
-                idlist = []
+                newlist = []
                 with open(obsidfile) as OF:
                     for line in OF:
                         m = obsid_regex.search(line)
                         if m:
-                            thisid = m.group(1)
-                            log.console('found ' + thisid,
-                                        logging.DEBUG)
-                            idlist.append(thisid)
+                            id = m.group(1)
+                            if id not in newlist:
+                                log.console('found ' + id,
+                                            logging.DEBUG)
+                                newlist.append(id)
+                idlist.append(sorted(newlist, reverse=True))
+            print repr(idlist)
 
-            
-                idlist = sorted(idlist, 
-                                key=lambda x: x.split('_')[2],
-                                reverse=True)
-                
-                for obsid in idlist:
+            for ids in idlist:
+                for obsid in ids:
                     thisrawcmd = rawcmd
 
                     # jcmt2Caom2DA only logs errors and does not share a log 

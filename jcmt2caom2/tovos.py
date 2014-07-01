@@ -126,7 +126,7 @@ class raw_ingestion(tovos):
                                  '(?P<uttime>\d{6})'
                                  ')_' + 
                                  UTDATE_REGEX +
-                                 '(_ERRORS)?(_JUNK|_WARNINGS)')
+                                 '(_ERRORS)?(_JUNK|_WARNINGS)?')
         self.copy = {}
 
     def match(self, path):

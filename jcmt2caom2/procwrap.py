@@ -124,7 +124,7 @@ def run():
         mygridengine = gridengine(log, queue=a.queue)
     
     # idset is the set of recipe instances to ingest
-    idset = set()
+    idset = []
     # rcinstset is a set of abspaths to rcinst files
     rcinstset = set()
     if a.id:
@@ -144,7 +144,8 @@ def run():
                     rcinstset.add(os.path.abspath(id))
             elif re.match(r'^\d+$', id):
                 # if id is an identity_instance_id string, add it to idset
-                idset.add(id)
+                if id not in idset:
+                    idset.append(id)
             else:
                 log.console(id + ' is not a directory, and rcinst file, nor an '
                             'identity_instance_id value',
@@ -156,8 +157,10 @@ def run():
             # add it to idset
             m = re.match(r'^\s*(\d+)\s.*$', line) 
             if m:
-                log.file('Add to idset: ' + m.group(1))
-                idset.add(m.group(1))
+                id = m.group(1)
+                if id not in idset:
+                    log.file('Add to idset: ' + id)
+                    idset.append(id)
     
     log.file('idset = ' + repr(idset))
     log.file('rcinstset = ' + repr(rcinstset))
@@ -185,7 +188,7 @@ def run():
                             logdir, 
                             'idset_' + nowstr + '.rcinst')
             with open(idsetfile, 'w') as IDS:
-                for id in list(idset):
+                for id in idset:
                     print >>IDS, id
             rcinstset.add(idsetfile)
             
@@ -231,23 +234,29 @@ def run():
             proccmd += ' --log=' + logpath
         else:
             proccmd += ' --logdir=' + logdir
-            
+        
+        rcinstlist = []
+        if idset:
+            rcinstlist.append(sorted(idset))
+        
         # ingest the recipe instances in subprocesses
-        for rcinstfile in list(rcinstset):
+        for rcinstfile in sorted(list(rcinstset), reverse=True):
             # Handle one rcinst file at a time and adjust the logdir
-            idlist = []
+            newlist = []
             with open(rcinstfile) as RCF:
                 for line in RCF:
                     m = re.match(r'^\s*(\d+)([^\d].*)?$', line)
                     if m:
                         thisid = m.group(1)
-                        log.console('found ' + thisid,
-                                    logging.DEBUG)
-                        idset.add(thisid)
+                        if thisid not in newlist:
+                            log.console('found ' + thisid,
+                                        logging.DEBUG)
+                            newlist.append(thisid)
 
-            idlist = sorted(idlist, reverse=True)
+            rcinstlist.append(sorted(newlist))
         
-            for rcinst in idlist:
+        for rcinsts in rcinstlist:
+            for rcinst in rcinsts:
                 thisproccmd = proccmd
 
                 thisproccmd += (' dp:' + rcinst)

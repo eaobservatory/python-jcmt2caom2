@@ -174,6 +174,7 @@ class raw(object):
               'bandwid')
 
     MANDATORY = ('backend',
+                 'instrume',
                  'obsgeo_x',
                  'obsgeo_y',
                  'obsgeo_z',
