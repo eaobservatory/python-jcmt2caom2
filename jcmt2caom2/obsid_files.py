@@ -410,6 +410,7 @@ def run():
         for utdate in sorted(obsid_dict.keys()):
             if utdate == 'all':
                 for obsid in obsid_dict[utdate]:
+                    # Print to stdout to pipe into jcmtrawwrap
                     print obsid
             else:
                 with open('ut' + utdate + '.obsid', 'w') as OID:

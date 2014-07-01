@@ -92,15 +92,18 @@ def jcmtcmp(f1, f2):
         (date1, obs1, subsys1, prod1, asntype1, version1) = \
             re.split(r'_', os.path.splitext(os.path.basename(f1))[0])
     except:
-        print f1, f2
-        raise
+        raise RuntimeError('stdpipe.jcmtcmp: cannot extract parts from ' + f1)
     
     m1 = re.match(r'([a-z]+)(\d*)', prod1)
     prod1, tile1 = m1.groups()
     text1 = orderasn[date1[0:5]][asntype1] + date1 + obs1 + subsys1 + tile1
 
-    (date2, obs2, subsys2, prod2, asntype2, version2) = \
-        re.split(r'_', os.path.splitext(os.path.basename(f2))[0])
+    try:
+        (date2, obs2, subsys2, prod2, asntype2, version2) = \
+            re.split(r'_', os.path.splitext(os.path.basename(f2))[0])
+    except:
+        raise RuntimeError('stdpipe.jcmtcmp: cannot extract parts from ' + f2)
+
     m2 = re.match(r'([a-z]+)(\d*)', prod1)
     prod2, tile2 = m2.groups()
     text2 = orderasn[date2[0:5]][asntype2] + date2 + obs2 + subsys2 + tile2

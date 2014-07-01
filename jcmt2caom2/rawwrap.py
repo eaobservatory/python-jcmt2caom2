@@ -218,7 +218,6 @@ def run():
                                             logging.DEBUG)
                                 newlist.append(id)
                 idlist.append(sorted(newlist, reverse=True))
-            print repr(idlist)
 
             for ids in idlist:
                 for obsid in ids:
