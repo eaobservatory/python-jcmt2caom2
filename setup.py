@@ -14,7 +14,7 @@ setup(name="jcmt2caom2",
       author_email='russell.o.redman@gmail.com',
       packages=find_packages(exclude=['*.test']),
       provides=['jcmt2caom2'],
-      requires=['tools4caom2 (>1.1.4)'],
+      requires=['tools4caom2 (>=1.1.6)'],
       install_requires=['distribute'],
       zip_safe=False
 )
