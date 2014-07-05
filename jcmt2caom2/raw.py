@@ -1001,7 +1001,7 @@ class raw(object):
                     spectral_axis.ssyssrc = 'TOPOCENT'
                     spectral_axis.resolving_power = abs(wavelength / bandwidth)
                     spectral_axis.bandpass_name = \
-                        'SCUBA-2_' + subsystem[key]['filter'] + 'um'
+                        'SCUBA-2-' + subsystem[key]['filter'] + 'um'
 
                 else:
                     this_hybrid = hybrid[productID]
