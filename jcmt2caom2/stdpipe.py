@@ -581,6 +581,7 @@ class stdpipe(ingest2caom2):
             
             # verify membership headers are real observations
             max_release_date = None
+            earliest_utdate = None
             obstimes = {}
 
             self.log.file('Reading membership, OBSCNT = ' + str(obscnt),
@@ -620,6 +621,12 @@ class stdpipe(ingest2caom2):
                             obsid, release_date, date_obs, date_end = \
                                 result[0]
                             
+                            if date_obs:
+                                if (earliest_utdate is None or 
+                                    date_obs < earliest_utdate):
+
+                                    earliest_utdate = date_obs
+                                    
                             # cache the membership metadata
                             self.member_cache[obsn] = \
                                 (obsid, release_date, date_obs, date_end)
@@ -747,6 +754,11 @@ class stdpipe(ingest2caom2):
                         # conditiuon an error.
                         # someBAD = True
 
+        # Report the earliest UTDATE
+        if earliest_utdate:
+            self.log.file('EARLIST UTDATE: ' + 
+                          datetime.date(earliest_utdate).isoformat())
+        
         # Report any problems that have been encountered, including
         # the file name
         if someBAD:
