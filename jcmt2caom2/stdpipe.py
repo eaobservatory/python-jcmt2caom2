@@ -682,7 +682,7 @@ class stdpipe(ingest2caom2):
             self.log.file('provenance_cache: ' + repr(self.provenance_cache),
                                                       logging.DEBUG)
 
-            if product not in ('rimg', 'rsp'):
+            if product not in ('rimg', 'rsp', 'hpxrimg', 'hpxrsp'):
 
                 self.log.file('PRVCNT = ' + str(prvcnt))
                 for i in range(prvcnt):
@@ -994,7 +994,7 @@ class stdpipe(ingest2caom2):
         # Axes are always in the order X, Y, Freq, Pol
         # but may be degenerate with length 1.  Only compute the 
         # dataProductType for science data.
-        if product in ['reduced', 'cube']:
+        if product in ['reduced', 'cube', 'healpix']:
             if (header['NAXIS'] == 3 or
                 (header['NAXIS'] == 4 and header['NAXIS4'] == 1)):
                 if (header['NAXIS1'] == 1 and 
@@ -1086,6 +1086,7 @@ class stdpipe(ingest2caom2):
                                   prv_prodID)
                              
         if product in ['reduced', 'cube']:
+            # Do not set release dates for healpix products
             max_release_date_str = max_release_date.isoformat()
             self.add_to_plane_dict('obs.metaRelease',
                                    max_release_date_str)
@@ -1098,8 +1099,8 @@ class stdpipe(ingest2caom2):
         if header['BACKEND'] in ('SCUBA-2',):
             if isdefined('FILTER', header):
                 self.add_to_plane_dict('bandpassName', 
-                                'SCUBA-2-' + str(header['FILTER']) + 'um')
-        elif header['BACKEND'] in ('ACSIS',):
+                                'SCUBA-2_' + str(header['FILTER']) + 'um')
+        elif header['BACKEND'] in ('ACSIS', 'DAS'):
             if (isdefined('MOLECULE', header) and isdefined('TRANSITI', header)
                 and header['MOLECULE'] != 'No Line'):
                 self.add_to_plane_dict('energy.transition.species',
@@ -1107,7 +1108,7 @@ class stdpipe(ingest2caom2):
                 self.add_to_plane_dict('energy.transition.transition',
                                        header['TRANSITI'])
 
-        if product in ['cube', 'reduced']:
+        if product in ['cube', 'reduced', 'healpix']:
             primaryURI = self.fitsextensionURI(self.archive,
                                                file_id,
                                                [0])
@@ -1702,6 +1703,7 @@ class stdpipe(ingest2caom2):
                     'PROJ_ID',
                     'PRVCNT',
                     'PV1_3',
+                    'PV2_3',
                     'RADESYS',
                     'RADESYSA',
                     'RECIPE',
