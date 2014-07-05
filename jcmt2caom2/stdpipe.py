@@ -1099,7 +1099,7 @@ class stdpipe(ingest2caom2):
         if header['BACKEND'] in ('SCUBA-2',):
             if isdefined('FILTER', header):
                 self.add_to_plane_dict('bandpassName', 
-                                'SCUBA-2_' + str(header['FILTER']) + 'um')
+                                'SCUBA-2-' + str(header['FILTER']) + 'um')
         elif header['BACKEND'] in ('ACSIS', 'DAS'):
             if (isdefined('MOLECULE', header) and isdefined('TRANSITI', header)
                 and header['MOLECULE'] != 'No Line'):
