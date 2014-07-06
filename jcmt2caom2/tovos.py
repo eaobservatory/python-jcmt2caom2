@@ -245,7 +245,7 @@ class stdpipe_ingestion(tovos):
         <none>
         """
         for root in self.copy:
-            path = self.copy[root]['path']  
+            path = self.copy[root]['path'] 
             if self.log:
                 self.log.console('pushing ' + path,
                                  logging.DEBUG)
@@ -259,6 +259,38 @@ class stdpipe_ingestion(tovos):
             vospath += ('/' + filename)
             
             success = self.push_file(path, vospath)
+            
+            # Try to create a link in the raw_ingestion directories
+            # Read the necessary metadata from the log file
+            utdate = None
+            with open(filename, 'r') as L:
+                for line in L:
+                    m = re.search(r'Earliest utdate: '
+                                  r'(?P<utdate>[-0-9]+)'
+                                  r' for (?P<prefix>\S+)',
+                                  line)
+                    if m:
+                        (utdate, prefix) = m.groups(['utdate', 'prefix'])
+                        break
+            if utdate:
+                (ryear, rmonth, rday) = re.split(r'-', utdate)
+                # As needed, create the /year/month/day/ directories
+                # Beware that these are URI's, not directory paths in the OS
+                rvospath = re.sub(r'proc', 'raw', self.vosroot)
+                rvospath = self.make_subdir(rvospath, ryear)
+                rvospath = self.make_subdir(rvospath, rmonth)
+                rvospath = self.make_subdir(rvospath, rday)
+                
+                stamp = re.sub(r'^.*((_ERRORS)?(_WARNINGS)?_' + 
+                               UTDATE_REGEX + r'.log)$', 
+                               r'\1', 
+                               filename)
+                rvospath += '/' + prefix + stamp
+                
+                if self.log:
+                    self.log.console('pushing ' + rvospath,
+                                     logging.DEBUG)
+                self.vosclient.link(vospath, rvospath)
 
 def run():
     """

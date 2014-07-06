@@ -290,8 +290,7 @@ class stdpipe(ingest2caom2):
         """
         if self.debug:
             self.log.console('enter check_missing: ' + 
-                             key + ': ' +
-                             datetime.datetime.now().isoformat(),
+                             key,
                              loglevel=logging.DEBUG)
         bad = False
         if key not in head or head[key] == pyfits.card.UNDEFINED:
@@ -582,6 +581,7 @@ class stdpipe(ingest2caom2):
             # verify membership headers are real observations
             max_release_date = None
             earliest_utdate = None
+            earliest_obs = None
             obstimes = {}
 
             self.log.file('Reading membership, OBSCNT = ' + str(obscnt),
@@ -626,6 +626,7 @@ class stdpipe(ingest2caom2):
                                     date_obs < earliest_utdate):
 
                                     earliest_utdate = date_obs
+                                    earliest_obs = obsid
                                     
                             # cache the membership metadata
                             self.member_cache[obsn] = \
@@ -755,9 +756,17 @@ class stdpipe(ingest2caom2):
                         # someBAD = True
 
         # Report the earliest UTDATE
+        if isinstance(header['DPRCINST'], str):
+            dprcinst = str(eval(header['DPRCINST']))
+        else:
+            dprcinst = str(header['DPRCINST'])
+        
         if earliest_utdate:
-            self.log.file('EARLIST UTDATE: ' + 
-                          datetime.date(earliest_utdate).isoformat())
+            self.log.file('Earliest utdate: ' + 
+                          earliest_utdate.date().isoformat() +
+                          ' for caom-' + self.collection +
+                          '-' + earliest_obs +
+                          '-' + dprcinst)
         
         # Report any problems that have been encountered, including
         # the file name
