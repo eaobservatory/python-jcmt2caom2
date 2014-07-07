@@ -119,14 +119,15 @@ class raw_ingestion(tovos):
                        vosroot + '/raw_ingestion', 
                        log)
         self.regex = re.compile(r'(?P<root>'
-                                 'caom-(?P<collection>[^-]+)-'
-                                 '(?P<instrument>[^_]+)_'
-                                 '(?P<obsnum>\d+)_'
-                                 '(?P<utdate>\d{8})[tT]'
-                                 '(?P<uttime>\d{6})'
-                                 ')_' + 
-                                 UTDATE_REGEX +
-                                 '(_ERRORS)?(_JUNK|_WARNINGS)?')
+                                r'caom-(?P<collection>[^-]+)-'
+                                r'(?P<instrument>[^_]+)_'
+                                r'(?P<obsnum>\d+)_'
+                                r'(?P<utdate>\d{8})[tT]'
+                                r'(?P<uttime>\d{6})'
+                                r')_' + 
+                                UTDATE_REGEX +
+                                r'(?P<errors>(_ERRORS)?)'
+                                r'(?P<warnings>(_JUNK|_WARNINGS)?)')
         self.copy = {}
 
     def match(self, path):
@@ -179,14 +180,34 @@ class raw_ingestion(tovos):
             utday = utdate[6:]
             
             # As needed, create the /year/month/day/ directories
-            vospath = self.make_subdir(self.vosroot, utyear)
-            vospath = self.make_subdir(vospath, utmonth)
-            vospath = self.make_subdir(vospath, utday)
+            vosdir = self.make_subdir(self.vosroot, utyear)
+            vosdir = self.make_subdir(vosdir, utmonth)
+            vosdir = self.make_subdir(vosdir, utday)
             
             filename = os.path.basename(path)
-            vospath += ('/' + filename)
+            vospath = vosdir + '/' + filename
             
             success = self.push_file(path, vospath)
+            
+            # Try to clean up the directory by deleting old log files
+            m = self.regex.search(filename)
+            (root, errors, warnings, stamp) = m.group('root', 
+                                                      'errors', 
+                                                      'warnings', 
+                                                      'stamp')
+            for vfile in self.vosclient.listdir(vosdir, force=True):
+                m = self.regex.search(vfile)
+                if m:
+                    (vroot, verrors, vwarnings, vstamp) = m.group('root', 
+                                                                  'errors',
+                                                                  'warnings',
+                                                                  'stamp')
+                    if vroot == root and vstamp < stamp:
+                        # If no errors, delete all earlier logs
+                        # if errors, delete earlier logs with errors
+                        if not errors or (errors and verrors):
+                            vpath = vosdir + '/' +  vfile
+                            self.vosclient.delete(vpath)
         
 class stdpipe_ingestion(tovos):
     """
