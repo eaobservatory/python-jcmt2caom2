@@ -197,12 +197,13 @@ class stdpipe_ingestion(tovos):
                        vosclient, 
                        vosroot + '/proc_ingestion', 
                        log)
-        self.regex = re.compile(r'(?P<root>'
-                                 'dp_'
-                                 '(?P<rcinst>[^_]+)'
-                                 ')_+' + 
-                                 UTDATE_REGEX +
-                                 '(_ERRORS)?(_WARNINGS)?')
+        self.regex = re.compile(r'(?P<trunk>(?P<root>'
+                                r'dp_'
+                                r'(?P<rcinst>[^_]+)'
+                                r')_)' + 
+                                UTDATE_REGEX +
+                                r'(?P<errors>(_ERRORS)?)'
+                                r'(?P<warnings>(_WARNINGS)?)')
         self.copy = {}
 
     def match(self, path):
@@ -245,20 +246,38 @@ class stdpipe_ingestion(tovos):
         <none>
         """
         for root in self.copy:
-            path = self.copy[root]['path'] 
-            if self.log:
-                self.log.console('pushing ' + path,
-                                 logging.DEBUG)
+            path = self.copy[root]['path']
             rcinst = self.copy[root]['rcinst']
             thousands = rcinst[:-3] + '000-' + rcinst[:-3] + '999'
             
             # As needed, create the /thousands/ directory
-            vospath = self.make_subdir(self.vosroot, thousands)
+            vosdir = self.make_subdir(self.vosroot, thousands)
             
             filename = os.path.basename(path)
-            vospath += ('/' + filename)
+            fileid = os.path.splitext(filename)[0]
             
+            vospath = vosdir + '/' + filename
             success = self.push_file(path, vospath)
+            
+            # Try to clean up the directory by deleting old log files
+            m = self.regex.search(fileid)
+            (trunk, errors, warnings, stamp) = m.group('trunk', 
+                                                       'errors', 
+                                                       'warnings', 
+                                                       'stamp')
+            for vfile in self.vosclient.listdir(vosdir, force=True):
+                m = self.regex.search(vfile)
+                if m:
+                    (vtrunk, verrors, vwarnings, vstamp) = m.group('trunk', 
+                                                                   'errors',
+                                                                   'warnings',
+                                                                   'stamp')
+                    if vtrunk == trunk and vstamp < stamp:
+                        # If no errors, delete all earlier logs
+                        # if errors, delete earlier logs with errors
+                        if not errors or (errors and verrors):
+                            vpath = vosdir + '/' +  vfile
+                            self.vosclient.delete(vpath)
             
             # Try to create a link in the raw_ingestion directories
             # Read the necessary metadata from the log file
@@ -270,27 +289,39 @@ class stdpipe_ingestion(tovos):
                                   r' for (?P<prefix>\S+)',
                                   line)
                     if m:
-                        (utdate, prefix) = m.groups(['utdate', 'prefix'])
+                        (utdate, prefix) = m.group('utdate', 'prefix')
                         break
             if utdate:
                 (ryear, rmonth, rday) = re.split(r'-', utdate)
                 # As needed, create the /year/month/day/ directories
                 # Beware that these are URI's, not directory paths in the OS
-                rvospath = re.sub(r'proc', 'raw', self.vosroot)
-                rvospath = self.make_subdir(rvospath, ryear)
-                rvospath = self.make_subdir(rvospath, rmonth)
-                rvospath = self.make_subdir(rvospath, rday)
-                
-                stamp = re.sub(r'^.*((_ERRORS)?(_WARNINGS)?_' + 
-                               UTDATE_REGEX + r'.log)$', 
-                               r'\1', 
-                               filename)
-                rvospath += '/' + prefix + stamp
-                
-                if self.log:
-                    self.log.console('pushing ' + rvospath,
-                                     logging.DEBUG)
+                rvosdir = re.sub(r'proc', 'raw', self.vosroot)
+                rvosdir = self.make_subdir(rvosdir, ryear)
+                rvosdir = self.make_subdir(rvosdir, rmonth)
+                rvosdir = self.make_subdir(rvosdir, rday)
+                rvospath = rvosdir + '/' + prefix + '_stamp-' + stamp
+                if errors:
+                    rvospath += errors
+                if warnings:
+                    rvospath += warnings
+                rvospath += '.log'
                 self.vosclient.link(vospath, rvospath)
+                
+                # Now delete all links with the same trunk that
+                # do not point to an existing file
+                for vfile in self.vosclient.listdir(rvosdir, force=True):
+                    m = re.search(r'^(.*?)_' + 
+                                  UTDATE_REGEX + 
+                                  r'(_ERRORS)?(_WARNINGS)?',
+                                  vfile)
+                    if m:
+                        vtrunk = m.group(1)
+                        if vtrunk == prefix:
+                            vpath = '/'.join([rvosdir, vfile])
+                            info = self.vosclient.getNode(vpath).getInfo()
+                            target = info['target']
+                            if not self.vosclient.isfile(target):
+                                self.vosclient.delete(vpath)
 
 def run():
     """

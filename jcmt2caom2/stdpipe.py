@@ -42,6 +42,7 @@ from tools4caom2.ingest2caom2 import ingest2caom2
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.timezone import UTC
 from tools4caom2.mjd import utc2mjd
+from tools4caom2.utdate_string import UTDATE_REGEX
 
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
@@ -762,11 +763,11 @@ class stdpipe(ingest2caom2):
             dprcinst = str(header['DPRCINST'])
         
         if earliest_utdate:
+            rcinstprefix = 'caom-' + self.collection + '-' + earliest_obs
             self.log.file('Earliest utdate: ' + 
                           earliest_utdate.date().isoformat() +
-                          ' for caom-' + self.collection +
-                          '-' + earliest_obs +
-                          '-' + dprcinst)
+                          ' for ' + rcinstprefix +
+                          '_vlink-' + dprcinst)
         
         # Report any problems that have been encountered, including
         # the file name
