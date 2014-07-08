@@ -208,12 +208,16 @@ def run():
                 
         # utdate and begin/end can be absolute or relative to now
         now = datetime.utcnow()
+        zerotime = datetime(now.year, now.month, now.day, 10, 0, 0)
+        if now.hour >= 10:
+            zerotime += timedelta(1)
+        
         this_utdate = None
         if a.utdate is not None:
-            if a.utdate > '19800101':
+            if int(a.utdate) > 19800101:
                 this_utdate = a.utdate
             else:
-                thisutc = now - timedelta(int(a.utdate))
+                thisutc = zerotime - timedelta(int(a.utdate))
                 this_utdate = '%04d%02d%02d' % (thisutc.year, 
                                                 thisutc.month, 
                                                 thisutc.day)
@@ -221,10 +225,10 @@ def run():
         
         this_begin = None
         if a.begin is not None:
-            if a.begin > '19800101':
+            if int(a.begin) > 19800101:
                 this_begin = a.begin
             else:
-                thisutc = now - timedelta(int(a.begin))
+                thisutc = zerotime - timedelta(int(a.begin))
                 this_begin = '%04d%02d%02d' % (thisutc.year, 
                                                thisutc.month, 
                                                thisutc.day)
@@ -232,10 +236,10 @@ def run():
 
         this_end = None
         if a.end is not None:
-            if a.end > '19800101':
+            if int(a.end) > 19800101:
                 this_end = a.end
             else:
-                thisutc = now - timedelta(int(a.end))
+                thisutc = zerotime - timedelta(int(a.end))
                 this_end = '%04d%02d%02d' % (thisutc.year, 
                                                thisutc.month, 
                                                thisutc.day)
@@ -267,7 +271,7 @@ def run():
             
         obsid_dict = {}
         retvals = None
-        if a.new or a.utdate or a.begin or a.end:
+        if a.new or this_utdate or this_begin:
             # Query the database only if necessary
             log.console('PROGRESS: Query database')
             with connection(userconfig, log) as db:
@@ -302,21 +306,21 @@ def run():
                     '    ) s',
                     'ORDER BY s.date_obs']
             
-                if a.utdate or a.begin or a.end:
+                if this_utdate or this_begin:
                     i = obsidlist.index('        ) u')
                     obsidlist[i:i] = [
                     '        WHERE',
                     ]
 
-                if a.utdate:
+                if this_utdate:
                     i = obsidlist.index('        ) u')
                     obsidlist[i:i] = [
                     '            c.utdate = ' + this_utdate,
                     ]
                 
-                if a.begin:
+                if this_begin:
                     i = obsidlist.index('        ) u')
-                    if a.end:
+                    if this_end:
                         obsidlist[i:i] = [
                         '            c.utdate >= ' + this_begin + ' AND',
                         ]
@@ -325,7 +329,7 @@ def run():
                         '            c.utdate >= ' + this_begin,
                         ]
                 
-                if a.end:
+                if this_end:
                     i = obsidlist.index('        ) u')
                     obsidlist[i:i] = [
                     '            c.utdate <= ' + this_end,

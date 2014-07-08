@@ -213,10 +213,16 @@ def run():
         a.begin = '19880101'
             
     # utdate and begin/end can be absolute or relative to now
+    # Beware of comaprisons between ASCII-coded integers, 
+    # because '2' > '19991231'
     now = datetime.utcnow()
+    zerotime = datetime(now.year, now.month, now.day, 10, 0, 0)
+    if now.hour >= 10:
+        zerotime += timedelta(1)
+    
     this_utdate = None
     if a.utdate is not None:
-        if a.utdate > '19800101':
+        if int(a.utdate) > 19800101:
             this_utdate = a.utdate
         else:
             thisutc = now - timedelta(int(a.utdate))
@@ -227,7 +233,7 @@ def run():
     
     this_begin = None
     if a.begin is not None:
-        if a.begin > '19800101':
+        if int(a.begin) > 19800101:
             this_begin = a.begin
         else:
             thisutc = now - timedelta(int(a.begin))
@@ -238,7 +244,7 @@ def run():
 
     this_end = None
     if a.end is not None:
-        if a.end > '19800101':
+        if int(a.end) > 19800101:
             this_end = a.end
         else:
             thisutc = now - timedelta(int(a.end))
