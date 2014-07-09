@@ -7,6 +7,7 @@ from datetime import timedelta
 import os
 import os.path
 import re
+import sys
 import vos
 
 from tools4caom2.utdate_string import utdate_string
@@ -188,6 +189,7 @@ def run():
                                
     # Read the files for each day
     needspace = False
+    somethingtoreport = False
     print 'REPORT OF INGESTION LOGS FOR ' + this_begin + ' TO ' + this_end
     for vosday in sorted(vosdaylist, reverse=True):
         if needspace:
@@ -220,6 +222,10 @@ def run():
                                line)
                         if reportfile:
                             print logpath
+                            somethingtoreport = True
                             reportfile = False
                         print '   ' + line.rstrip()
                 print
+    
+    if somethingtoreport:
+        sys.exit(1)
