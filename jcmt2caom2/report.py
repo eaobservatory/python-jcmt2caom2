@@ -189,7 +189,6 @@ def run():
                                
     # Read the files for each day
     needspace = False
-    somethingtoreport = False
     print 'REPORT OF INGESTION LOGS FOR ' + this_begin + ' TO ' + this_end
     for vosday in sorted(vosdaylist, reverse=True):
         if needspace:
@@ -224,14 +223,9 @@ def run():
                         # JUNK observations are not real warnings
                         if re.search(r'JUNK', line):
                             line = re.sub(r'WARNING', r'INFO', line)
-                        else:
-                            somethingtoreport = True
                             
                         if reportfile:
                             print logpath
                             reportfile = False
                         print '   ' + line.rstrip()
                 print
-    
-    if somethingtoreport:
-        sys.exit(1)
