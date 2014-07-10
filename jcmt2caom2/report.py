@@ -215,14 +215,20 @@ def run():
                         
                     if (everyline or
                         ERRORWARNING_REGEX.search(line)):
-                        
+                        # Remove logging time stamp for clarity
                         line = re.sub(r'^(ERROR|WARNING) '
                                r'[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}',
                                r'\1 ',
                                line)
+                        
+                        # JUNK observations are not real warnings
+                        if re.search(r'JUNK', line):
+                            line = re.sub(r'WARNING', r'INFO', line)
+                        else:
+                            somethingtoreport = True
+                            
                         if reportfile:
                             print logpath
-                            somethingtoreport = True
                             reportfile = False
                         print '   ' + line.rstrip()
                 print
