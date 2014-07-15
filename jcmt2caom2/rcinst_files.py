@@ -263,9 +263,9 @@ def run():
     if a.fromset:
         with open(a.fromset) as RCF:
             for line in RCF:
-                m = re.match(r'^\s*(\d+)([^\d].*)?$', line)
+                m = re.match(r'^\s*((0[xX])?[0-9a-f]+)([^\d].*)?$', line)
                 if m:
-                    thisid = m.group(1)
+                    thisid = str(eval(m.group(1)))
                     log.file('from includes: "' + thisid + '"',
                                 logging.DEBUG)
                     fromset.add(thisid)

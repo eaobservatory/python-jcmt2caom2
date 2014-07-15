@@ -1043,13 +1043,19 @@ class stdpipe(ingest2caom2):
         if isdefined('RECIPE', header):
             self.add_to_plane_dict('provenance.name',
                                    header['RECIPE'])
-            if product in ['reduced', 'cube']:
+            if product in ['reduced', 'cube', 'rsp', 'rimg']:
+                # This is the complete list of standard pipeline FITS products
                 self.add_to_plane_dict('provenance.project',
                                        'JCMT_STANDARD_PIPELINE')
-            else:
+            elif product in ['healpix', 'hpxrsp', 'hpxrimg', 
+                             'peak-cat', 'extent-cat']:
                 # healpix and catalogs are from the legacy project
                 self.add_to_plane_dict('provenance.project',
                                        'JCMT_LEGACY_PIPELINE')
+            else:
+                self.log.console('UNKNOWN PRODUCT: ' + product,
+                                 logging.WARN)
+            
             if isdefined('REFERENC', header):
                 self.add_to_plane_dict('provenance.reference',
                                        header['REFERENC'])
