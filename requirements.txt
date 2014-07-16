@@ -1,0 +1,24 @@
+-e git+https://github.com/jac-h/python-tools4caom2.git#egg=tools4com2
+
+PIL==1.1.7
+altgraph==0.9
+angles==1.1
+astropy==0.4rc2
+cadcpy2==0.0.0
+caom2==trunk
+caom2repoClient==0.5.1
+distribute==0.6.28
+jcmt2caom2==1.1.17
+lxml==3.0alpha2
+matplotlib==1.1.0
+mechanize==0.2.5
+modulegraph==0.9.1
+mypackage==0.1.0
+nose==1.1.2
+numpy==1.7.0.dev-044c7a6
+pyfits==3.1.2
+requests==2.3.0
+vboxapi==1.0
+vos==1.9.11g
+wsgiref==0.1.2
+xlrd==0.9.0
