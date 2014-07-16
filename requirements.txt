@@ -1,4 +1,4 @@
--e git+https://github.com/jac-h/python-tools4caom2.git#egg=tools4com2
+-e git://github.com/jac-h/python-tools4caom2.git#egg=tools4com2
 
 PIL==1.1.7
 altgraph==0.9
