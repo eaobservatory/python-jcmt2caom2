@@ -362,12 +362,14 @@ class check_rms(tovos):
                                 r'(?P<obsnum>\d+)_'
                                 r'(?P<utdate>\d{8})[tT]'
                                 r'(?P<uttime>\d{6})|'
-                                r'(?P<utdate>[^-]+)-' # night composite obsid
+                                r'(?P<dateobs>[^-]+)-' # night composite obsid
                                 r'(?P<hex>[0-9a-f]+))'
                                 r')_' + 
                                 r'(?P<prodid>[^_]+)_'
                                 r'(?P<rcinst>[\d]+)_)' +
                                 UTDATE_REGEX)
+        self.log.file(self.regex.pattern,
+                      logging.DEBUG)
         self.copy = {}
 
     def match(self, path):
@@ -380,6 +382,8 @@ class check_rms(tovos):
         """
         filename = os.path.basename(path)
         file_id, ext = os.path.splitext(filename)
+        self.log.file('examine' + file_id,
+                      logging.DEBUG)
         if ext == '.log':
             m = self.regex.match(file_id)
             if m:
@@ -457,7 +461,7 @@ def run():
     ap = argparse.ArgumentParser('jcmt2vos')
     # directory paths
     ap.add_argument('--source',
-                    default='/staging/gimli2/1/redman/daily/',
+                    default='.',
                     help='file or directory containing files to '
                          'be copied')
     ap.add_argument('--vos',

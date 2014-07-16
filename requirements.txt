@@ -1,4 +1,6 @@
+-e git+https://github.com/jac-h/python-jcmt2caom2.git#egg=jcmt2caom2
 -e git+https://github.com/jac-h/python-tools4caom2.git#egg=tools4caom2
+-e .
 
 astropy==0.4rc2
 requests==2.3.0
