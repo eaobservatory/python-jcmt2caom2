@@ -16,7 +16,7 @@ setup(name="jcmt2caom2",
       provides=['jcmt2caom2'],
 #      requires=['python-tools4caom2 (>=1.1.6)'],
       install_requires=['distribute',
-                        'python-tools4caom2>=1.1.6'],
+                        'tools4caom2>=1.1.7'],
       zip_safe=False
 )
 
