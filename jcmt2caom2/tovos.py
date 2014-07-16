@@ -344,6 +344,102 @@ class stdpipe_ingestion(tovos):
                             if not self.vosclient.isfile(target):
                                 self.vosclient.delete(vpath)
 
+class check_rms(tovos):
+    """
+    Identify check_rms logs and copy them to VOspace 
+    """
+    def __init__(self, vosclient, vosroot, log=None):
+        tovos.__init__(self, 
+                       vosclient, 
+                       vosroot + '/check_rms_logs', 
+                       log)
+        # This regex should work for raw data, obs products and night composites,
+        # all of which have the utdate embedded in their observationID.
+        self.regex = re.compile(r'(?P<root>'
+                                r'checkrms_'
+                                r'(?P<obsid>(' # observationID
+                                r'(?P<instrument>[^_]+)_' # raw/exposure obsid
+                                r'(?P<obsnum>\d+)_'
+                                r'(?P<utdate>\d{8})[tT]'
+                                r'(?P<uttime>\d{6})|'
+                                r'(?P<utdate>[^-]+)-' # night composite obsid
+                                r'(?P<hex>[0-9a-f]+))'
+                                r')_' + 
+                                r'(?P<prodid>[^_]+)_'
+                                r'(?P<rcinst>[\d]+)_)' +
+                                UTDATE_REGEX)
+        self.copy = {}
+
+    def match(self, path):
+        """
+        Identify raw ingestion logs, record them for deletion, and 
+        select the most recent to copy to VOspace.
+        
+        Arguments:
+        path: absolute path to the file to be matched
+        """
+        filename = os.path.basename(path)
+        file_id, ext = os.path.splitext(filename)
+        if ext == '.log':
+            m = self.regex.match(file_id)
+            if m:
+                root = m.group('root')
+                stamp = m.group('stamp').lower()
+                utdate = m.group('utdate')
+                
+                if root not in self.copy:
+                    self.copy[root] = {}
+                    self.copy[root]['path'] = path
+                    self.copy[root]['stamp'] = stamp
+                    self.copy[root]['utdate'] = utdate
+                    if self.log:
+                        self.log.file('record for copy' + path,
+                                      logging.DEBUG)
+                elif self.copy[root]['stamp'] < stamp:
+                    self.copy[root]['path'] = path
+                    self.copy[root]['stamp'] = stamp
+                    if self.log:
+                        self.log.file('replace for copy' + path,
+                                      logging.DEBUG)
+
+    def push(self):
+        """
+        Copy all files to VOspace and delete any marked for removal.
+        
+        Arguments:
+        <none>
+        """
+        for root in self.copy:
+            path = self.copy[root]['path']
+            if self.log:
+                self.log.console('pushing ' + path,
+                                 logging.DEBUG)
+            utdate = self.copy[root]['utdate']
+            utyear = utdate[:4]
+            utmonth = utdate[4:6]
+            utday = utdate[6:]
+            
+            # As needed, create the /year/month/day/ directories
+            vosdir = self.make_subdir(self.vosroot, utyear)
+            vosdir = self.make_subdir(vosdir, utmonth)
+            vosdir = self.make_subdir(vosdir, utday)
+            
+            filename = os.path.basename(path)
+            vospath = vosdir + '/' + filename
+            
+            success = self.push_file(path, vospath)
+            
+            # Try to clean up the directory by deleting old log files
+            m = self.regex.search(filename)
+            (root, stamp) = m.group('root', 'stamp')
+            for vfile in self.vosclient.listdir(vosdir, force=True):
+                m = self.regex.search(vfile)
+                if m:
+                    (vroot, vstamp) = m.group('root', 'stamp')
+                    if vroot == root and vstamp < stamp:
+                        vpath = vosdir + '/' +  vfile
+                        self.vosclient.delete(vpath)
+
 def run():
     """
     Copy files from a pickup directory into VOspace
@@ -414,7 +510,8 @@ def run():
                 filelist.append(filepath)
         
         filehandlers = [raw_ingestion(vosclient, a.vos, log),
-                        stdpipe_ingestion(vosclient, a.vos, log)]
+                        stdpipe_ingestion(vosclient, a.vos, log),
+                        check_rms(vosclient, a.vos, log)]
         
         for filehandler in filehandlers:
             for filepath in filelist:
