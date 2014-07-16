@@ -2,7 +2,6 @@
 
 altgraph==0.9
 astropy==0.4rc2
-caom2==trunk
 caom2repoClient==0.5.1
 distribute==0.6.28
 requests==2.3.0
