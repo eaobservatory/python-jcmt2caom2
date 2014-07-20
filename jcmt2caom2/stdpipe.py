@@ -896,6 +896,8 @@ class stdpipe(ingest2caom2):
                         self.add_to_plane_dict('STANDARD', 'FALSE')
 
             if isdefined('OBSRA', header) or isdefined('OBSDEC', header):
+                self.add_to_plane_dict('target.moving', 'FALSE')
+            else:
                 self.add_to_plane_dict('target.moving', 'TRUE')
 
                 # fits2caom2 has trouble with some moving coordinate systems
