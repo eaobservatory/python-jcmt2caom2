@@ -895,8 +895,16 @@ class stdpipe(ingest2caom2):
                     else:
                         self.add_to_plane_dict('STANDARD', 'FALSE')
 
-            if isdefined('OBSRA', header) or isdefined('OBSDEC', header):
+            if isdefined('OBSRA', header) and isdefined('OBSDEC', header):
                 self.add_to_plane_dict('target.moving', 'FALSE')
+                self.add_to_plane_dict('target_position.cval1',
+                                       str(header['OBSRA']))
+                self.add_to_plane_dict('target_position.cval2',
+                                       str(header['OBSDEC']))
+                self.add_to_plane_dict('target_position.radesys',
+                                       'ICRS')
+                self.add_to_plane_dict('target_position.equinox',
+                                       '2000.0')
             else:
                 self.add_to_plane_dict('target.moving', 'TRUE')
 
@@ -909,16 +917,6 @@ class stdpipe(ingest2caom2):
                     self.default = os.path.join(self.configpath, 
                                                'jcmt_stdpipe_a.default')
                     
-                else:
-                    self.add_to_plane_dict('target.moving', 'FALSE')
-                    self.add_to_plane_dict('target_position.cval1',
-                                           str(header['OBSRA']))
-                    self.add_to_plane_dict('target_position.cval2',
-                                           str(header['OBSDEC']))
-                    self.add_to_plane_dict('target_position.radesys',
-                                           'ICRS')
-                    self.add_to_plane_dict('target_position.equinox',
-                                           '2000.0')
                     
             if backend != 'SCUBA-2' and isdefined('ZSOURCE', header):
                 
