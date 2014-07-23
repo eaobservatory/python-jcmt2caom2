@@ -24,8 +24,7 @@ from jcmt2caom2.__version__ import version as jcmt2caom2version
 def run():
     """
     Construct a set of files containing all valid recipe instances stored in
-    files by the utdate of the earliest (alphabetiaclly smallest) input file
-    in dp_file_input.
+    files by the utdate of the processing (not the raw data).
     """
     userconfig = SafeConfigParser()
     # The server and cred_db are used to get database credentials at the CADC.
@@ -52,20 +51,20 @@ def run():
     description = '\n\n'.join([
             wrapper.fill(textwrap.dedent(
             """
-            Generate healpix files for input to jcmtprocwrap.
-            Output goes to stdout by default, so jcmt_healpix_files can be
+            Generate rcinst files for input to jcmtprocwrap.
+            Output goes to stdout by default, so jcmt_rcinst_dpdate can be
             piped to jcmtprocwrap:
             """)),
-            'EXAMPLE: jcmt_healpix_files --new | jcmtprocwrap --keeeplog --qsub',
+            'EXAMPLE: jcmt_rcinst_dpdate --new | jcmtprocwrap --keeeplog --qsub',
             wrapper.fill(textwrap.dedent(
             """
-            The options --daily and --monthly generate healpix files in the 
+            The options --daily and --monthly generate rcinst files in the 
             current directory that can also be picked up by jcmtprocwrap,
             which can be useful if there are a large number of recipe instances.
             Recipe instances will be grouped by days or months respectively.
             """)),
-            'EXAMPLE: jcmt_healpix_files --new --daily\n'
-            '         jcmtprocwrap --qsub --keeplog *.healpix',
+            'EXAMPLE: jcmt_rcinst_dpdate --new --daily\n'
+            '         jcmtprocwrap --qsub --keeplog *.rcinst',
             wrapper.fill(textwrap.dedent(
             """
             The list of recipe instances to be considered can be restricted 
@@ -140,7 +139,7 @@ def run():
 
     # logging
     ap.add_argument('--log',
-                    default='jcmt_healpix_files_' + utdate_string() + '.log',
+                    default='jcmt_rcinst_dpdate_' + utdate_string() + '.log',
                     help='(optional) name of log file')
     ap.add_argument('--logdir',
                     help='(optional) directory to hold log file')
@@ -223,35 +222,45 @@ def run():
     this_utdate = None
     if a.utdate is not None:
         if int(a.utdate) > 19800101:
-            this_utdate = a.utdate
+            this_begin = datetime(int(a.utdate[0:4]), 
+                                  int(a.utdate[4:6]),
+                                  int(a.utdate[6:8]),
+                                  10,
+                                  0,
+                                  0)
         else:
-            thisutc = now - timedelta(int(a.utdate))
-            this_utdate = '%04d%02d%02d' % (thisutc.year, 
-                                            thisutc.month, 
-                                            thisutc.day)
-            log.file('%-15s= %s' % ('utdate -> ', this_utdate))
+            this_begin = zerotime - timedelta(int(a.utdate))
+        this_end = this_begin + timedelta(1) 
+
+        log.file('this_begin -> ' + this_begin.isoformat())
+        log.file('this_end   -> ' + this_end.isoformat())
     
     this_begin = None
     if a.begin is not None:
         if int(a.begin) > 19800101:
-            this_begin = a.begin
+            this_begin = datetime(int(a.begin[0:4]), 
+                                  int(a.begin[4:6]),
+                                  int(a.begin[6:8]),
+                                  10,
+                                  0,
+                                  0)
         else:
-            thisutc = now - timedelta(int(a.begin))
-            this_begin = '%04d%02d%02d' % (thisutc.year, 
-                                           thisutc.month, 
-                                           thisutc.day)
-            log.file('%-15s= %s' % ('begin -> ', this_begin))
+            this_begin = zerotime - timedelta(int(a.begin))
+        log.file('this_begin -> ' + this_begin.isoformat())
 
     this_end = None
     if a.end is not None:
         if int(a.end) > 19800101:
-            this_end = a.end
+            this_end = datetime(int(a.end[0:4]), 
+                                int(a.end[4:6]),
+                                int(a.end[6:8]),
+                                10,
+                                0,
+                                0)
         else:
-            thisutc = now - timedelta(int(a.end))
-            this_end = '%04d%02d%02d' % (thisutc.year, 
-                                           thisutc.month, 
-                                           thisutc.day)
-            log.file('%-15s= %s' % ('end -> ', this_end))
+            this_end = zerotime - timedelta(int(a.end))
+        this_end = this_end + timedelta(1) 
+        log.file('this_end   -> ' + this_end.isoformat())
     
     if this_begin and this_end:
         if this_begin > this_end:
@@ -272,7 +281,7 @@ def run():
     
     retvals = None
     with connection(userconfig, log) as db:
-        healpixcmd = '\n'.join([
+        rcinstlist = [
             'SELECT rcinst,',
             '       state,',
             '       outcount,',
@@ -293,10 +302,11 @@ def run():
             '                          "1979-12-31 00:00:00")) as date_processed,',
             '               COUNT(dro.dp_output) AS outcount',
             '        FROM data_proc.dbo.dp_recipe_instance dri',
-            '           INNER JOIN data_proc.dbo.dp_recipe_output dro on ',
-            '               dri.identity_instance_id = dro.identity_instance_id',
-            '        WHERE  dri.parameters like "-mode=' + "'%'" + 
-            ' -drparameters=' + "'REDUCE_SCAN_JSA_PUBLIC'" + '"',
+            '            INNER JOIN data_proc.dbo.dp_recipe dr',
+            '                ON dr.recipe_id=dri.recipe_id',
+            '            LEFT JOIN data_proc.dbo.dp_recipe_output dro',
+            '                ON dri.identity_instance_id=dro.identity_instance_id',
+            '        WHERE  dr.script_name="jsawrapdr"',
             '        GROUP BY dri.identity_instance_id, dri.state',
             '         ) s',
             '        INNER JOIN data_proc.dbo.dp_file_input dfi',
@@ -308,13 +318,23 @@ def run():
             '                   END as identity_instance_id,',
             '                   lastModified',
             '            FROM ' + caom_db + 'caom2_Plane',
-            '            WHERE productID like "healpix%") u',
+            '            WHERE productID not like "raw%") u',
             '                ON s.identity_instance_id=u.identity_instance_id',            
             '    GROUP BY s.identity_instance_id,',
             '             s.state,',
             '             s.outcount,',
-            '             s.date_processed) t'])
-        retvals = db.read(healpixcmd)
+            '             s.date_processed) t']
+        # Insert the date_processed constraints, if any
+        if this_end:
+            endconstraint = ('            AND dri.date_processed < "' + 
+                             re.sub(r'[tT]', ' ', this_end.isoformat()) + '"')
+            rcinstlist.insert(25, endconstraint)
+        if this_begin:
+            beginconstraint = ('            AND dri.date_processed >= "' + 
+                               re.sub(r'[tT]', ' ', this_begin.isoformat()) + '"')
+            rcinstlist.insert(25, beginconstraint)
+        rcinstcmd = '\n'.join(rcinstlist)
+        retvals = db.read(rcinstcmd)
         
         rcinst_dict = {}
         if retvals:
@@ -322,7 +342,7 @@ def run():
                  state, 
                  countout, 
                  date_processed, 
-                 lastModified, 
+                 lastModified,
                  utdate) in retvals:
                  
                 rcinst = str(identity_instance_id).strip()
@@ -330,11 +350,7 @@ def run():
                 if a.fromset and rcinst not in fromset:
                     continue
                 
-                if ((not a.new or (a.new and lastModified < date_processed)) and
-                    utdate and 
-                    (not this_utdate or (this_utdate == utdate)) and
-                    (not this_begin or ((this_begin <= utdate) and
-                                        (utdate <= this_end)))):
+                if (not a.new or (a.new and lastModified < date_processed)):
 
                     if state != 'Y':
                         log.console('RCINST = ' + rcinst + ' has state=' + 
@@ -373,6 +389,6 @@ def run():
                     for rcinst in sorted(rcinst_dict[utdate]):
                         print rcinst
                 else:
-                    with open('ut' + utdate + '.healpix', 'w') as RC:
+                    with open('ut' + utdate + '.rcinst', 'w') as RC:
                         for rcinst in sorted(rcinst_dict[utdate]):
                             print >>RC, rcinst

@@ -22,7 +22,7 @@ def run():
     missing observations.
     """
 
-    userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+    userconfigpath = '~/.tools4caom2/tools4caom2.config'
     userconfig = SafeConfigParser()
     # The server and cred_db are used to get database credentials at the CADC.
     # Other sites should supply cadc_id, cadc_key in the section [cadc] of
@@ -80,6 +80,11 @@ def run():
     ap.add_argument('--to',
                     nargs='*',
                     help='e-mail recipient')
+    
+    ap.add_argument('fromset',
+                    nargs='*',
+                    help='a list of obsid files, rcinst files or wrap logs'
+                         ' form which obsid or rcinst values can be parsed')
     a = ap.parse_args()
     
     if a.userconfig:
@@ -169,63 +174,179 @@ def run():
         ERRORWARNING_REGEX = re.compile(r'^ERROR|^WARNING')
     EXTRA_REGEX = re.compile(r'.+(ERROR|java.lang)')
     END_REGEX = re.compile(r'^ERROR|^WARNING|^INFO|^DEBUG')
-        
+    
+    OBSID_REGEX = re.compile(r'^\s*(\w+_\d{5}_\d{8}[Tt]\d{6})(\s.*)?$')
+    RCINST_REGEX = re.compile(r'^\s*(\d+)(\s.*)$')
+    LOG_OBSID_REGEX = re.compile(r'--key=(\w+_\d{5}_\d{8}[Tt]\d{6})\b')
+    LOG_RCINST_REGEX = re.compile(r'dp:(\d+)\b')
+    
+    # Parse fromset to get lists of obsid and rcinst sources
+    obsid_dict = {}
+    obsid_set = set()
+    rcinst_dict = {}
+    rcinst_set = set()
+    
+    for source in a.fromset:
+        # if source == '-', read from stdin
+        # if source is an obsid or rcinst, the "sourcefile" is cmdline.
+        if OBSID_REGEX.match(source):
+            obsid_set.add(source)
+            if 'obsid_cmd' in obsid_dict:
+                obsid_dict['obsid_cmd'].append(source)
+            else:
+                obsid_dict['obsid_cmd'] = [source]
+        elif RCINST_REGEX.match(source):
+            rcinst_set.add(source)
+            if 'rcinst_cmd' in rcinst_dict:
+                rcinst_dict['rcinst_cmd'].append(source)
+            else:
+                rcinst_dict['rcinst_cmd'] = [source]
+        elif source == '-':
+            for line in sys.stdin:
+                m = OBSID_REGEX.match(line)
+                if m:
+                    obsid_set.add(m.group(1))
+                    if 'obsid_stdin' in obsid_dict:
+                        obsid_dict['obsid_stdin'].append(m.group(1))
+                    else:
+                        obsid_dict['obsid_stdin'] = [m.group(1)]
+                else:
+                    m = RCINST_REGEX.match(line)
+                    if m:
+                        rcinst_set.add(m.group(1))
+                        if 'rcinst_stdin' in rcinst_dict:
+                            rcinst_dict['rcinst_stdin'].append(m.group(1))
+                        else:
+                            rcinst_dict['rcinst_stdin'] = [m.group(1)]
+        elif os.path.isfile(source):
+            basename, ext = os.path.splitext(source)
+            if ext == '.obsid':
+                obsid_dict[source] = []
+                with open(source, 'r') as OBSID:
+                    for line in OBSID:
+                        m = OBSID_REGEX.match(line)
+                        if m:
+                            obsid_set.add(m.group(1))
+                            obsid_dict[source].append(m.group(1))
+            elif ext == '.rcinst':
+                rcinst_dict[source] = []
+                with open(source, 'r') as RCINST:
+                    for line in RCINST:
+                        m = RCINST_REGEX.match(line)
+                        if m:
+                            rcinst_set.add(m.group(1))
+                            rcinst_dict[source].append(m.group(1))
+            elif ext == '.log':
+                if re.search(r'jcmtrawwrap', basename):
+                    obsid_dict[source] = []
+                    with open(source, 'r') as OBSID:
+                        for line in OBSID:
+                            m = LOG_OBSID_REGEX.match(line)
+                            if m:
+                                obsid_set.add(m.group(1))
+                                obsid_dict[source].append(m.group(1))
+                elif re.search(r'jcmtprocwrap', basename):
+                    rcinst_dict[source] = []
+                    with open(source, 'r') as RCINST:
+                        for line in RCINST:
+                            m = LOG_RCINST_REGEX.match(line)
+                            if m:
+                                rcinst_set.add(m.group(1))
+                                rcinst_dict[source].append(m.group(1))
+    
     # Read the list of directories from vos:jsaops/raw_ingestion
     vosclient = vos.Client()
     vosroot = 'vos:jsaops/raw_ingestion'
     vosdaylist = []
-    firstday = vosroot + '/' + this_begin
-    lastday = vosroot + '/' + this_end
-    
-    for year in vosclient.listdir(vosroot, force=True):
-        if year >= this_begin[0:4] and year <= this_end[0:4]:
-            vosyear = vosroot + '/' + year
-            for month in vosclient.listdir(vosyear, force=True):
-                vosmonth = vosyear + '/' + month
-                for day in vosclient.listdir(vosmonth, force=True):
-                    vosday = vosmonth + '/' + day
-                    if vosday >= firstday and vosday <= lastday:
-                        vosdaylist.append(vosday)
+    if this_begin and this_end:
+        firstday = vosroot + '/' + this_begin
+        lastday = vosroot + '/' + this_end
+        
+        for year in vosclient.listdir(vosroot, force=True):
+            if year >= this_begin[0:4] and year <= this_end[0:4]:
+                vosyear = vosroot + '/' + year
+                for month in vosclient.listdir(vosyear, force=True):
+                    vosmonth = vosyear + '/' + month
+                    for day in vosclient.listdir(vosmonth, force=True):
+                        vosday = vosmonth + '/' + day
+                        if vosday >= firstday and vosday <= lastday:
+                            vosdaylist.append(vosday)
                                
     # Read the files for each day
     needspace = False
-    print 'REPORT OF INGESTION LOGS FOR ' + this_begin + ' TO ' + this_end
-    for vosday in sorted(vosdaylist, reverse=True):
-        if needspace:
-            print
-        needspace = True
-        print 'SUMMARY OF LOGS FOR: ' + vosday
-        for logfile in vosclient.listdir(vosday, force=True):
-            logpath = vosday + '/' + logfile
-            if a.success or re.search(r'ERRORS|WARNINGS|JUNK', logfile):
-                localpath = os.path.join(cwd, logfile)
-                vosclient.copy(logpath, localpath)
-                with open(localpath) as LF:
-                    text = LF.readlines()
-                os.remove(localpath)
-                reportfile = True
-                everyline = False
-                for line in text:
-                    #if EXTRA_REGEX.search(line):
-                    #    everyline = True
-                    #    pass
-                    #elif END_REGEX.search(line):
-                    #    everyline = False
-                        
-                    if (everyline or
-                        ERRORWARNING_REGEX.search(line)):
-                        # Remove logging time stamp for clarity
-                        line = re.sub(r'^(ERROR|WARNING) '
-                               r'[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}',
-                               r'\1 ',
-                               line)
-                        
-                        # JUNK observations are not real warnings
-                        if re.search(r'JUNK', line):
-                            line = re.sub(r'WARNING', r'INFO', line)
-                            
-                        if reportfile:
-                            print logpath
-                            reportfile = False
-                        print '   ' + line.rstrip()
+    if vosdaylist:
+        print 'REPORT OF INGESTION LOGS FOR ' + this_begin + ' TO ' + this_end
+        for vosday in sorted(vosdaylist, reverse=True):
+            if needspace:
                 print
+            needspace = True
+            print 'SUMMARY OF LOGS FOR: ' + vosday
+            for logfile in vosclient.listdir(vosday, force=True):
+                logpath = vosday + '/' + logfile
+                if a.success or re.search(r'ERRORS|WARNINGS|JUNK', logfile):
+                    localpath = os.path.join(cwd, logfile)
+                    summary(logpath, localpath, ERRORSWARNING_REGEX)
+    
+    if obsid_dict:
+        pass
+    
+    if rcinst_dict:
+        print 'REPORT OF INGESTION LOGS FOR RCINST INPUTS'
+        for source in sorted(rcinst_dict.keys()):
+            print 'SUMMARY OF LOGS IN ' + source
+            thousands = {}
+            for rcinst in sorted(rcinst_dict[source]):
+                thousand = str(int(rcinst)/1000)
+                thoudir = thousand + '000-' + thousand + '999'
+                if thoudir not in thousands:
+                    thousands[thoudir] = []
+                thousands[thoudir].append(rcinst)
+            for thousand in sorted(thousands.keys()):
+                logdir = 'vos:jsaops/proc_ingestion/' + thousand
+                for filename in vosclient.listdir(logdir):
+                    m = re.search(r'dp_(\d+)_', filename)
+                    if m:
+                        logpath = logdir + '/' + filename
+                        localpath = os.path.join(cwd, filename)
+                        summary(vosclient, logpath, localpath, ERRORWARNING_REGEX)
+                         
+
+def summary(vosclient, logpath, localpath, ERRORWARNING_REGEX):
+    """
+    Copy a file from VOspace and scan it for errors and warnings
+    
+    Arguments:
+    logpath: the name of the log file in VOspace
+    localpath: the name of the file on the local disk
+    ERRORWARNINFG_REGEX: the regex to use to search for errors and warnings
+    """
+    vosclient.copy(logpath, localpath)
+    with open(localpath) as LF:
+        text = LF.readlines()
+    os.remove(localpath)
+    reportfile = True
+    everyline = False
+    for line in text:
+        #if EXTRA_REGEX.search(line):
+        #    everyline = True
+        #    pass
+        #elif END_REGEX.search(line):
+        #    everyline = False
+            
+        if (everyline or
+            ERRORWARNING_REGEX.search(line)):
+            # Remove logging time stamp for clarity
+            line = re.sub(r'^(ERROR|WARNING) '
+                   r'[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}',
+                   r'\1 ',
+                   line)
+            
+            # JUNK observations are not real warnings
+            if re.search(r'JUNK', line):
+                line = re.sub(r'WARNING', r'INFO', line)
+                
+            if reportfile:
+                print logpath
+                reportfile = False
+            print '   ' + line.rstrip()
+    print

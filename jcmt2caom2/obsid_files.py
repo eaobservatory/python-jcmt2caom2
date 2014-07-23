@@ -28,7 +28,7 @@ def run():
     in dp_file_input.
     """
 
-    userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+    userconfigpath = '~/.tools4caom2/tools4caom2.config'
     userconfig = SafeConfigParser()
     # The server and cred_db are used to get database credentials at the CADC.
     # Other sites should supply cadc_id, cadc_key in the section [cadc] of

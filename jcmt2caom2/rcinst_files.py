@@ -45,7 +45,7 @@ def run():
     userconfig.set('jcmt', 'jcmt_db', 'jcmtmd')
     userconfig.set('jcmt', 'omp_db', 'jcmtmd')
 
-    userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+    userconfigpath = '~/.tools4caom2/tools4caom2.config'
     
     wrapper = textwrap.TextWrapper(initial_indent='',
                                    subsequent_indent='')

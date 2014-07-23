@@ -159,7 +159,7 @@ class stdpipe(ingest2caom2):
         # The server and cred_db are used to get database credentials at the CADC.
         # Other sites should supply cadc_id, cadc_key in the section [cadc] of
         # the userconfig file.
-        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+        self.userconfigpath = '~/.tools4caom2/tools4caom2.config'
         if not self.userconfig.has_section('cadc'):
             self.userconfig.add_section('cadc')
         self.userconfig.set('cadc', 'server', 'SYBASE')

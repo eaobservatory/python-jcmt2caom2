@@ -199,7 +199,7 @@ class raw(object):
 
         # config object optionally contains a user configuration object
         # this can be left undefined at the CADC, but is needed at other sites
-        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+        self.userconfigpath = '~/.tools4caom2/tools4caom2.config'
 
         self.userconfig = SafeConfigParser()
 

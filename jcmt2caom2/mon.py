@@ -142,7 +142,7 @@ class mon(object):
         self.topclause = ''
         self.fileString = ''
         
-        self.userconfigpath = '~/.tools4caom2/jcmt2caom2.config'
+        self.userconfigpath = '~/.tools4caom2/tools4caom2.config'
         self.userconfig = SafeConfigParser()
         # The server and cred_db are used to get database credentials at the CADC.
         # Other sites should supply cadc_id, cadc_key in the section [cadc] of
