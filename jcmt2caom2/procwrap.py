@@ -47,7 +47,7 @@ def run():
                     help='(optional) directory to hold log and xml files')
     ap.add_argument('--keeplog',
                     action='store_true',
-                    help='Pass --keeplog switch to jcmt2caom2proc')
+                    help='pass --keeplog switch to jcmt2caom2proc')
     ap.add_argument('--sharelog',
                     action='store_true',
                     help='Pass --sharelog switch to jcmt2caom2proc')
@@ -82,12 +82,15 @@ def run():
                     'identity_instance_id values')
     a = ap.parse_args()
     
+    cwd = os.getcwd()
+
     if a.outdir and os.path.isdir(a.outdir):
-        os.chdir(a.outdir)
+        outdir = os.path.abspath(
+                        os.path.expandvars(
+                            os.path.expanduser(a.outdir)))
+    else:
+        outdir = cwd
     
-    cwd = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars('.')))
     
     if a.logdir:
         logdir = os.path.abspath(
@@ -226,6 +229,7 @@ def run():
             proccmd += ' --collection=' + a.collection
         if a.big:
             proccmd += ' --big'
+        proccmd += ' --outdir=' + outdir
         if a.debug:
             proccmd += ' --debug'
         if a.keeplog or a.sharelog:
@@ -275,10 +279,4 @@ def run():
                         log.file('status = ' + str(e.returncode) + 
                                  ' output = \n' + e.output)
                     
-                    # clean up
-                    for filename in os.listdir(cwd):
-                        filepath = os.path.join(cwd, filename)
-                        basename, ext = os.path.splitext(filename)
-                        if ext in ['.fits', '.xml', '.override']:
-                            os.remove(filepath)
     log.console('DONE')

@@ -197,11 +197,6 @@ def run():
             if a.debug:
                 rawcmd += ' --debug'
 
-            # jcmt2Caom2DA does not pass --log or --logdir to 
-            # jcmt2caom2raw, so it is necessary for logdir to be the
-            # current directory
-            os.chdir(logdir)
-
             idlist = []
             if idset:
                 idlist.append(sorted(idset, reverse=True))
@@ -235,22 +230,30 @@ def run():
                     
                     if not a.test:
                         try:
+                            # jcmt2Caom2DA does not pass --log or --logdir to 
+                            # jcmt2caom2raw, so it is necessary for logdir 
+                            # to be the current directory
+                            os.chdir(logdir)
+                            
                             output = subprocess.check_output(
-                                                        thisrawcmd,
-                                                        shell=True,
-                                                        stderr=subprocess.STDOUT)
+                                                    thisrawcmd,
+                                                    shell=True,
+                                                    stderr=subprocess.STDOUT)
                         except subprocess.CalledProcessError as e:
                             log.console('FAILED: ' + obsid,
                                         logging.WARN)
                             log.file('status = ' + str(e.returncode) + 
                                      ' output = \n' + e.output)
+                        finally:
+                            # clean up
+                            for filename in os.listdir(cwd):
+                                filepath = os.path.join(cwd, filename)
+                                basename, ext = os.path.splitext(filename)
+                                if ext == '.xml':
+                                    log.console('rm ' + filepath, 
+                                                logging.DEBUG)
+                                    os.remove(filepath)
+                            os.chdir(cwd)
                         
-                        # clean up
-                        for filename in os.listdir(cwd):
-                            filepath = os.path.join(cwd, filename)
-                            basename, ext = os.path.splitext(filename)
-                            if ext == '.xml':
-                                log.console('rm ' + filepath, logging.DEBUG)
-                                os.remove(filepath)
 
         log.console('DONE')

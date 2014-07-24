@@ -274,7 +274,7 @@ class stdpipe(ingest2caom2):
         """
         ingest2caom2.logCommandLineSwitches(self)
         self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
-        self.log.console('collection = ' + repr(self.collection))
+        self.log.file('collection = ' + repr(self.collection))
 
     # Utility for checking missing headers
     def check_missing(self, key, head):

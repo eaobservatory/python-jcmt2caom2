@@ -7,6 +7,7 @@ import logging
 import os.path
 import re
 import subprocess
+import sys
 import urllib2
 
 from caom2.xml.caom2_observation_reader import ObservationReader
@@ -49,7 +50,7 @@ class integrationtestset(object):
         self.logfile = None
         self.log = None
         self.loglevel = logging.INFO
-        self.outdir = os.path.abspath('.')
+        self.outdir = None
         self.rawlist = []
         self.proclist = []
         self.cleanlist = []
@@ -75,6 +76,10 @@ class integrationtestset(object):
             action='store_true',
             help='(optional) show all messages, pass --debug to fits2caom2,'
             ' and retain all xml and override files')
+        
+        ap.add_argument('--outdir',
+                        default='.',
+                        help='directory to be used for working files')
 
         ap.add_argument('--noraw',
                         action='store_false',
@@ -106,6 +111,8 @@ class integrationtestset(object):
         if self.args.debug:
             self.debug = self.args.keeplog
             self.loglevel = logging.DEBUG
+
+        self.outdir = os.path.abspath(self.args.outdir)
         
     def read_integrationtestset(self):
         """
@@ -159,10 +166,12 @@ class integrationtestset(object):
         """
         write startup configuration into the log 
         """
+        self.log.file(sys.argv[0])
         self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
         self.log.file('tools4caom2version   = ' + tools4caom2version)
         self.log.console('logfile = ' + self.logfile)
         self.log.file('keeplog = ' + str(self.args.keeplog))
+        self.log.file('outdir = ' + self.outdir)
         self.log.file('debug = ' + str(self.args.debug))
         self.log.file('skip = ' + str(self.args.skip))
         self.log.file('clean = ' + str(self.args.clean))
@@ -192,9 +201,11 @@ class integrationtestset(object):
         Ingest the set of raw observations into SANDBOX using jcmt2caom2raw
         """
         if self.args.raw:
-            basecmd = 'jcmt2caom2raw --collection=SANDBOX'
+            rawcmd = os.path.join(sys.path[0], 'jcmt2caom2raw')
+            rawcmd += ' --outdir=' + self.outdir
+            rawcmd += ' --collection=SANDBOX'
             for raw in self.rawlist:
-                cmd = basecmd + ' --key=' + raw
+                cmd = rawcmd + ' --key=' + raw
                 self.log.console(cmd)
                 try:
                     output = subprocess.check_output(cmd,
@@ -210,14 +221,16 @@ class integrationtestset(object):
         ingest the set of recipe instances into SANDBOX using jcmt2caom2proc
         """
         if self.args.proc:
-            basecmd = 'jcmt2caom2proc --collection=SANDBOX'
+            proccmd = os.path.join(sys.path[0], 'jcmt2caom2proc')
+            proccmd += ' --outdir=' + self.outdir 
+            proccmd += ' --collection=SANDBOX'
             if self.args.debug:
-                basecmd += ' --debug'
+                proccmd += ' --debug'
             elif self.args.keeplog:
-                basecmd += ' --keeplog'
+                proccmd += ' --keeplog'
                 
             for proc in self.proclist:
-                cmd = basecmd + ' dp:' + proc
+                cmd = proccmd + ' dp:' + proc
                 self.log.console(cmd)
                 try:
                     output = subprocess.check_output(cmd,

@@ -217,9 +217,8 @@ class raw(object):
         self.userconfig.set('jcmt', 'jcmt_db', 'jcmtmd')
         self.userconfig.set('jcmt', 'omp_db', 'jcmtmd')
         
-        self.outdir = os.path.abspath(
-                          os.path.expanduser(
-                              os.path.expandvars(outdir)))
+        self.outdir = None
+        
         self.server = 'SYBASE'
         self.database = None
         self.schema = None
@@ -326,11 +325,15 @@ class raw(object):
             self.outdir = os.path.abspath(
                               os.path.expanduser(
                                   os.path.expandvars(args.outdir)))
+        else:
+            self.outdir = os.getcwd()
 
         if args.logdir:
             self.logdir = os.path.abspath(
                                os.path.expanduser(
                                    os.path.expandvars(args.logdir)))
+        else:
+            self.logdir = os.getcwd()
         
         if args.log:
             self.logfile = args.log
@@ -375,6 +378,7 @@ class raw(object):
         Arguments:
         <None>
         """
+        self.log.file(sys.argv[0])
         self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
         self.log.file('tools4caom2version   = ' + tools4caom2version)
         for line in ['obsid = ' + self.obsid,
