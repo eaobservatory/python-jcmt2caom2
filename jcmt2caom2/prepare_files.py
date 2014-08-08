@@ -21,21 +21,10 @@ from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 def run():
     """
-    The run() method for jcmtprocwrap.
-
-
-    A range of id's can be entered one at a time, or as a range first-last,
-    where first defaults to 10894 and last defaults to the current maximum
-    identity_instance_id. Thus, the default range if nothing is specified
-    is 10895-, implying all currently valid recipe instances.
-
-    Examples:
-    jcmtprocwrap --debug 10895-10900
-    jcmtprocwrap \
-        12707 12744 12784 12795 12817 14782 14784 30550 30594 \
-        30605 30736 30739 30745 30748 30863 31192 32084 32971
-    jcmtprocwrap --qsub --algorithm=project
-    jcmtprocwrap --qsub --backend=SCUBA-2 --existing
+    The run() method for jcmt_prepare_files.  This is intended to be a template
+    for a custom program to prepare externally generated data files for ingestion
+    into the JSA by changing the name and decorating the file with a standard set 
+    of FITS headers.
     """
     progname = os.path.basename(os.path.splitext(sys.path[0])[0])
     ap = argparse.ArgumentParser('jcmt_prepare_files')
@@ -83,6 +72,14 @@ def run():
         loglevel = logging.DEBUG
 
     with logger(logfile, loglevel) as log:
+        log.file(progname)
+        for attr in dir(switches):
+            if attr != 'id' and attr[0] != '_':
+                log.file('%-15s= %s' % 
+                                 (attr, str(getattr(switches, attr))))
+        log.file('logdir = ' + logdir)
+        log.console('log = ' + logfile)
+
         if a.keyvalue:
             keydict = OrderedDict()
             for keyvalue in a.keyvalue:
