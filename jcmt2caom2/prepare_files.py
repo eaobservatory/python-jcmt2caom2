@@ -6,8 +6,10 @@ from ConfigParser import SafeConfigParser
 import csv
 from datetime import datetime
 import logging
+import pyfits
 import os.path
 import re
+import shutil
 import sys
 
 from tools4caom2.logger import logger
@@ -19,6 +21,118 @@ from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 
+def rewrite_fits(infits, outfits, headerdict):
+    """
+    Customize this routine to suit the needs of your data.  
+    """
+    hdulist = pyfits.open(infits)
+    hdu = hdulist[0].header
+
+    # Uncomment lines below as required and supply an algorithmic
+    # value for the specified header
+    
+    # headerdict['INSTREAM'] = 'JCMTLS' # or 'JCMTUSER'
+    # headerdict['ASN_ID'] = <observationID for observation>
+    # headerdict['ASN_TYPE'] = 'custom'
+    # headerdict['MBRCNT'] = 0 # number of membership URIs
+    # headerdict['MBR1'] = <membership URI 1>
+    # headerdict['OBS-TYPE'] = 'science'
+    # headerdict['PROJECT'] = <JCMT observing proposal_id>
+    # headerdict['PI'] = <JCMT observing proposal PI>
+    # headerdict['TITLE'] = <JCMT observing proposal title>
+    # headerdict['SURVEY'] = <JCMT Legacy Survey acronym>
+    # headerdict['DPPROJ'] = <data processing project>
+    # headerdict['INSTRUME'] = <full instrument name or frontend>
+    # headerdict['INBEAM'] = <optical components in the beam>
+    # headerdict['BACKEND'] = <backend>
+    # headerdict['SW_MODE'] = <switching mode>
+    # headerdict['SCAN_PAT'] = <scan pattern>
+    # headerdict['OBS_SB'] = <signal sideband>
+    # headerdict['SB_MODE'] = <instrument sideband mode>
+    # headerdict['TELESCOPE'] = 'JCMT'
+    # headerdict['OBSGEO_X'] = -5464588.652191697
+    # headerdict['OBSGEO_Y'] = -2493003.0215722183
+    # headerdict['OBSGEO_Z'] = 2150655.6609171447
+    # headerdict['OBJECT'] = <target name>
+    # headerdict['TARGTYPE'] = 'OBJECT' # or 'FIELD'
+    # headerdict['ZSOURCE'] = <redshift in BARYCENT frame>
+    # headerdict['OBSGEO_Z'] = 2150655.6609171447
+    # headerdict['TARGKEYW'] = <target keyword string>
+    # headerdict['MOVING'] = F # or T
+    # headerdict['OBSGEO_Z'] = 2150655.6609171447
+    # headerdict['OBSRA'] = <target RA in ICRS>
+    # headerdict['OBSDEC'] = <target Dec in ICRS>
+    # headerdict['RADESYS'] = <RA/Dec system>
+    # headerdict['EQUINOX'] = <equinox of coordinates>
+    # headerdict['PRODID'] = <productID for plane>
+    # headerdict['PRODUCT'] = <kind of product in the file>
+    # headerdict['FILTER'] = <characteristic wavelength>
+    # headerdict['RESTFREQ'] = <heterodyne rest frequency>
+    # headerdict['BWMODE'] = <ACSIS/DAS bandwidth mode>
+    # headerdict['SUBSYSNR'] = <ACSIS/DAS subsystem number>
+    # headerdict['RECIPE'] = <name of data processing software>
+    # headerdict['PROCVERS'] = <data processing software version>
+    # headerdict['ENGVERS'] = <data processing engine version>
+    # headerdict['PRODUCER'] = <name of processing person/team>
+    # headerdict['DPDATE'] = <nominal UTC for data processing>
+    # headerdict['INPCNT'] = 0 # number of provenance input URIs
+    # headerdict['INP1'] = <provenance input URI 1>
+
+    # Are there any new keywords in the headerdict
+    newkeys = False
+    for key in headerdict:
+        if key not in hdu:
+            newkeys = True
+    
+    # if so, add a comment to label the section containing new keys
+    hdu.add_comment('JSA Headers')
+    
+    # update FITS headers with those supplied in headerdict
+    for key in sorted(headerdict.keys()):
+        hdu.update(key, headerdict[key])
+
+    dirpath = os.path.dirname(outfits)
+    if not os.path.isdir(dirpath):
+        os.makedirs(dirpath)
+    
+    hdulist.writeto(outfits)
+
+
+def fix_name(outdir, prefix, filename):
+    """
+    Compose a new name from the prefix, project and basename of the file.
+    """
+    dirpath, basename = os.path.split(filename)
+    return os.path.join(outdir, dirpath, prefix + '_' + basename.lower())
+
+def readfilelist(rootdir, indir, filter, filelist, log):
+    """
+    Construct a list of file names rooted at indir by reading names from indir
+    and calling readfilelist recursively for each directory.  Include only
+    filenames for which filter returns True.
+    """  
+    dirlist = []
+    if indir:
+        readdir = os.path.join(rootdir, indir)
+    else:
+        readdir = rootdir
+    
+    for f in os.listdir(readdir):
+        log.file('examine: ' + f)
+        filename = os.path.join(rootdir, indir, f)
+        if os.path.isfile(filename) and filter(f):
+            filelist.append(os.path.join(indir, f))
+        if os.path.isdir(filename):
+            dirlist.append(os.path.join(indir, f))
+    for d in dirlist:
+        readfilelist(rootdir, d, filter, filelist, log)
+
+def fits_and_png(filename):
+    """
+    Return True if the extension is nor a FITS or PNg file, False otherwise
+    """
+    return (os.path.splitext(filename)[1].lower() in ('.fits', '.fit', '.png'))
+
 def run():
     """
     The run() method for jcmt_prepare_files.  This is intended to be a template
@@ -27,12 +141,72 @@ def run():
     of FITS headers.
     """
     progname = os.path.basename(os.path.splitext(sys.path[0])[0])
+    # Comment out header names that should not be in the csv file
+    header_order =  [
+                     'inputfile',
+                     'outputfile',
+                     'INSTREAM',
+                     'ASN_ID',
+                     'ASN_TYPE',
+                     'MBRCNT',
+                     'OBS-TYPE',
+                     'PROJECT',
+                     'PI',
+                     'TITLE',
+                     'SURVEY',
+                     'DPPROJ',
+                     'INSTRUME',
+                     'INBEAM',
+                     'BACKEND',
+                     'SW_MODE',
+                     'SCAN_PAT',
+                     'OBS_SB',
+                     'SB_MODE',
+                     'TELESCOP',
+                     'OBSGEO_X',
+                     'OBSGEO_Y',
+                     'OBSGEO_Z',
+                     'OBJECT',
+                     'TARGTYPE',
+                     'ZSOURCE',
+                     'TARGKEYW'
+                     'MOVING',
+                     'OBSRA',
+                     'OBSDEC',
+                     'RADESYS',
+                     'EQUINOX',
+                     'PRODID',
+                     'PRODUCT',
+                     'FILTER',
+                     'RESTFREQ',
+                     'BWMODE',
+                     'SUBSYSNR',
+                     'RECIPE',
+                     'PROCVERS',
+                     'ENGVERS',
+                     'PRODUCER',
+                     'DPDATE',
+                     'INPCNT'
+                    ]
+
     ap = argparse.ArgumentParser('jcmt_prepare_files')
+    ap.add_argument('--major',
+                    help='existing major release directory')
+    ap.add_argument('--minor',
+                    help='existing minor release subdirectory within the '
+                         'major release; if omited, minor=major')
+    ap.add_argument('--newmajor',
+                    help='new major release directory to which files will be '
+                         'written, preserving the minor release directory '
+                         'structure')
+    ap.add_argument('--prefix',
+                    default='',
+                    help='optional prefix for new file names')
+
     ap.add_argument('-c', '--csv',
-                    required=True,
                     help='comma-separated value file listing files to edit and '
                          'headers to change')
-
+    
     ap.add_argument('--log',
                     default='jcmt_prepare_files_' + utdate_string() + '.log',
                     help='(optional) name of log file')
@@ -44,46 +218,28 @@ def run():
 
     ap.add_argument('keyvalue',
                     nargs='*',
-                    help='set of key=value pairs for default headers'
+                    help='set of key=value pairs for default headers')
 
     a = ap.parse_args()
-
-    # logging arguments
-    if a.logdir:
-        logdir = os.path.abspath(
-                        os.path.expandvars(
-                            os.path.expanduser(a.logdir)))
-    else:
-        self.logdir = os.getcwd()
-
-    logfile = None
-    if a.log:
-        if os.path.dirname(a.log) == '':
-            logfile = os.path.join(logdir, a.log)
-        else:
-            logfile = os.path.abspath(a.log)
-
-    if not logfile:
-        logfile = os.path.join(logdir,
-                               progname + '_' + utdate_string() + '.log')
 
     loglevel = logging.INFO
     if a.debug:
         loglevel = logging.DEBUG
 
-    with logger(logfile, loglevel) as log:
+    with logger(a.log, loglevel).record() as log:
+        # Report all command line arguments
         log.file(progname)
-        for attr in dir(switches):
+        for attr in dir(a):
             if attr != 'id' and attr[0] != '_':
                 log.file('%-15s= %s' % 
-                                 (attr, str(getattr(switches, attr))))
-        log.file('logdir = ' + logdir)
-        log.console('log = ' + logfile)
+                                 (attr, str(getattr(a, attr))))
+        log.console('log = ' + a.log)
 
+        # if any keyvalue arguments were supplied save them in a dictionary
+        keydict = {}
         if a.keyvalue:
-            keydict = OrderedDict()
             for keyvalue in a.keyvalue:
-                m = re.match(r'^([A-Z0-9]+)=(\W+)$', keyvalue)
+                m = re.match(r'^([A-Z0-9]+)=(\w+)$', keyvalue)
                 if m:
                     keydict[m.group(1)] = m.group(2)
                 else:
@@ -91,94 +247,114 @@ def run():
                                 'being ignored',
                                 logging.WARN)
 
-        if not os.path.isfile(a.csv):
-            log.console(a.csv + 'is not a file', logging.ERROR)
+        if not a.major and not a.csv:
+            log.console('specify either --major or --csv for input; '
+                        'if both are given the csv file will be output',
+                        logging.ERROR)
 
-        with open(a.csv, 'rb') as csvfile:
-            sample = csvfile.read(1024)
-            dialect = csv.Sniffer().sniff(sample)
-            if not csv.Sniffer.has_header(sample):
-                log.console('The first row of ' + a.csv +
-                            ' must be a header row',
+        if a.major:
+            if not a.minor:
+                a.minor = ''
+        
+            if not a.newmajor:
+                log.console('specify both --major and --newmajor, since it is '
+                            'forbidden to overwrite the original files',
+                            logging.ERROR)
+            
+            a.major = os.path.abspath(
+                        os.path.expandvars(
+                            os.path.expanduser(a.major)))
+            
+            a.newmajor = os.path.abspath(
+                            os.path.expandvars(
+                                os.path.expanduser(a.newmajor)))
+            
+            if not os.path.isdir(a.major):
+                log.console('major directory ' + a.major + 
+                            ' is not a directory',
                             logging.ERROR)
 
-            csvfile.seek(0)
-            reader = csv.DictReader(csvfile, dialect)
-            for csvdict in reader:
-                if 'inputfile' not in csvdict:
-                    log.console('"inputfile" must be a column in ' + a.csv,
-                                logging.ERROR)
-                if 'outputfile' not in csvdict:
-                    log.console('"outputfile" must be a column in ' + a.csv,
-                                logging.ERROR)
+            abs_minor = os.path.abspath(os.path.join(a.major, a.minor))
+            if not os.path.isdir(abs_minor):
+                log.console('minor directory ' + abs_minor + 
+                            ' is not a directory',
+                            logging.ERROR)
+            
+            if not os.path.isdir(a.newmajor):
+                log.console('output directory ' + a.newmajor + 
+                            ' is not a directory',
+                            logging.ERROR)
+            
+            filelist = []
+            readfilelist(a.major, a.minor, fits_and_png, filelist, log)
+            infile = [os.path.join(a.major, f) for f in filelist]
+            outfile = [fix_name(a.newmajor, a.prefix, f) for f in filelist]
+            
+            # if a CSV filename is given, open it for output
+            try:
+                CSV = None
+                csvwriter = None
+                if a.csv:
+                    CSV = open(a.csv, 'wb')
+                    csvwriter = csv.DictWriter(CSV, header_order)
+                    csvwriter.writeheader()
+                
+                # Open each FITS file and update it as required
+                for i in range(len(filelist)):
+                    if a.debug:
+                        log.console('infile = ' + infile[i])
+                        log.console('    outfile = ' + outfile[i])
+                    else:
+                        log.file('infile = ' + infile[i])
+                        log.file('    outfile = ' + outfile[i])
 
-                if not os.path.isfile(csvdict['inputfile']):
-                    log.console('The FITS file ' + csvdict['inputfile'] +
-                                ' does not exist',
-                                logging.ERROR)
+                    if CSV and csvwriter:
+                        # If a CSV file is open, write a row in the CSV file for
+                        # each input file
+                        rowdict = {}
+                        rowdict.update(keydict)
+                        rowdict['inputfile'] = infile[i]
+                        rowdict['outputfile'] = outfile[i]
+                        
+                        csvwriter.writerow(rowdict)
+                    else:
+                        # If the file is a FITS file, copy the file and update
+                        # the headers in the primary HDU
+                        ext = os.path.splitext(infile[i])[1].lower()
+                        if ext in ('.fits', '.fit'):
+                            rewrite_fits(infile[i], outfile[i], keydict)
+                        else:
+                            shutil.copy(nfile[i], outfile[i])
+            finally:
+                if CSV:
+                    CSV.close()
 
-                # open the FITS file and modify the headers
-                hdulist = pyfits.open(csvdict['inputfile'])
-                hdu = hdulist[0]
+        else:
+            if not os.path.isfile(a.csv):
+                log.console(a.csv + 'is not a file', logging.ERROR)
 
-                # Fill default values here, or supply code to generate values
+            with open(a.csv, 'r') as csvfile:
+                reader = csv.DictReader(csvfile, delimiter=',', quotechar='"')
+                for csvdict in reader:
+                    if 'inputfile' in csvdict:
+                        infile = csvdict.pop('inputfile')
+                    else:
+                        log.console('"inputfile" must be a column in ' + a.csv,
+                                    logging.ERROR)
+                    
+                    if 'outputfile' in csvdict:
+                        outfile = csvdict.pop('outputfile')
+                    else:
+                        log.console('"outputfile" must be a column in ' + a.csv,
+                                    logging.ERROR)
 
-                # hdu.update['INSTREAM'] = 'JCMTLS' # or 'JCMTUSER'
-                # hdu.update['ASN_ID'] = <observationID for observation>
-                # hdu.update['ASN_TYPE'] = 'custom'
-                # hdu.update['MBRCNT'] = 0 # number of membership URIs
-                # hdu.update['MBR1'] = <membership URI 1>
-                # hdu.update['OBS-TYPE'] = 'science'
-                # hdu.update['PROJECT'] = <JCMT observing proposal_id>
-                # hdu.update['PI'] = <JCMT observing proposal PI>
-                # hdu.update['TITLE'] = <JCMT observing proposal title>
-                # hdu.update['SURVEY'] = <JCMT Legacy Survey acronym>
-                # hdu.update['DPPROJ'] = <data processing project>
-                # hdu.update['INSTRUME'] = <full instrument name or frontend>
-                # hdu.update['INBEAM'] = <optical components in the beam>
-                # hdu.update['BACKEND'] = <backend>
-                # hdu.update['SW_MODE'] = <switching mode>
-                # hdu.update['SCAN_PAT'] = <scan pattern>
-                # hdu.update['OBS_SB'] = <signal sideband>
-                # hdu.update['SB_MODE'] = <instrument sideband mode>
-                # hdu.update['TELESCOPE'] = 'JCMT'
-                # hdu.update['OBSGEO_X'] = -5464588.652191697
-                # hdu.update['OBSGEO_Y'] = -2493003.0215722183
-                # hdu.update['OBSGEO_Z'] = 2150655.6609171447
-                # hdu.update['OBJECT'] = <target name>
-                # hdu.update['TARGTYPE'] = 'OBJECT' # or 'FIELD'
-                # hdu.update['ZSOURCE'] = <redshift of target in BARYCENT frame>
-                # hdu.update['OBSGEO_Z'] = 2150655.6609171447
-                # hdu.update['TARGKEYW'] = <target keyword string>
-                # hdu.update['MOVING'] = F # or T
-                # hdu.update['OBSGEO_Z'] = 2150655.6609171447
-                # hdu.update['OBSRA'] = <target RA in ICRS>
-                # hdu.update['OBSDEC'] = <target Dec in ICRS>
-                # hdu.update['RADESYS'] = <RA/Dec system>
-                # hdu.update['EQUINOX'] = <equinox of coordinates>
-                # hdu.update['PRODID'] = <productID for plane>
-                # hdu.update['PRODUCT'] = <kind of science product in the plane>
-                # hdu.update['FILTER'] = <continuum characteristic wavelength>
-                # hdu.update['RESTFREQ'] = <heterodyne rest frequency>
-                # hdu.update['BWMODE'] = <ACSIS/DAS bandwidth mode>
-                # hdu.update['SUBSYSNR'] = <ACSIS/DAS subsystem number>
-                # hdu.update['RECIPE'] = <name of data processing software>
-                # hdu.update['PROCVERS'] = <data processing software version>
-                # hdu.update['ENGVERS'] = <data processing engine version>
-                # hdu.update['REFERENC'] = <URI of a data processing reference>
-                # hdu.update['PRODUCER'] = <name of data processing person/team>
-                # hdu.update['DPDATE'] = <nominal UTC for data processing>
-                # hdu.update['INPCNT'] = 0 # number of provenance input URIs
-                # hdu.update['INP1'] = <provenance input URI 1>
+                    if not os.path.isfile(csvdict['inputfile']):
+                        log.console('The FITS file ' + csvdict['inputfile'] +
+                                    ' does not exist',
+                                    logging.ERROR)
 
-                # Override default values with thos supplied on the command line
-                for key in keydict:
-                    hdu.update(key, keydict[key])
-
-                # Override these with values supplied in the csv file
-                for key in csvdict:
-                    if key not in ('inputfile', 'outputfile'):
-                        if csvdict[key]:
-                            hdu.update(key, csvdict[key])
-
-                hdulist.writeto(csvdict['outputfile'])
+                    headerdict = {}
+                    headerdict.update(keydict)
+                    headerdict.update(csvdict)
+                    
+                    rewrite_fits(infile, outfile, headerdict)

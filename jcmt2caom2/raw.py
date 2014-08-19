@@ -203,12 +203,12 @@ class raw(object):
 
         self.userconfig = SafeConfigParser()
 
-        if not self.userconfig.has_section('cadc'):
-            self.userconfig.add_section('cadc')
-        self.userconfig.set('cadc', 'server', 'SYBASE')
-        self.userconfig.set('cadc', 'cred_db', 'jcmt')
-        self.userconfig.set('cadc', 'read_db', 'jcmt')
-        self.userconfig.set('cadc', 'write_db', 'jcmt')
+        if not self.userconfig.has_section('database'):
+            self.userconfig.add_section('database')
+        self.userconfig.set('database', 'server', 'SYBASE')
+        self.userconfig.set('database', 'cred_db', 'jcmt')
+        self.userconfig.set('database', 'read_db', 'jcmt')
+        self.userconfig.set('database', 'write_db', 'jcmt')
 
         # Set the site-dependent databases containing necessary tables
         if not self.userconfig.has_section('jcmt'):
@@ -299,11 +299,11 @@ class raw(object):
         if args.server:
             self.server = args.server
         else:
-            self.server = self.userconfig.get('cadc', 'server')
+            self.server = self.userconfig.get('database', 'server')
         
         if args.database:
-            self.userconfig.set('cadc', 'jcmt_db', args.database)
-            self.userconfig.set('cadc', 'omp_db', args.database)
+            self.userconfig.set('jcmt', 'jcmt_db', args.database)
+            self.userconfig.set('jcmt', 'omp_db', args.database)
             self.database = args.database
         elif self.userconfig.has_option('jcmt', 'jcmt_db'):
             self.database = self.userconfig.get('jcmt', 'jcmt_db')

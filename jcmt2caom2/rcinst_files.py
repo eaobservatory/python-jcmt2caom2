@@ -31,12 +31,12 @@ def run():
     # The server and cred_db are used to get database credentials at the CADC.
     # Other sites should supply cadc_id, cadc_key in the section [cadc] of
     # the userconfig file.
-    if not userconfig.has_section('cadc'):
-        userconfig.add_section('cadc')
-    userconfig.set('cadc', 'server', 'SYBASE')
-    userconfig.set('cadc', 'cred_db', 'jcmt')
-    userconfig.set('cadc', 'read_db', 'jcmt')
-    userconfig.set('cadc', 'write_db', 'jcmt')
+    if not userconfig.has_section('database'):
+        userconfig.add_section('database')
+    userconfig.set('database', 'server', 'SYBASE')
+    userconfig.set('database', 'cred_db', 'jcmt')
+    userconfig.set('database', 'read_db', 'jcmt')
+    userconfig.set('database', 'write_db', 'jcmt')
 
     # Set the site-dependent databases containing necessary tables
     if not userconfig.has_section('jcmt'):
