@@ -102,7 +102,7 @@ class raw(object):
     This class requires direct access to the copies of these tables at the CADC.
     Only read access is required inside this routine to gather the metadata and
     create the CAOM-2 xml file for the observation.  The module
-    pytools4caom2.tools4caom2.database is used to query the tables.
+    tools4caom2.database is used to query the tables.
 
     The resulting xml file will be pushed back to the CAOM-2 repository to
     complete the put/update, and this must be separately configured.
