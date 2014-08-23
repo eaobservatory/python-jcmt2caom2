@@ -285,7 +285,7 @@ def run():
                 logpath = vosday + '/' + logfile
                 if a.success or re.search(r'ERRORS|WARNINGS|JUNK', logfile):
                     localpath = os.path.join(cwd, logfile)
-                    summary(logpath, localpath, ERRORSWARNING_REGEX)
+                    summary(logpath, localpath, ERRORWARNING_REGEX)
     
     if obsid_dict:
         pass
