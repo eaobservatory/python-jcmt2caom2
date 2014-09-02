@@ -830,7 +830,7 @@ class stdpipe(ingest2caom2):
                                    self.instrument_keywords)
 
         # Environment
-        if isdefined('SEEINGST', header):
+        if isdefined('SEEINGST', header) and header['SEEINGST'] > 0.0:
             self.add_to_plane_dict('environment.seeing',
                                    '%f' % (header['SEEINGST'],))
 

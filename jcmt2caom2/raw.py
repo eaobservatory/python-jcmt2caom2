@@ -677,7 +677,7 @@ class raw(object):
                 environment.humidity = 100.0
             else:
                 environment.humidity = common['humstart']
-        if common['seeingst'] is not None:
+        if common['seeingst'] is not None and common['seeingst'] > 0.0:
             environment.seeing = common['seeingst']
         if common['tau225st'] is not None:
             environment.tau = common['tau225st']

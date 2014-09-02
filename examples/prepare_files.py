@@ -358,3 +358,6 @@ def run():
                     headerdict.update(csvdict)
                     
                     rewrite_fits(infile, outfile, headerdict)
+
+if __name__ == __main__:
+    run()
