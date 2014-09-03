@@ -18,7 +18,7 @@ import datetime
 import logging
 import os.path
 try:
-    import astropy.pyfits as pyfits
+    from astropy.io import fits as pyfits
 except:
     import pyfits
 import re
