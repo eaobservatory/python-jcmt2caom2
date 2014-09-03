@@ -17,7 +17,10 @@ from contextlib import contextmanager
 import datetime
 import logging
 import os.path
-import pyfits
+try:
+    import astropy.pyfits as pyfits
+except:
+    import pyfits
 import re
 import shutil
 import string

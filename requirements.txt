@@ -5,3 +5,4 @@
 astropy==0.4.1
 requests==2.3.0
 vos==1.9.11g
+lxml
