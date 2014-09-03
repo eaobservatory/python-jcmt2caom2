@@ -2,6 +2,6 @@
 -e git+https://github.com/jac-h/python-tools4caom2.git#egg=tools4caom2
 -e .
 
-astropy==0.4rc2
+astropy==0.4.1
 requests==2.3.0
 vos==1.9.11g
