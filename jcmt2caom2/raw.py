@@ -291,6 +291,10 @@ class raw(object):
 
         if args.userconfig:
             self.userconfigpath = args.userconfig
+        self.userconfigpath = os.path.abspath(
+                                os.path.expandvars(
+                                    os.path.expanduser(
+                                        self.userconfigpath)))
         
         if os.path.isfile(self.userconfigpath):
             with open(self.userconfigpath) as UC:
