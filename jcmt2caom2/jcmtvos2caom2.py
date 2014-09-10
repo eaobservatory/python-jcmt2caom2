@@ -38,7 +38,7 @@ from caom2.wcs.caom2_coord_range1d import CoordRange1D
 from caom2.wcs.caom2_ref_coord import RefCoord
 from caom2.wcs.caom2_temporal_wcs import TemporalWCS
 from caom2.caom2_enums import ProductType
-from caom2.caom2_simple_observation import SimpleObservation as SimpleObservation
+from caom2.caom2_simple_observation import SimpleObservation
 
 from tools4caom2.database import database
 from tools4caom2.caom2repo_wrapper import Repository
@@ -307,39 +307,56 @@ class jcmtvos2caom2(vos2caom2):
             self.dew.restricted_value(filename, 
                                       'INSTREAM', header, (self.collection,))
         
-        if self.dew.expect_keyword(filename,
-                                   'ASN_ID', header, mandatory=True):
-            self.observationID = header['ASN_ID']
-            # TAP query to find if the value is in use
-            tapcmd = '\n'.join([
-                "SELECT Observation.collection",
-                "FROM caom2.Observation AS Observation",
-                "WHERE Observation.observationID='" + self.observationID + "'"])
-            results = self.tap.query(tapcmd)
-            if results:
-                if not self.replace and self.collection in results[0]:
-                    self.dew.error(filename,
-                                   'observationID = "' + self.observationID +
-                                   '" must be unique in collection = "' +
-                                   self.collection + '"')
-                elif self.replace and self.collection not in results[0]:
-                    self.dew.error(filename,
-                                   'observationID = "' + self.observationID +
-                                   '" must be already in collection = "' +
-                                   self.collection + '"')
-                for coll in results[0]:
-                    if (self.mode not in ('new', 'replace') or 
-                        coll != self.collection): 
-                        
-                        self.dew.warn(filename,
-                                'observationID = "' + self.observationID +
-                                '" is found in collection = "' +
-                                self.collection + '"')
-
+        # Conditionally mandatory
         # Observation.algorithm
         algorithm = 'custom'
         if is_defined('ASN_TYPE', header):
             algorithm = header['ASN_TYPE']
+
+        if algorithm == 'obs':
+            if self.dew.expect_keyword(filename, 
+                                       'OBSID', 
+                                       header, 
+                                       mandatory=True):
+                algorithm = 'exposure'
+                self.observationID = header['OBSID']
+        else:
+            # any other value for algorithm indicates a composite observation
+            if self.dew.expect_keyword(filename, 
+                                       'ASN_ID', 
+                                       header, 
+                                       mandatory=True):
+                self.observationID = header['ASN_ID']
+
+                # TAP query to find if the observationID is in use.  Do not do 
+                # this for obs products, since the raw data can be ingested 
+                # before or after the processed data.
+                tapcmd = '\n'.join([
+                    "SELECT Observation.collection",
+                    "FROM caom2.Observation AS Observation",
+                    "WHERE Observation.observationID='" + 
+                    self.observationID + "'"])
+                results = self.tap.query(tapcmd)
+                if results:
+                    if not self.replace and self.collection in results[0]:
+                        self.dew.error(filename,
+                                       'observationID = "' + self.observationID +
+                                       '" must be unique in collection = "' +
+                                       self.collection + '"')
+                    elif self.replace and self.collection not in results[0]:
+                        self.dew.error(filename,
+                                       'observationID = "' + self.observationID +
+                                       '" must be already in collection = "' +
+                                       self.collection + '"')
+                    for coll in results[0]:
+                        if (self.mode not in ('new', 'replace') or 
+                            coll != self.collection): 
+                            
+                            self.dew.warn(filename,
+                                    'observationID = "' + self.observationID +
+                                    '" is found in collection = "' +
+                                    self.collection + '"')
+
         self.add_to_plane_dict('algorithm.name', algorithm)
 
         # Optional Observation.proposal
@@ -470,7 +487,7 @@ class jcmtvos2caom2(vos2caom2):
         elif is_defined('OBSCNT', header):
             obscnt = header['OBSCNT']
             if obscnt > 0:
-                for n in range(bscnt):
+                for n in range(obscnt):
                     obskey = 'OBS' + str(n+1)
                     # verify that the expected membership headers are present
                     if self.dew.expect_keyword(filename, obskey, header):
@@ -485,7 +502,7 @@ class jcmtvos2caom2(vos2caom2):
                     
                     # obsn contains an obsid_subsysnr 
                     raw_regex = (r'(scuba2|acsis|DAS|AOSC|scuba)_'
-                                 r'\d+_(\d{8}[tT]\d{6})-\d')
+                                 r'\d+_(\d{8}[tT]\d{6})_\d')
                     m = re.match(raw_regex, obsn)
                     if m:
                         # obsid_pattern should match a single obsid, because the
@@ -493,7 +510,8 @@ class jcmtvos2caom2(vos2caom2):
                         # observation
                         obsid_pattern = m.group(1) + '%' + m.group(2)
                     else:
-                        self.dew.error(obskey + ' = "' + obsn + '" does not '
+                        self.dew.error(filename,
+                                       obskey + ' = "' + obsn + '" does not '
                                        'match the pattern expected for the '
                                        'observationID of a member: ' + 
                                        raw_regex) 
@@ -571,7 +589,8 @@ class jcmtvos2caom2(vos2caom2):
         if is_defined('TAU225ST', header):
             self.add_to_plane_dict('environment.tau',
                                    '%f' % (header['TAU225ST'],))
-            wave_tau = '%12.9f' % (stdpipe.speedOfLight/stdpipe.lambda_csotau)
+            wave_tau = '%12.9f' % (jcmtvos2caom2.speedOfLight /
+                                   jcmtvos2caom2.lambda_csotau)
             self.add_to_plane_dict('environment.wavelengthTau',
                                    wave_tau)
 
@@ -845,7 +864,7 @@ class jcmtvos2caom2(vos2caom2):
                 for n in range(inpcnt):
                     inpkey = 'INP' + str(i + 1)
                     inpn = header[inpkey]
-                    self.dew.expect_keyword(filename, inpn, header)
+                    self.dew.expect_keyword(filename, inpkey, header)
                     self.log.file(inpkey + ' = ' + inpn,
                                   logging.DEBUG)
                     if re.match(planeURI_regex, inpn):
@@ -867,13 +886,13 @@ class jcmtvos2caom2(vos2caom2):
                     # or have already been ingested.
                     prvkey = 'PRV' + str(i + 1)
                     prvn = header[prvkey]
-                    self.dew.expect_keyword(filename, prvn, header)
+                    self.dew.expect_keyword(filename, prvkey, header)
                     self.log.file(prvkey + ' = ' + prvn,
                                   logging.DEBUG)
                     # An existing problem is that some files include 
                     # themselves in their provenance, but are otherwise
                     # OK.
-                    prvn_id = make_file_id(prvn)
+                    prvn_id = self.make_file_id(prvn)
                     if prvn_id == file_id:
                         # add a warning and skip this entry
                         self.dew.warning(filename,
@@ -926,14 +945,29 @@ class jcmtvos2caom2(vos2caom2):
         dpproject = None
         if is_defined('DPPROJ', header):
             dpproject = header['DPPROJ'].strip()
-            self.add_to_plane_dict('provenance.name', dpproject)
         elif self.collection == 'JCMTLS' and proposal_project:
             dpproject = proposal_project
-            self.add_to_plane_dict('provenance.name', proposal_project)
+        elif self.collection in ('JCMT', 'SANDBOX'):
+            standard_products = ['reduced', 'cube', 'rsp', 'rimg']
+            legacy_products = ['healpix', 'hpxrsp', 'hpxrimg', 
+                               'peak-cat', 'extent-cat']
+            if product in standard_products:
+                # This is the complete list of standard pipeline FITS products
+                dpproject = 'JCMT_STANDARD_PIPELINE'
+            elif product in legacy_products:
+                # healpix and catalogs are from the legacy project
+                dpproject = 'JCMT_LEGACY_PIPELINE'
+            else:
+                self.log.console('UNKNOWN PRODUCT in collection=JCMT: ' + 
+                                 product + ' must be one of ' +
+                                 repr(standard_products + legacy_products),
+                                 logging.WARN)
+
+        if dpproject:
+            self.add_to_plane_dict('provenance.name', dpproject)
         else:
             self.dew.error(filename,
-                           'data processing project name is undefined: '
-                           'either DPPROJ or SURVEY must be defined')
+                           'data processing project name is undefined')
        
         # Provenance_reference - likely to be overwritten
         if is_defined('REFERENC', header):
@@ -1027,7 +1061,7 @@ class jcmtvos2caom2(vos2caom2):
                 for prod in self.metadict[coll][obs]:
                     if prod != 'memberset':
                         thisPlane = self.metadict[coll][obs][prod]
-                        planeURI = self.planeURI(c, o, thisPlane)
+                        planeURI = self.planeURI(coll, obs, prod)
                         
                         for filename in thisPlane['fileset']:
                             file_id = self.make_file_id(filename)
@@ -1037,7 +1071,8 @@ class jcmtvos2caom2(vos2caom2):
                                 self.log.file('add ' + inputURI +
                                               ' to inputset for ' + planeURI)
                             else:
-                                # use TAP to find the file_id
+                                # use TAP to find the observation and plane
+                                # given the file_id
                                 tapquery = '\n'.join([
                                     "SELECT Observation.collection,",
                                     "       Observation.observationID,",
@@ -1047,7 +1082,8 @@ class jcmtvos2caom2(vos2caom2):
                                     "        ON Observation.obsID=Plane.obsID",
                                     "    INNER JOIN caom2.Artifact AS Artifact",
                                     "        ON Plane.planeID=Artifact.planeID",
-                                    "WHERE Artifact.uri='ad:JCMT/" + uri + "'"])
+                                    "WHERE Artifact.uri='ad:JCMT/" + 
+                                    file_id + "'"])
                                 answer = self.tap.query(tapquery)
                                 
                                 if len(answer) and len(answer[0]):

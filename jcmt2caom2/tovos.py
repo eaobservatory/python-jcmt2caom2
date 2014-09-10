@@ -76,6 +76,8 @@ class tovos(object):
         """
         success = False
         filesize = os.stat(path).st_size
+        if self.vosclient.isfile(vospath):
+            self.vosclient.delete(vospath)
         for n in range(1000):
             if (filesize == self.vosclient.copy(path, vospath)):
                 success = True
@@ -88,6 +90,30 @@ class tovos(object):
             if self.log:
                 self.log.console('failed to copy ' + path)
 
+        return success
+
+    def push_link(self, existingpath, linkpath):
+        """
+        Create a link to an existing file if it does not already exist.
+        
+        Arguments:
+        existingpath: path to existing file in VOspace
+        linkpath: link path to create
+        """
+        success = False
+        if self.vosclient.isfile(existingpath):
+            info = None
+            try:
+                info = self.vosclient.getNode(linkpath).getInfo()
+            except:
+                pass
+            if info:
+                self.vosclient.delete(linkpath)
+            self.vosclient.link(existingpath, linkpath)
+            success = True
+        else:
+            self.log.console(existingpath + ' does not exist',
+                             logging.ERROR)
         return success
 
     def match(self, filepath):
@@ -326,7 +352,7 @@ class stdpipe_ingestion(tovos):
                 if warnings:
                     rvospath += warnings
                 rvospath += '.log'
-                self.vosclient.link(vospath, rvospath)
+                self.push_link(vospath, rvospath)
                 
                 # Now delete all links with the same trunk that
                 # do not point to an existing file
@@ -344,19 +370,19 @@ class stdpipe_ingestion(tovos):
                             if not self.vosclient.isfile(target):
                                 self.vosclient.delete(vpath)
 
-class check_rms(tovos):
+class qa_logs(tovos):
     """
     Identify check_rms logs and copy them to VOspace 
     """
     def __init__(self, vosclient, vosroot, log=None):
         tovos.__init__(self, 
                        vosclient, 
-                       vosroot + '/check_rms_logs', 
+                       vosroot + '/QA_logs', 
                        log)
-        # This regex should work for raw data, obs products and night composites,
-        # all of which have the utdate embedded in their observationID.
+        # This regex should work for logs from single-exposure recipe instances,
+        # which use the JCMT obsid as their observationID.
         self.regex = re.compile(r'(?P<root>'
-                                r'checkrms_'
+                                r'(checkrms|checkcal|mapstats|calstats)_'
                                 r'(?P<obsid>(' # observationID
                                 r'(?P<instrument>[^_]+)_' # raw/exposure obsid
                                 r'(?P<obsnum>\d+)_'
@@ -366,7 +392,7 @@ class check_rms(tovos):
                                 r'(?P<hex>[0-9a-f]+))'
                                 r')_' + 
                                 r'(?P<prodid>[^_]+)_'
-                                r'(?P<rcinst>[\d]+)_)' +
+                                r'(?P<rcinst>[^_]+)_)' +
                                 UTDATE_REGEX)
         self.log.file(self.regex.pattern,
                       logging.DEBUG)
@@ -382,20 +408,23 @@ class check_rms(tovos):
         """
         filename = os.path.basename(path)
         file_id, ext = os.path.splitext(filename)
-        self.log.file('examine' + file_id,
+        self.log.file('examine ' + file_id,
                       logging.DEBUG)
         if ext == '.log':
             m = self.regex.match(file_id)
             if m:
-                root = m.group('root')
-                stamp = m.group('stamp').lower()
-                utdate = m.group('utdate')
+                mm = m.groupdict()
+                root = mm['root']
+                stamp = mm['stamp'].lower()
+                utdate = mm['utdate']
+                obsnum = mm['obsnum']
                 
                 if root not in self.copy:
                     self.copy[root] = {}
                     self.copy[root]['path'] = path
                     self.copy[root]['stamp'] = stamp
                     self.copy[root]['utdate'] = utdate
+                    self.copy[root]['obsnum'] = obsnum
                     if self.log:
                         self.log.file('record for copy' + path,
                                       logging.DEBUG)
@@ -422,11 +451,13 @@ class check_rms(tovos):
             utyear = utdate[:4]
             utmonth = utdate[4:6]
             utday = utdate[6:]
+            obsnum = self.copy[root]['obsnum']
             
             # As needed, create the /year/month/day/ directories
             vosdir = self.make_subdir(self.vosroot, utyear)
             vosdir = self.make_subdir(vosdir, utmonth)
             vosdir = self.make_subdir(vosdir, utday)
+            vosdir = self.make_subdir(vosdir, obsnum)
             
             filename = os.path.basename(path)
             vospath = vosdir + '/' + filename
@@ -434,15 +465,173 @@ class check_rms(tovos):
             success = self.push_file(path, vospath)
             
             # Try to clean up the directory by deleting old log files
-            m = self.regex.search(filename)
-            (root, stamp) = m.group('root', 'stamp')
+            m = self.regex.search(filename).groupdict()
+            root = m['root']
+            stamp = m['stamp']
             for vfile in self.vosclient.listdir(vosdir, force=True):
                 m = self.regex.search(vfile)
                 if m:
-                    (vroot, vstamp) = m.group('root', 'stamp')
+                    mm = m.groupdict()
+                    vroot = mm['root']
+                    vstamp = mm['stamp']
                     if vroot == root and vstamp < stamp:
                         vpath = vosdir + '/' +  vfile
                         self.vosclient.delete(vpath)
+
+class oracdr_logs(tovos):
+    """
+    Identify check_rms logs and copy them to VOspace 
+    """
+    def __init__(self, vosclient, vosroot, log=None):
+        tovos.__init__(self, 
+                       vosclient, 
+                       vosroot + '/oracdr_date_obs', 
+                       log)
+        self.linkroot = vosroot + '/oracdr_date_processed'
+        # This regex should work for obs products and night composites,
+        # both of which have the utdate embedded in their observationID.
+        self.regex = re.compile(r'(?P<root>'
+                                r'oracdr_'
+                                r'(?P<obsid>(' # observationID
+                                r'(?P<instrument>[^_]+)_' # raw/exposure obsid
+                                r'(?P<obsnum>\d+)_'
+                                r'(?P<utdate>\d{8})[tT]'
+                                r'(?P<uttime>\d{6})|'
+                                r'(?P<dateobs>[^-]+)-' # night composite obsid
+                                r'(?P<hex>[0-9a-f]+))'
+                                r')_' + 
+                                r'(?P<prodid>[^_]+)_'
+                                r'(?P<rcinst>[^_]+)_)' +
+                                UTDATE_REGEX)
+        self.log.file(self.regex.pattern,
+                      logging.DEBUG)
+        self.copy = {}
+
+    def match(self, path):
+        """
+        Identify raw ingestion logs, record them for deletion, and 
+        select the most recent to copy to VOspace.
+        
+        Arguments:
+        path: absolute path to the file to be matched
+        """
+        filename = os.path.basename(path)
+        file_id, ext = os.path.splitext(filename)
+        self.log.file('examine ' + file_id,
+                      logging.DEBUG)
+        if ext == '.log':
+            m = self.regex.match(file_id)
+            if m:
+                mm = m.groupdict()
+                root = mm['root']
+                stamp = mm['stamp'].lower()
+                utdate = '00000000'
+                if 'utdate' in mm:
+                    utdate = mm['utdate']
+                elif 'dateobs' in mm:
+                    utdate = mm['dateobs']
+                rcinst = mm['rcinst']
+                stampdate = mm['stampdate']
+                
+                if root not in self.copy:
+                    self.copy[root] = {}
+                    self.copy[root]['path'] = path
+                    self.copy[root]['stamp'] = stamp
+                    self.copy[root]['utdate'] = utdate
+                    self.copy[root]['rcinst'] = rcinst
+                    self.copy[root]['stampdate'] = stampdate
+                    if self.log:
+                        self.log.file('record for copy' + path,
+                                      logging.DEBUG)
+                elif self.copy[root]['stamp'] < stamp:
+                    self.copy[root]['path'] = path
+                    self.copy[root]['stamp'] = stamp
+                    if self.log:
+                        self.log.file('replace for copy' + path,
+                                      logging.DEBUG)
+
+    def push(self):
+        """
+        Copy all files to VOspace and delete any marked for removal.
+        
+        Arguments:
+        <none>
+        """
+        for root in self.copy:
+            path = self.copy[root]['path']
+            if self.log:
+                self.log.console('pushing ' + path,
+                                 logging.DEBUG)
+            utdate = self.copy[root]['utdate']
+            utyear = utdate[:4]
+            utmonth = utdate[4:6]
+            utday = utdate[6:]
+            rcinst = self.copy[root]['rcinst']
+            stampdate = self.copy[root]['stampdate']
+            stampyear = stampdate[:4]
+            stampmonth = stampdate[4:6]
+            stampday = stampdate[6:]
+            
+            # As needed, create the /year/month/day/rcinst directories
+            vosdir = self.make_subdir(self.vosroot, utyear)
+            vosdir = self.make_subdir(vosdir, utmonth)
+            vosdir = self.make_subdir(vosdir, utday)
+            
+            # As needed, create the directory for the proceesing link
+            linkdir = self.make_subdir(self.linkroot, stampyear)
+            linkdir = self.make_subdir(linkdir, stampmonth)
+            linkdir = self.make_subdir(linkdir, stampday)
+            
+            filename = os.path.basename(path)
+            vospath = vosdir + '/' + filename
+            linkpath = linkdir + '/' + filename
+            
+            m = self.regex.search(filename).groupdict()
+            root = m['root']
+            stamp = m['stamp']
+            
+            self.log.file('push new file ' + vospath,
+                          logging.DEBUG)
+            success = self.push_file(path, vospath)
+            if success:
+                self.log.file('make new link ' + linkpath,
+                              logging.DEBUG)
+                self.push_link(vospath, linkpath)
+            
+            # Delete all earlier versions of the same file
+            # and remove their links.
+            # Try to clean up the directory by deleting old log files
+            for vfile in self.vosclient.listdir(vosdir, force=True):
+                m = self.regex.search(vfile)
+                if m:
+                    mm = m.groupdict()
+                    vroot = mm['root']
+                    vstamp = mm['stamp']
+                    vstampdate = mm['stampdate']
+                    if vroot == root and vstamp < stamp:
+                        # Delete the old file
+                        oldpath = vosdir + '/' + vfile
+                        self.log.file('remove old version of file ' + oldpath,
+                                      logging.DEBUG)
+                        self.vosclient.delete(oldpath)
+                        
+                        vrpath = (os.path.dirname(self.vosroot) + 
+                                    '/oracdr_date_processed')
+                        vypath = vrpath + '/' + vstampdate[:4]
+                        vmpath = vypath + '/' + vstampdate[4:6]
+                        vdpath = vmpath + '/' + vstampdate[6:]
+                        vpath = vdpath + '/' +  vfile
+                        self.log.file('remove old version of link ' + vpath,
+                                      logging.DEBUG)
+                        self.vosclient.delete(vpath)
+                        
+                        # Clean up empty directories
+                        if len(self.vosclient.listdir(vdpath, force=True)) == 0:
+                            self.vosclient.delete(vdpath)
+                        if len(self.vosclient.listdir(vmpath, force=True)) == 0:
+                            self.vosclient.delete(vmpath)
+                        if len(self.vosclient.listdir(vypath, force=True)) == 0:
+                            self.vosclient.delete(vypath)
 
 def run():
     """
@@ -515,7 +704,8 @@ def run():
         
         filehandlers = [raw_ingestion(vosclient, a.vos, log),
                         stdpipe_ingestion(vosclient, a.vos, log),
-                        check_rms(vosclient, a.vos, log)]
+                        qa_logs(vosclient, a.vos, log),
+                        oracdr_logs(vosclient, a.vos, log)]
         
         for filehandler in filehandlers:
             for filepath in filelist:
