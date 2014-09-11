@@ -182,17 +182,16 @@ class jcmtvos2caom2(vos2caom2):
 
         self.collection = self.args.collection
         
-        self.caom_db = ''
         self.jcmt_db = ''
         self.omp_db = ''
         
         if self.sybase_defined and self.userconfig.has_section('jcmt'):
-            self.caom_db = (self.userconfig.get('jcmt', 'caom_db') + '.' + 
-                            self.schema + '.')
-            self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' + 
-                            self.schema + '.')
-            self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' + 
-                           self.schema + '.')
+            if self.userconfig.has_option('jcmt', 'jcmt_db'):
+                self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' + 
+                                self.schema + '.')
+            if self.userconfig.has_option('jcmt', 'omp_db'):
+                self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' + 
+                               self.schema + '.')
 
     #************************************************************************
     # Include the custom command line switch in the log
