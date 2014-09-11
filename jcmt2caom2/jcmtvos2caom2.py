@@ -263,9 +263,6 @@ class jcmtvos2caom2(vos2caom2):
                observationID
                productID
         '''
-        self.log.console('enter build_dict: ' + 
-                         datetime.datetime.now().isoformat(),
-                         loglevel=logging.DEBUG)
         if self.repository is None:
             # note that this is similar to the repository in vos2caom2, but 
             # that is not made a part of the structure - probably should be 
@@ -545,7 +542,7 @@ class jcmtvos2caom2(vos2caom2):
                                                obsid)
                                 break
                             
-                            mbrn = 'ad:JCMT/' + obsid
+                            mbrn = 'caom:JCMT/' + obsid
                             if mbrn not in self.member_cache:
                                 # cache the members start and end times
                                 self.member_cache[mbrn] = \
@@ -900,7 +897,7 @@ class jcmtvos2caom2(vos2caom2):
                             'in its provenance as ' + prvkey)
                         continue
                     elif prvn_id in self.input_cache:
-                        self.inputset.add(prvn_id)
+                        self.inputset.add(self.input_cache[prvn_id])
                     else:
                         self.fileset.add(prvn_id)
 
@@ -1052,9 +1049,59 @@ class jcmtvos2caom2(vos2caom2):
                                                 key,
                                                 obstimes[key])
 
+    def lookup_file_id(self, file_id):
+        """
+        Given a file_id, return the collection, observation and plane
+        from either the current ingestion or existing observation in the
+        archive.  Cache the results from TAP queries for future reference.
+        """
+        inputURI = None
+        if file_id in self.input_cache:
+            inputURI = self.input_cache[file_id]
+        else:
+            # use TAP to find the collection, observation and plane
+            # for all files in the observation containing file_id
+            tapquery = '\n'.join([
+                "SELECT Observation.collection,",
+                "       Observation.observationID,",
+                "       Plane.productID",
+                "       Artifact.uri",
+                "FROM caom2.Observation AS Observation",
+                "    INNER JOIN caom2.Plane as Plane",
+                "        ON Observation.obsID=Plane.obsID",
+                "    INNER JOIN caom2.Artifact AS Artifact",
+                "        ON Plane.planeID=Artifact.planeID",
+                "    INNER JOIN caom2.Artifact AS Artifact2",
+                "        ON Plane.planeID=Artifact2.planeID",
+                "WHERE Artifact2.uri like 'ad:%/" + file_id + "'"])
+            answer = self.tap.query(tapquery)
+            
+            if len(answer) and len(answer[0]):
+                for row in answer:
+                    c, o, p, u = row
+                    fid = re.sub(r'ad:[^/]+/', '', u)
+                    if (c in c.collection,
+                             'JCMT',
+                             'JCMTLS',
+                             'JCMTUSER'): 
+                        
+                        inputURI = self.planeURI(c, o, p)
+                        self.input_cache[fid] = inputURI
+                        
+                        self.log.file('inputs: ' + fid + ': ' + inputURI,
+                                      logging.DEBUG)
+                else:
+                    self.dew.warning(filename, 
+                            'provenance input is neither '
+                            'in the JSA already nor in the '
+                            'current release')
+            return inputURI
+        
     def checkProvenanceInputs(self):
         """
-        These are "gifted" from build_dict and seriously need to be reworked 
+        From the set of provenance input planeURIs or input files,
+        build the list of provenance input URIs for each output plane,
+        caching results to save time in the TAP queries.
         """
         for coll in self.metadict:
             for obs in self.metadict[coll]:
@@ -1065,46 +1112,13 @@ class jcmtvos2caom2(vos2caom2):
                         
                         for filename in thisPlane['fileset']:
                             file_id = self.make_file_id(filename)
-                            if file_id in self.input_cache:
-                                inputURI = self.input_cache[file_id]
+                            inputURI = self.lookup_file_id(file_id)
+                            if (inputURI and 
+                                inputURI not in thisPlane['inputset']):
+                                
                                 thisPlane['inputset'].add(inputURI)
                                 self.log.file('add ' + inputURI +
                                               ' to inputset for ' + planeURI)
-                            else:
-                                # use TAP to find the observation and plane
-                                # given the file_id
-                                tapquery = '\n'.join([
-                                    "SELECT Observation.collection,",
-                                    "       Observation.observationID,",
-                                    "       Plane.productID",
-                                    "FROM caom2.Observation AS Observation",
-                                    "    INNER JOIN caom2.Plane as Plane",
-                                    "        ON Observation.obsID=Plane.obsID",
-                                    "    INNER JOIN caom2.Artifact AS Artifact",
-                                    "        ON Plane.planeID=Artifact.planeID",
-                                    "WHERE Artifact.uri='ad:JCMT/" + 
-                                    file_id + "'"])
-                                answer = self.tap.query(tapquery)
-                                
-                                if len(answer) and len(answer[0]):
-                                    for row in answer:
-                                        c, o, p = row
-                                        if (c in c.collection,
-                                                 'JCMT',
-                                                 'JCMTLS',
-                                                 'JCMTUSER'): 
-                                            
-                                            inputURI = self.planeID(c, o, p)
-                                            thisPlane['inputset'].add(inputURI)
-                                            self.log.file('add ' + inputURI +
-                                                          ' to inputset for ' +
-                                                          planeURI)
-                                            break
-                                    else:
-                                        self.dew.warning(filename, 
-                                                'provenance input is neither '
-                                                'in the JSA already nor in the '
-                                                'current release')
 
     def build_fitsuri_custom(self,
                              xmlfile,
