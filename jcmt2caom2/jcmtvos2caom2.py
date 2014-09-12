@@ -345,8 +345,9 @@ class jcmtvos2caom2(vos2caom2):
                                        '" must be already in collection = "' +
                                        self.collection + '"')
                     for coll in results[0]:
-                        if (self.mode not in ('new', 'replace') or 
-                            coll != self.collection): 
+                        if (self.store or self.ingest or 
+                            (self.collection != 'SANDBOX' and 
+                             coll != self.collection)): 
                             
                             self.dew.warn(filename,
                                     'observationID = "' + self.observationID +
