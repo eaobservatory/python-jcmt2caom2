@@ -333,6 +333,7 @@ class jcmtvos2caom2(vos2caom2):
                     "WHERE Observation.observationID='" + 
                     self.observationID + "'"])
                 results = self.tap.query(tapcmd)
+                print repr(results)
                 if results:
                     if not self.replace and self.collection in results[0]:
                         self.dew.error(filename,
@@ -345,11 +346,11 @@ class jcmtvos2caom2(vos2caom2):
                                        '" must be already in collection = "' +
                                        self.collection + '"')
                     for coll in results[0]:
-                        if (self.store or self.ingest or 
+                        if ((self.store or self.ingest) and 
                             (self.collection != 'SANDBOX' and 
                              coll != self.collection)): 
                             
-                            self.dew.warn(filename,
+                            self.dew.warning(filename,
                                     'observationID = "' + self.observationID +
                                     '" is found in collection = "' +
                                     self.collection + '"')
