@@ -844,7 +844,7 @@ class jcmtvos2caom2(vos2caom2):
                                                   self.observationID,
                                                   self.productID)
 
-        if self.collection == 'JCMT'
+        if self.collection == 'JCMT':
             if product in ['reduced', 'cube']:
                 # Do not set release dates for healpix products
                 if release_date:
