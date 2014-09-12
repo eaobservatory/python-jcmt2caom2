@@ -1019,7 +1019,7 @@ class jcmtvos2caom2(vos2caom2):
             dpdate = header['DPDATE']
             if isinstance(dpdate, datetime.datetime):
                 dpdate = header['DPDATE'].isoformat()
-            self.add_to_plane_dict('provenance.runID', dpdate)
+            self.add_to_plane_dict('provenance.lastExecuted', dpdate)
 
         # Chunk
         bandpassName = None
