@@ -961,7 +961,7 @@ class jcmtvos2caom2(vos2caom2):
         # Provenance_name
         if self.dew.expect_keyword(filename, 'RECIPE', header):
             self.add_to_plane_dict('provenance.name', header['RECIPE'])
-        
+
         # Provenance_project
         dpproject = None
         if is_defined('DPPROJ', header):
@@ -979,17 +979,17 @@ class jcmtvos2caom2(vos2caom2):
                 # healpix and catalogs are from the legacy project
                 dpproject = 'JCMT_LEGACY_PIPELINE'
             else:
-                self.log.console('UNKNOWN PRODUCT in collection=JCMT: ' + 
-                                 product + ' must be one of ' +
-                                 repr(standard_products + legacy_products),
-                                 logging.WARN)
-
+                self.dew.error(filename,
+                               'UNKNOWN PRODUCT in collection=JCMT: ' + 
+                                product + ' must be one of ' +
+                                repr(standard_products + legacy_products))
+                
         if dpproject:
-            self.add_to_plane_dict('provenance.name', dpproject)
+            self.add_to_plane_dict('provenance.project', dpproject)
         else:
             self.dew.error(filename,
-                           'data processing project name is undefined')
-       
+                           'data processing project is undefined')
+ 
         # Provenance_reference - likely to be overwritten
         if is_defined('REFERENC', header):
             self.add_to_plane_dict('provenance.reference',
@@ -1004,7 +1004,7 @@ class jcmtvos2caom2(vos2caom2):
                 self.add_to_plane_dict('provenance.version',
                                        'ENG:' + header['ENGVERS'][:25] + 
                                        ' PIPE:' + header['PIPEVERS'][:25])
-                
+      
         if is_defined('PRODUCER', header):
             self.add_to_plane_dict('provenance.producer',
                                    header['PRODUCER'])
