@@ -402,6 +402,7 @@ class jcmtvos2caom2(vos2caom2):
         # Observation membership headers, which are optional
         earliest_utdate = None
         earliest_obs = None
+        release_date = None
         # obstimes records the (date_obs, date_end) for this file.
         # self.member_cache records these intervals for use with subsequent
         # files.
@@ -520,6 +521,7 @@ class jcmtvos2caom2(vos2caom2):
                         "       Plane.productID,",
                         "       Plane.time_bounds_cval1,",
                         "       Plane.time_bounds_cval2,",
+                        "       Plane.dataRelease,",
                         "       Artifact.uri",
                         "FROM caom2.Observation as Observation",
                         "         INNER JOIN caom2.Plane AS Plane",
@@ -531,7 +533,9 @@ class jcmtvos2caom2(vos2caom2):
                     answer = self.tap.query(tapquery)
                     if len(answer) > 0 and len(answer[0]) > 0:
                         obsid_solitary = None
-                        for obsid, prodid, date_obs, date_end, uri in answer:
+                        for (obsid, prodid, date_obs, date_end, 
+                             release, uri) in answer:
+                            
                             if obsid_solitary is None:
                                 obsid_solitary = obsid
                             elif obsid != obsid_solitary:
@@ -541,6 +545,11 @@ class jcmtvos2caom2(vos2caom2):
                                                obsid_solitary + ' and ' +
                                                obsid)
                                 break
+                            
+                            if release_date is None:
+                                release_date = release
+                            else:
+                                release_date = max(release_date, release)
                             
                             mbrn = 'caom:JCMT/' + obsid
                             if mbrn not in self.member_cache:
@@ -834,6 +843,21 @@ class jcmtvos2caom2(vos2caom2):
         self.input_cache[file_id] = self.planeURI(self.collection,
                                                   self.observationID,
                                                   self.productID)
+
+        if self.collection == 'JCMT'
+            if product in ['reduced', 'cube']:
+                # Do not set release dates for healpix products
+                if release_date:
+                    release_date_str = release_date.isoformat()
+                    self.add_to_plane_dict('plane.metaRelease',
+                                           release_date_str)
+                    self.add_to_plane_dict('plane.dataRelease',
+                                           release_date_str)
+                else:
+                    self.dew.error(filename,
+                                   'Release date could not be '
+                                   'calculated from membership: ' +
+                                   self.observationID)
 
         calibrationLevel = None
         if is_defined('CALLEVEL', header):
