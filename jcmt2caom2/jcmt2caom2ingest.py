@@ -86,7 +86,7 @@ class jcmt2caom2ingest(caom2ingest):
     A derived class of caom2ingest specialized to ingest externally generated
     products into the JSA.
     """
-    speedOfLight = 2.9979250e8 # Speed of light in m/s
+    speedOfLight = 2.99792485e8 # Speed of light in m/s
     lambda_csotau = 225.0e9 # Frequency of CSO tau meter in Hz
     proc_acsis_regex = \
         r'jcmth(20[\d]{2})(0[1-9]|1[012])(0[1-9]|[12][0-9]|3[01])_' +\
@@ -793,9 +793,10 @@ class jcmt2caom2ingest(caom2ingest):
             # the SUBSYSNR, RESTFRQ and BWMODE.  Allow RESTFREQ and
             # RESTWAV as equivalents to RESTFRQ.
             if is_defined('RESTFREQ', header):
-                restfreq = float(header['RESTRFREQ'])
+                restfreq = float(header['RESTFREQ'])
             elif is_defined('RESTWAV', header):
-                restfreq = 
+                restfreq = (jcmt2caom2ingest.speedOfLight / 
+                            float(header['RESTWAV']))
             elif self.dew.expect_keyword(filename, 'RESTFRQ', header):
                 restfreq = float(header['RESTFRQ'])
             if self.dew.expect_keyword(filename, 'SUBSYSNR', header):
