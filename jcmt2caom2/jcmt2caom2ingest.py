@@ -45,7 +45,7 @@ from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.timezone import UTC
 from tools4caom2.mjd import utc2mjd
 from tools4caom2.utdate_string import UTDATE_REGEX
-from tools4caom2.vos2caom2 import vos2caom2
+from tools4caom2.caom2ingest import caom2ingest
 
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
@@ -81,9 +81,9 @@ def is_blank(key, header):
 
 # from caom2.caom2_enums import CalibrationLevel
 # from caom2.caom2_enums import DataProductType
-class jcmtvos2caom2(vos2caom2):
+class jcmt2caom2ingest(caom2ingest):
     """
-    A derived class of vos2caom2 specialized to ingest externally generated
+    A derived class of caom2ingest specialized to ingest externally generated
     products into the JSA.
     """
     speedOfLight = 2.9979250e8 # Speed of light in m/s
@@ -97,7 +97,7 @@ class jcmtvos2caom2(vos2caom2):
         r'([\d]{5})_([48]50)_(reduced[\d]{3})_(obs|nit|pro|pub)_([\d]{3})$'
 
     def __init__(self):
-        vos2caom2.__init__(self)
+        caom2ingest.__init__(self)
         self.archive = 'JCMT'
         self.stream = 'product'
         
@@ -125,7 +125,7 @@ class jcmtvos2caom2(vos2caom2):
             self.userconfig.set('jcmt', 'jcmt_db', 'jcmtmd')
             self.userconfig.set('jcmt', 'omp_db', 'jcmtmd')
         
-        # This is needed for compatability with other uses of vos2caom2, but
+        # This is needed for compatability with other uses of caom2ingest, but
         # should not be used for the JCMT.
         self.database = 'jcmt'
         self.collection_choices = ['JCMT', 'JCMTLS', 'JCMTUSER', 'SANDBOX']
@@ -178,7 +178,7 @@ class jcmtvos2caom2(vos2caom2):
         Arguments:
         <none>
         """
-        vos2caom2.processCommandLineSwitches(self)
+        caom2ingest.processCommandLineSwitches(self)
 
         self.collection = self.args.collection
         
@@ -203,7 +203,7 @@ class jcmtvos2caom2(vos2caom2):
         Arguments:
         <none>
         """
-        vos2caom2.logCommandLineSwitches(self)
+        caom2ingest.logCommandLineSwitches(self)
         self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
 
     # Discover observations and planes to remove
@@ -263,7 +263,7 @@ class jcmtvos2caom2(vos2caom2):
                productID
         '''
         if self.repository is None:
-            # note that this is similar to the repository in vos2caom2, but 
+            # note that this is similar to the repository in caom2ingest, but 
             # that is not made a part of the structure - probably should be 
             self.repository = Repository(self.workdir, 
                                          self.log, 
@@ -340,20 +340,13 @@ class jcmtvos2caom2(vos2caom2):
                                        'observationID = "' + self.observationID +
                                        '" must be unique in collection = "' +
                                        self.collection + '"')
-                    elif self.replace and self.collection not in results[0]:
+                    elif (self.replace 
+                          and self.collection != 'SANDBOX' 
+                          and self.collection not in results[0]):
                         self.dew.error(filename,
                                        'observationID = "' + self.observationID +
                                        '" must be already in collection = "' +
                                        self.collection + '"')
-                    for coll in results[0]:
-                        if ((self.store or self.ingest) and 
-                            (self.collection != 'SANDBOX' and 
-                             coll != self.collection)): 
-                            
-                            self.dew.warning(filename,
-                                    'observationID = "' + self.observationID +
-                                    '" is found in collection = "' +
-                                    self.collection + '"')
 
         self.add_to_plane_dict('algorithm.name', algorithm)
 
@@ -596,8 +589,8 @@ class jcmtvos2caom2(vos2caom2):
         if is_defined('TAU225ST', header):
             self.add_to_plane_dict('environment.tau',
                                    '%f' % (header['TAU225ST'],))
-            wave_tau = '%12.9f' % (jcmtvos2caom2.speedOfLight /
-                                   jcmtvos2caom2.lambda_csotau)
+            wave_tau = '%12.9f' % (jcmt2caom2ingest.speedOfLight /
+                                   jcmt2caom2ingest.lambda_csotau)
             self.add_to_plane_dict('environment.wavelengthTau',
                                    wave_tau)
 
@@ -786,6 +779,30 @@ class jcmtvos2caom2(vos2caom2):
         restfreq = None
         subsysnr = None
         bwmode = None
+        # Extract backend specific metadata to construct productID
+        if backend == 'SCUBA-2':
+            if self.dew.expect_keyword(filename, 'FILTER', header):
+                filter = str(header['FILTER'])
+                self.productID = \
+                    product_id('SCUBA-2', 
+                                self.log,
+                                product=product,
+                                filter=filter)
+        else:
+            # ACSIS-like files must define either PRODID or 
+            # the SUBSYSNR, RESTFRQ and BWMODE.  Allow RESTFREQ and
+            # RESTWAV as equivalents to RESTFRQ.
+            if is_defined('RESTFREQ', header):
+                restfreq = float(header['RESTRFREQ'])
+            elif is_defined('RESTWAV', header):
+                restfreq = 
+            elif self.dew.expect_keyword(filename, 'RESTFRQ', header):
+                restfreq = float(header['RESTFRQ'])
+            if self.dew.expect_keyword(filename, 'SUBSYSNR', header):
+                subsysnr = str(header['SUBSYSNR'])
+            if self.dew.expect_keyword(filename, 'BWMODE', header):
+                bwmode = header['BWMODE']
+
         science_product = None
         if is_defined('PRODID', header):
             self.productID = header['PRODID']
@@ -1025,7 +1042,7 @@ class jcmtvos2caom2(vos2caom2):
         # Chunk
         bandpassName = None
         if backend == 'SCUBA-2' and filter:
-            bandpassname = 'SCUBA-2-' + filter + 'um'
+            bandpassName = 'SCUBA-2-' + filter + 'um'
             self.add_to_plane_dict('bandpassName', bandpassName)
         elif backend in ('ACSIS', 'DAS', 'AOSC'):
             if (is_defined('MOLECULE', header) and is_defined('TRANSITI', header)
@@ -1404,12 +1421,12 @@ class jcmtvos2caom2(vos2caom2):
             if logsuffix:
                 os.remove(logcopy)
         
-        vos2caom2.cleanup(self)
+        caom2ingest.cleanup(self)
 
 
 #************************************************************************
 # if run as a main program, create an instance and exit
 #************************************************************************
 if __name__ == '__main__':
-    myjcmtvos2caom2 = jcmtvos2caom2.jcmtvos2caom2()
+    myjcmt2caom2ingest = jcmt2caom2ingest.jcmt2caom2ingest()
     myjcmt2caom2.run()
