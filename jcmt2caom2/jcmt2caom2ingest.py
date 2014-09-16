@@ -308,6 +308,7 @@ class jcmt2caom2ingest(caom2ingest):
         algorithm = 'custom'
         if is_defined('ASN_TYPE', header):
             algorithm = header['ASN_TYPE']
+        print filename + '  "' + algorithm + '"'
 
         if algorithm == 'obs':
             if self.dew.expect_keyword(filename, 
@@ -1029,9 +1030,14 @@ class jcmt2caom2ingest(caom2ingest):
             self.add_to_plane_dict('provenance.producer',
                                    header['PRODUCER'])
 
-        if self.dew.expect_keyword(filename, 'DPRCINST', header, mandatory=True):
+        dprcinst = None
+        if is_defined('VOSPATH', header):
+            dprcinst = header['VOSPATH']
+        elif self.dew.expect_keyword(filename, 'DPRCINST', header, 
+                                     mandatory=True):
             # DPRCINST is filled with the vos URI of the minor release directory
             dprcinst = header['DPRCINST']
+        if dprcinst:
             self.add_to_plane_dict('provenance.runID', dprcinst)
 
         if self.dew.expect_keyword(filename, 'DPDATE', header, mandatory=True):

@@ -75,7 +75,7 @@ def instrument_name(frontend, backend, inbeam, log):
                         logging.WARN)
     elif myFrontend not in continuum:
         log.console('frontend = ' + myFrontend + ' should be one of ' + 
-                    repr(sorted(continuum.keys())), 
+                    repr(sorted(continuum)), 
                     logging.WARN)
 
 
