@@ -1092,7 +1092,7 @@ class jcmt2caom2ingest(caom2ingest):
                                                 key,
                                                 obstimes[key])
 
-    def lookup_file_id(self, file_id):
+    def lookup_file_id(self, filename, file_id):
         """
         Given a file_id, return the collection, observation and plane
         from either the current ingestion or existing observation in the
@@ -1128,10 +1128,12 @@ class jcmt2caom2ingest(caom2ingest):
                              'JCMTLS',
                              'JCMTUSER'): 
                         
-                        inputURI = self.planeURI(c, o, p)
-                        self.input_cache[fid] = inputURI
+                        thisInputURI = self.planeURI(c, o, p)
+                        if fid == file_id:
+                            inputURI = thisInputURI
+                        self.input_cache[fid] = thisInputURI
                         
-                        self.log.file('inputs: ' + fid + ': ' + inputURI,
+                        self.log.file('inputs: ' + fid + ': ' + thisInputURI,
                                       logging.DEBUG)
                 else:
                     self.dew.warning(filename, 
@@ -1155,7 +1157,8 @@ class jcmt2caom2ingest(caom2ingest):
                         
                         for filename in thisPlane['fileset']:
                             file_id = self.make_file_id(filename)
-                            inputURI = self.lookup_file_id(file_id)
+                            inputURI = self.lookup_file_id(filename,
+                                                           file_id)
                             if (inputURI and 
                                 inputURI not in thisPlane['inputset']):
                                 
