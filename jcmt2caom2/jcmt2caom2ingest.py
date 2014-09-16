@@ -333,7 +333,6 @@ class jcmt2caom2ingest(caom2ingest):
                     "WHERE Observation.observationID='" + 
                     self.observationID + "'"])
                 results = self.tap.query(tapcmd)
-                print repr(results)
                 if results:
                     if not self.replace and self.collection in results[0]:
                         self.dew.error(filename,
@@ -465,8 +464,9 @@ class jcmt2caom2ingest(caom2ingest):
                                               logging.DEBUG)
                                     
                                 # Cache provenance input candidates
+                                # Do NOT rewrite the file_id
                                 if uri not in self.input_cache:
-                                    filecoll, file_id = uri.split('/')
+                                    filecoll, this_file_id = uri.split('/')
                                     planeURI = mbrn + '/' + prodid
                                     self.input_cache[file_id] = planeURI
                                     self.input_cache[planeURI] = planeURI
@@ -555,8 +555,9 @@ class jcmt2caom2ingest(caom2ingest):
                                               logging.DEBUG)
                             
                             # Cache provenance input candidates
+                            # Do NOT rewrite the file_id!
                             if uri not in self.input_cache:
-                                filecoll, file_id = uri.split('/')
+                                filecoll, this_file_id = uri.split('/')
                                 planeURI = mbrn + '/' + prodid
                                 self.input_cache[file_id] = planeURI
                                 self.input_cache[planeURI] = planeURI
@@ -1119,7 +1120,7 @@ class jcmt2caom2ingest(caom2ingest):
                 "WHERE Artifact2.uri like 'ad:%/" + file_id + "'"])
             answer = self.tap.query(tapquery)
             
-            if len(answer) and len(answer[0]):
+            if answer and len(answer[0]):
                 for row in answer:
                     c, o, p, u = row
                     fid = re.sub(r'ad:[^/]+/', '', u)
