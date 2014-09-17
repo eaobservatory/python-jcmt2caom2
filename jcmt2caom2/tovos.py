@@ -370,6 +370,145 @@ class stdpipe_ingestion(tovos):
                             if not self.vosclient.isfile(target):
                                 self.vosclient.delete(vpath)
 
+class jcmt2caom2_ingestion(tovos):
+    """
+    Identify jcmt2caom2ingest logs and copy them to VOspace 
+    """
+    def __init__(self, vosclient, vosroot, log=None):
+        tovos.__init__(self, 
+                       vosclient, 
+                       vosroot + '/proc_ingestion', 
+                       log)
+        self.regex = re.compile(r'(?P<trunk>(?P<root>'
+                                r'jcmt2caom2ingest_'
+                                r'(?P<rcinst>[^_]+)'
+                                r')_)' + 
+                                UTDATE_REGEX +
+                                r'(?P<errors>(_ERRORS)?)'
+                                r'(?P<warnings>(_WARNINGS)?)')
+        self.copy = {}
+
+    def match(self, path):
+        """
+        Identify processed ingestion logs, record them for deletion, and 
+        select the most recent to copy to VOspace.
+        
+        Arguments:
+        path: absolute path to the file to be matched
+        """
+        filename = os.path.basename(path)
+        file_id, ext = os.path.splitext(filename)
+        if ext == '.log':
+            m = self.regex.match(file_id)
+            if m:
+                root = m.group('root')
+                stamp = m.group('stamp').lower()
+                rcinst = m.group('rcinst')
+                
+                if root not in self.copy:
+                    self.copy[root] = {}
+                    self.copy[root]['path'] = path
+                    self.copy[root]['stamp'] = stamp
+                    self.copy[root]['rcinst'] = rcinst
+                    if self.log:
+                        self.log.file('record for copy' + path,
+                                      logging.DEBUG)
+                elif self.copy[root]['stamp'] < stamp:
+                    self.copy[root]['path'] = path
+                    self.copy[root]['stamp'] = stamp
+                    if self.log:
+                        self.log.file('replace for copy' + path,
+                                      logging.DEBUG)
+
+    def push(self):
+        """
+        Copy all files to VOspace and delete any marked for removal.
+        
+        Arguments:
+        <none>
+        """
+        for root in self.copy:
+            path = self.copy[root]['path']
+            rcinst = self.copy[root]['rcinst']
+            thousands = rcinst[:-3] + '000-999'
+            if re.match(r'vos.*', rcinst):
+                thousands = 'vos'
+            
+            # As needed, create the /thousands/ directory
+            vosdir = self.make_subdir(self.vosroot, thousands)
+            
+            filename = os.path.basename(path)
+            fileid = os.path.splitext(filename)[0]
+            
+            vospath = vosdir + '/' + filename
+            success = self.push_file(path, vospath)
+            
+            # Try to clean up the directory by deleting old log files
+            m = self.regex.search(fileid)
+            (trunk, errors, warnings, stamp) = m.group('trunk', 
+                                                       'errors', 
+                                                       'warnings', 
+                                                       'stamp')
+            for vfile in self.vosclient.listdir(vosdir, force=True):
+                m = self.regex.search(vfile)
+                if m:
+                    (vtrunk, verrors, vwarnings, vstamp) = m.group('trunk', 
+                                                                   'errors',
+                                                                   'warnings',
+                                                                   'stamp')
+                    if vtrunk == trunk and vstamp < stamp:
+                        # If no errors, delete all earlier logs
+                        # if errors, delete earlier logs with errors
+                        if not errors or (errors and verrors):
+                            vpath = vosdir + '/' +  vfile
+                            self.vosclient.delete(vpath)
+            
+            # Try to create a link in the raw_ingestion directories
+            # Read the necessary metadata from the log file.
+            # This will fail if the observation has no members and does
+            # not have algorithm == 'exposure'.
+            utdate = None
+            with open(filename, 'r') as L:
+                for line in L:
+                    m = re.search(r'Earliest utdate: '
+                                  r'(?P<utdate>[-0-9]+)'
+                                  r' for (?P<prefix>\S+)',
+                                  line)
+                    if m:
+                        (utdate, prefix) = m.group('utdate', 'prefix')
+                        break
+            if utdate:
+                (ryear, rmonth, rday) = re.split(r'-', utdate)
+                # As needed, create the /year/month/day/ directories
+                # Beware that these are URI's, not directory paths in the OS
+                rvosdir = re.sub(r'proc', 'raw', self.vosroot)
+                rvosdir = self.make_subdir(rvosdir, ryear)
+                rvosdir = self.make_subdir(rvosdir, rmonth)
+                rvosdir = self.make_subdir(rvosdir, rday)
+                rvospath = rvosdir + '/' + prefix + '_stamp-' + stamp
+                if errors:
+                    rvospath += errors
+                if warnings:
+                    rvospath += warnings
+                rvospath += '.log'
+                self.push_link(vospath, rvospath)
+                
+                # Now delete all links with the same trunk that
+                # do not point to an existing file
+                for vfile in self.vosclient.listdir(rvosdir, force=True):
+                    m = re.search(r'^(.*?)_' + 
+                                  UTDATE_REGEX + 
+                                  r'(_ERRORS)?(_WARNINGS)?',
+                                  vfile)
+                    if m:
+                        vtrunk = m.group(1)
+                        if vtrunk == prefix:
+                            vpath = '/'.join([rvosdir, vfile])
+                            info = self.vosclient.getNode(vpath).getInfo()
+                            target = info['target']
+                            if not self.vosclient.isfile(target):
+                                self.vosclient.delete(vpath)
+
 class qa_logs(tovos):
     """
     Identify check_rms logs and copy them to VOspace 

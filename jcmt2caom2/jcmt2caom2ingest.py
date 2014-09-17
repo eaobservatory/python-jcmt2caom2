@@ -12,6 +12,7 @@ makes SYBASE access problematic.
 
 __author__ = "Russell O. Redman"
 
+from astropy.time import Time
 from ConfigParser import SafeConfigParser
 from contextlib import contextmanager
 import datetime
@@ -79,8 +80,6 @@ def is_blank(key, header):
     """
     return (key in header and header[key] == pyfits.card.UNDEFINED)
 
-# from caom2.caom2_enums import CalibrationLevel
-# from caom2.caom2_enums import DataProductType
 class jcmt2caom2ingest(caom2ingest):
     """
     A derived class of caom2ingest specialized to ingest externally generated
@@ -167,6 +166,11 @@ class jcmt2caom2ingest(caom2ingest):
         self.remove_dict = {}
         self.remove_id = []
         self.repository = None
+        
+        # Are any errors or warnings recorded in this log file?
+        self.errors = False
+        self.warnings = False
+        self.dprcinst = None
         
     #************************************************************************
     # Process the custom command line switchs
@@ -308,7 +312,8 @@ class jcmt2caom2ingest(caom2ingest):
         algorithm = 'custom'
         if is_defined('ASN_TYPE', header):
             algorithm = header['ASN_TYPE']
-        print filename + '  "' + algorithm + '"'
+        self.log.console('PROGRESS: ' + filename + '  "' + algorithm + '"',
+                         logging.DEBUG)
 
         if algorithm == 'obs':
             if self.dew.expect_keyword(filename, 
@@ -396,6 +401,12 @@ class jcmt2caom2ingest(caom2ingest):
         # Observation membership headers, which are optional
         earliest_utdate = None
         earliest_obs = None
+        if algorithm == 'exposure':
+            if is_defined('DATE-OBS', header):
+                earliest_utdate = header['DATE-OBS']
+            if is_defined('OBSID', header):
+                earliest_obs = header['OBSID']
+        
         release_date = None
         # obstimes records the (date_obs, date_end) for this file.
         # self.member_cache records these intervals for use with subsequent
@@ -463,7 +474,14 @@ class jcmt2caom2ingest(caom2ingest):
                                 self.log.file('cache member metadata '
                                               'for ' + mbrn,
                                               logging.DEBUG)
-                                    
+                                
+                                if date_obs:
+                                    if (earliest_utdate is None or 
+                                        date_obs < earliest_utdate):
+
+                                        earliest_utdate = date_obs
+                                        earliest_obs = obsid
+
                                 # Cache provenance input candidates
                                 # Do NOT rewrite the file_id
                                 if uri not in self.input_cache:
@@ -541,6 +559,13 @@ class jcmt2caom2ingest(caom2ingest):
                                                obsid)
                                 break
                             
+                            if date_obs:
+                                if (earliest_utdate is None or 
+                                    date_obs < earliest_utdate):
+
+                                    earliest_utdate = date_obs
+                                    earliest_obs = obsid
+
                             if release_date is None:
                                 release_date = release
                             else:
@@ -946,14 +971,6 @@ class jcmt2caom2ingest(caom2ingest):
                     else:
                         self.fileset.add(prvn_id)
 
-        # Report the earliest UTDATE
-        if earliest_utdate:
-            rcinstprefix = 'caom-' + self.collection + '-' + earliest_obs
-            self.log.file('Earliest utdate: ' + 
-                          earliest_utdate.date().isoformat() +
-                          ' for ' + rcinstprefix +
-                          '_vlink-' + dprcinst)
-
         dataProductType = None
         if is_defined('DATAPROD', header):
             if not self.dew.restricted_value(filename, 'DATAPROD', header,
@@ -1032,13 +1049,31 @@ class jcmt2caom2ingest(caom2ingest):
 
         dprcinst = None
         if is_defined('VOSPATH', header):
-            dprcinst = header['VOSPATH']
+            dprcinst = re.sub(r'[^0-9a-zA-Z]', '-', header['VOSPATH'])
         elif self.dew.expect_keyword(filename, 'DPRCINST', header, 
                                      mandatory=True):
-            # DPRCINST is filled with the vos URI of the minor release directory
-            dprcinst = header['DPRCINST']
+            if isinstance(header['DPRCINST'], str):
+                m = re.match(r'jac-([1-9][0-9]*)', header['DPRCINST'])
+                if m:
+                    dprcinst = 'jac-%09d' % (eval(m.group(1)),)
+                else:
+                    dprcinst = str(eval(header['DPRCINST']))
+            else:
+                dprcinst = str(header['DPRCINST'])
+        
         if dprcinst:
+            # record the data processing recipe instance to substitute in the
+            # log file name later
+            self.dprcinst = dprcinst
             self.add_to_plane_dict('provenance.runID', dprcinst)
+
+        # Report the earliest UTDATE
+        if earliest_utdate:
+            rcinstprefix = 'caom-' + self.collection + '-' + earliest_obs
+            self.log.file('Earliest utdate: ' + 
+                          Time(earliest_utdate, format='mjd', out_subfmt='date').iso +
+                          ' for ' + rcinstprefix +
+                          '_vlink-' + dprcinst)
 
         if self.dew.expect_keyword(filename, 'DPDATE', header, mandatory=True):
             # DPDATE is a characteristic datetime when the data was processed
@@ -1410,30 +1445,35 @@ class jcmt2caom2ingest(caom2ingest):
         Arguements:
         <none>
         """
-        if self.collection == 'JCMT' and self.ingest:
-            self.voscopy = tovos.stdpipe_ingestion(vos.Client(),
-                                                   self.vosroot)
-            
+        if self.collection != 'SANDBOX' and self.ingest:
+            self.voscopy = tovos.jcmt2caom2_ingestion(vos.Client(),
+                                                      self.vosroot)
             logcopy = self.logfile
             logsuffix = ''
             if self.errors:
                 logsuffix = '_ERRORS'
             if self.warnings:
                 logsuffix += '_WARNINGS'
-                
+            
+            logid, ext = os.path.splitext(self.logfile)
+            if self.local and self.dprcinst:
+                logid = re.sub(r'dprcinst', self.dprcinst, logid) 
+            
             if logsuffix:
-                logid, ext = os.path.splitext(self.logfile)
                 logcopy = logid + logsuffix + ext
+            else:
+                logcopy = logid + ext
+            
+            if logcopy != self.logfile:
                 shutil.copy(self.logfile, logcopy)
 
             self.voscopy.match(logcopy)
             self.voscopy.push()
 
-            if logsuffix:
+            if logcopy != self.logfile:
                 os.remove(logcopy)
         
         caom2ingest.cleanup(self)
-
 
 #************************************************************************
 # if run as a main program, create an instance and exit
