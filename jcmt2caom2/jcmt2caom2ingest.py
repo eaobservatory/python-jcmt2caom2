@@ -1049,7 +1049,8 @@ class jcmt2caom2ingest(caom2ingest):
 
         dprcinst = None
         if is_defined('VOSPATH', header):
-            dprcinst = re.sub(r'[^0-9a-zA-Z]', '-', header['VOSPATH'])
+            self.add_to_plane_dict('provenance.runID', header['VOSPATH'])
+            self.dprcinst = re.sub(r'[^0-9a-zA-Z]', '-', header['VOSPATH'])
         elif self.dew.expect_keyword(filename, 'DPRCINST', header, 
                                      mandatory=True):
             if isinstance(header['DPRCINST'], str):
@@ -1060,20 +1061,17 @@ class jcmt2caom2ingest(caom2ingest):
                     dprcinst = str(eval(header['DPRCINST']))
             else:
                 dprcinst = str(header['DPRCINST'])
-        
-        if dprcinst:
-            # record the data processing recipe instance to substitute in the
-            # log file name later
-            self.dprcinst = dprcinst
-            self.add_to_plane_dict('provenance.runID', dprcinst)
+            if dprcinst:
+                self.add_to_plane_dict('provenance.runID', dprcinst)
+                self.dprcinst = dprcinst
 
         # Report the earliest UTDATE
-        if earliest_utdate:
+        if earliest_utdate and self.dprcinst:
             rcinstprefix = 'caom-' + self.collection + '-' + earliest_obs
             self.log.file('Earliest utdate: ' + 
                           Time(earliest_utdate, format='mjd', out_subfmt='date').iso +
                           ' for ' + rcinstprefix +
-                          '_vlink-' + dprcinst)
+                          '_vlink-' + self.dprcinst)
 
         if self.dew.expect_keyword(filename, 'DPDATE', header, mandatory=True):
             # DPDATE is a characteristic datetime when the data was processed
