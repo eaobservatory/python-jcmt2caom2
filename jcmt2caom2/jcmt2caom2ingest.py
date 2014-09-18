@@ -368,7 +368,7 @@ class jcmt2caom2ingest(caom2ingest):
         
         if is_defined('PROJECT', header):
             proposal_id = header['PROJECT']
-            self.add_to_plane_dict('proposal_id', proposal_id)
+            self.add_to_plane_dict('proposal.id', proposal_id)
 
             if proposal_project:
                 self.add_to_plane_dict('proposal.project', proposal_project)
@@ -377,26 +377,44 @@ class jcmt2caom2ingest(caom2ingest):
                 proposal_pi = header['PI']
                 self.add_to_plane_dict('proposal.pi', proposal_pi)
                 
-            if is_defined('title', header):
+            if is_defined('TITLE', header):
                 proposal_title = header['TITLE']
                 self.add_to_plane_dict('proposal.title', proposal_title)
             
-            if not (proposal_pi and proposal_title) and self.omp_db:
-                sqlcmd = '\n'.join([
-                    'SELECT ',
-                    '    ou.uname,',
-                    '    op.title',
-                    'FROM ' + self.omp_db + 'ompproj op',
-                    '    LEFT JOIN ' + self.omp_db + 'ompuser ou'
-                    '        ON op.pi=ou.userid',
-                    'WHERE op.projectid="%s"' % (header['PROJECT'],)])
-                answer = self.conn.read(sqlcmd)
+            if not (proposal_pi and proposal_title):
+                if self.omp_db:
+                    sqlcmd = '\n'.join([
+                        'SELECT ',
+                        '    ou.uname,',
+                        '    op.title',
+                        'FROM ' + self.omp_db + 'ompproj op',
+                        '    LEFT JOIN ' + self.omp_db + 'ompuser ou'
+                        '        ON op.pi=ou.userid',
+                        'WHERE op.projectid="%s"' % (header['PROJECT'],)])
+                    answer = self.conn.read(sqlcmd)
 
-                if len(answer):
-                    self.add_to_plane_dict('proposal.pi',
-                                           answer[0][0])
-                    self.add_to_plane_dict('proposal.title',
-                                           answer[0][1])
+                    if len(answer):
+                        self.add_to_plane_dict('proposal.pi',
+                                               answer[0][0])
+                        self.add_to_plane_dict('proposal.title',
+                                               answer[0][1])
+                else:
+                    tapcmd = '\n'.join([
+                        "SELECT DISTINCT Observation.proposal_pi, ",
+                        "                Observation.proposal_title",
+                        "FROM caom2.Observation as Observation",
+                        "WHERE Observation.collection = 'JCMT'",
+                        "      AND Observation.proposal_id = '" + 
+                        proposal_id + "'"])
+                    answer = self.tap.query(tapcmd)
+                    
+                    if answer and len(answer[0]) > 0:
+                        if answer[0][0]:
+                            self.add_to_plane_dict('proposal.pi',
+                                                   answer[0][0])
+                        if answer[0][1]:
+                            self.add_to_plane_dict('proposal.title',
+                                                   answer[0][1])
         
         # Observation membership headers, which are optional
         earliest_utdate = None
@@ -764,13 +782,16 @@ class jcmt2caom2ingest(caom2ingest):
             standard_target = 'TRUE'
         self.add_to_plane_dict('STANDARD', standard_target)
         
-        # Distinguish moving targets
         moving = 'FALSE'
+        print 'moving = ' + str(is_blank('MOVING', header))
+        print 'OBSRA  = ' + str(is_blank('OBSRA',  header))
+        print 'OBSDEC = ' + str(is_blank('OBSDEC', header))
         if (is_blank('MOVING', header) or 
+        # Distinguish moving targets
             is_blank('OBSRA', header) or
             is_blank('OBSDEC', header)):
             moving = 'TRUE'
-        self.add_to_plane_dict('target.moving', 'TRUE')
+        self.add_to_plane_dict('target.moving', moving)
 
         if (moving == 'TRUE'and 
             header['CTYPE1'][0:4] == 'OFLN' and
@@ -1050,26 +1071,32 @@ class jcmt2caom2ingest(caom2ingest):
         dprcinst = None
         if is_defined('VOSPATH', header):
             self.add_to_plane_dict('provenance.runID', header['VOSPATH'])
-            self.dprcinst = re.sub(r'[^0-9a-zA-Z]', '-', header['VOSPATH'])
+            if not self.dprcinst:
+                self.dprcinst = re.sub(r'[^0-9a-zA-Z]', '-', header['VOSPATH'])
         elif self.dew.expect_keyword(filename, 'DPRCINST', header, 
                                      mandatory=True):
             if isinstance(header['DPRCINST'], str):
                 m = re.match(r'jac-([1-9][0-9]*)', header['DPRCINST'])
                 if m:
                     dprcinst = 'jac-%09d' % (eval(m.group(1)),)
-                else:
+                elif re.match(r'^0x[0-9a-fA-F]+$', header['DPRCINST']):
                     dprcinst = str(eval(header['DPRCINST']))
+                else:
+                    dprcinst = header['DPRCINST']
             else:
                 dprcinst = str(header['DPRCINST'])
             if dprcinst:
                 self.add_to_plane_dict('provenance.runID', dprcinst)
-                self.dprcinst = dprcinst
+                if not self.dprcinst:
+                    self.dprcinst = dprcinst
 
         # Report the earliest UTDATE
         if earliest_utdate and self.dprcinst:
             rcinstprefix = 'caom-' + self.collection + '-' + earliest_obs
             self.log.file('Earliest utdate: ' + 
-                          Time(earliest_utdate, format='mjd', out_subfmt='date').iso +
+                          Time(earliest_utdate, 
+                               format='mjd', 
+                               out_subfmt='date').iso +
                           ' for ' + rcinstprefix +
                           '_vlink-' + self.dprcinst)
 
@@ -1455,7 +1482,7 @@ class jcmt2caom2ingest(caom2ingest):
             
             logid, ext = os.path.splitext(self.logfile)
             if self.local and self.dprcinst:
-                logid = re.sub(r'dprcinst', self.dprcinst, logid) 
+                logid = re.sub(r'provenance_runid', self.dprcinst, logid) 
             
             if logsuffix:
                 logcopy = logid + logsuffix + ext
