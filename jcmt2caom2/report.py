@@ -84,7 +84,7 @@ def run():
     ap.add_argument('fromset',
                     nargs='*',
                     help='a list of obsid files, rcinst files or wrap logs'
-                         ' form which obsid or rcinst values can be parsed')
+                         ' from which obsid or rcinst values can be parsed')
     a = ap.parse_args()
     
     if a.userconfig:
@@ -296,7 +296,7 @@ def run():
             print 'SUMMARY OF LOGS IN ' + source
             thousands = {}
             for rcinst in sorted(rcinst_dict[source]):
-                thousand = str(int(rcinst)/1000)
+                thousand = rcinst[:-3]
                 thoudir = thousand + '000-' + thousand + '999'
                 if thoudir not in thousands:
                     thousands[thoudir] = []
