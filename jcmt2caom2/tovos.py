@@ -569,7 +569,7 @@ class jcmt2caom2_ingestion(tovos):
                                            vstampdate)
             
 
-    def clean(path, root, stamp, datedir, rawdir, rawprefix):
+    def clean(self, path, root, stamp, datedir, rawdir, rawprefix):
         """
         Delete a file from vosroot and clean up any links to that file
         It can be assumed that the arguments have already been parsed from the

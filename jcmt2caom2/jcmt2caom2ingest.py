@@ -1094,7 +1094,6 @@ class jcmt2caom2ingest(caom2ingest):
             print 'earliest_utdate: ' + str(earliest_utdate)
             self.log.file('Earliest utdate: ' + 
                           Time(earliest_utdate, 
-                               format='iso', 
                                out_subfmt='date').iso +
                           ' for ' + rcinstprefix +
                           '_vlink-' + self.dprcinst)
