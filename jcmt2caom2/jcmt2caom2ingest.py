@@ -1090,6 +1090,8 @@ class jcmt2caom2ingest(caom2ingest):
         # Report the earliest UTDATE
         if earliest_utdate and self.dprcinst:
             rcinstprefix = 'caom-' + self.collection + '-' + earliest_obs
+            print 'earliest_obs: ' + earliest_obs
+            print 'earliest_utdate: ' + str(earliest_utdate)
             self.log.file('Earliest utdate: ' + 
                           Time(earliest_utdate, 
                                format='mjd', 
