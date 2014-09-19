@@ -530,7 +530,7 @@ class jcmt2caom2ingest(caom2ingest):
                     
                     # obsn contains an obsid_subsysnr 
                     raw_regex = (r'(scuba2|acsis|DAS|AOSC|scuba)_'
-                                 r'\d+_(\d{8}[tT]\d{6})_\d')
+                                 r'\d+_(\d{8}[tT]\d{6})_\d+')
                     m = re.match(raw_regex, obsn)
                     if m:
                         # obsid_pattern should match a single obsid, because the
