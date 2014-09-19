@@ -1094,7 +1094,7 @@ class jcmt2caom2ingest(caom2ingest):
             print 'earliest_utdate: ' + str(earliest_utdate)
             self.log.file('Earliest utdate: ' + 
                           Time(earliest_utdate, 
-                               format='mjd', 
+                               format='iso', 
                                out_subfmt='date').iso +
                           ' for ' + rcinstprefix +
                           '_vlink-' + self.dprcinst)
@@ -1471,7 +1471,8 @@ class jcmt2caom2ingest(caom2ingest):
         """
         if self.collection != 'SANDBOX' and self.ingest:
             self.voscopy = tovos.jcmt2caom2_ingestion(vos.Client(),
-                                                      self.vosroot)
+                                                      self.vosroot,
+                                                      self.log)
             logcopy = self.logfile
             logsuffix = ''
             if self.errors:
