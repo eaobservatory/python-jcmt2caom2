@@ -561,6 +561,7 @@ class jcmt2caom2ingest(caom2ingest):
                         "WHERE Observation.observationID LIKE '" + 
                         obsid_pattern + "'"])
                     answer = self.tap.query(tapquery)
+                    self.log.file(repr(answer), logging.DEBUG)
                     if len(answer) > 0 and len(answer[0]) > 0:
                         obsid_solitary = None
                         for (obsid, prodid, date_obs, date_end, 

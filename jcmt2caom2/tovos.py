@@ -590,7 +590,7 @@ class jcmt2caom2_ingestion(tovos):
         # Find any links in proc_ingestion_date matching the root-part of
         # the existing filename but with an earlier time stamp and
         # delete them.
-        for dfile in self.vosclient.voslist(datedir):
+        for dfile in self.vosclient.listdir(datedir):
             dmm = self.regex.search(dfile)
             if dmm:
                 if (dmm.group('root') == root and
