@@ -312,8 +312,7 @@ class jcmt2caom2ingest(caom2ingest):
         algorithm = 'custom'
         if is_defined('ASN_TYPE', header):
             algorithm = header['ASN_TYPE']
-        self.log.console('PROGRESS: ' + filename + '  "' + algorithm + '"',
-                         logging.DEBUG)
+        self.log.console('PROGRESS: ' + filename + '  "' + algorithm + '"')
 
         if algorithm == 'obs':
             if self.dew.expect_keyword(filename, 
@@ -1090,8 +1089,6 @@ class jcmt2caom2ingest(caom2ingest):
         # Report the earliest UTDATE
         if earliest_utdate and self.dprcinst:
             rcinstprefix = 'caom-' + self.collection + '-' + earliest_obs
-            print 'earliest_obs: ' + earliest_obs
-            print 'earliest_utdate: ' + str(earliest_utdate)
             self.log.file('Earliest utdate: ' + 
                           Time(earliest_utdate, 
                                out_subfmt='date').iso +
