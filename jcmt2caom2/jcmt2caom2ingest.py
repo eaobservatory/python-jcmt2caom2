@@ -307,6 +307,8 @@ class jcmt2caom2ingest(caom2ingest):
             self.dew.restricted_value(filename, 
                                       'INSTREAM', header, (self.collection,))
         
+        instream = header['INSTREAM']
+        
         # Conditionally mandatory
         # Observation.algorithm
         algorithm = 'custom'
@@ -449,21 +451,29 @@ class jcmt2caom2ingest(caom2ingest):
                     else:
                         continue
                     
-                    # Verify that the member header points to a real observation
-                    # Extract the start and end times from the member.
-                    # Also, do a nasty optimization for performance, caching
-                    # useful information from the member for later re-use.
-
-                    # mbrn contains a caom observation uri 
-                    mbr_coll, obsid = mbrn.split('/')
-                    if mbr_coll != 'caom:JCMT':
-                        self.dew.error(filename,
-                                       mbrkey + ' must point to an '
-                                       'observation in the JCMT collection: ' +
-                                       mbrn)
-                        continue
-                                       
-                    if mbrn not in self.member_cache:
+                    # Only get here if obsn has a defined value
+                    if mbrn in self.member_cache:
+                        # Skip the query if this member has been cached
+                        (this_mbrn, 
+                         date_obs, 
+                         date_end, 
+                         release_date) = self.member_cache[mbrn]
+                    
+                    else:
+                        # Verify that the member header points to a real observation
+                        # Extract the start, end release times from the member.
+                        # Also, do a nasty optimization for performance, caching
+                        # useful information from the member for later re-use.
+                        
+                        # mbrn contains a caom observation uri 
+                        mbr_coll, obsid = mbrn.split('/')
+                        if mbr_coll != 'caom:JCMT':
+                            self.dew.error(filename,
+                                           mbrkey + ' must point to an '
+                                           'observation in the JCMT collection: ' +
+                                           mbrn)
+                            continue
+                                           
                         # To reduce the number of TAP queries, we will return 
                         # all the files and planes in this observation, in the 
                         # expectation that they will be part of the membership
@@ -473,6 +483,7 @@ class jcmt2caom2ingest(caom2ingest):
                             "       Plane.productID, ",
                             "       Plane.time_bounds_cval1,",
                             "       Plane.time_bounds_cval2",
+                            "       Plane.dataRelease,",
                             "       Artifact.uri",
                             "FROM caom2.Observation as Observation",
                             "         INNER JOIN caom2.Plane AS Plane",
@@ -485,30 +496,58 @@ class jcmt2caom2ingest(caom2ingest):
                             ])
                         answer = self.tap.query(tapcmd)
                         if len(answer) > 0 and len(answer[0]) > 0:
-                            for (prodid, date_obs, date_end, uri) in results:
-                                # cache the members start and end times
-                                self.member_cache[mbrn] = (date_obs, date_end)
-                                self.log.file('cache member metadata '
-                                              'for ' + mbrn,
-                                              logging.DEBUG)
+                            missing = True
+                            for (prodid, 
+                                 mjd_date_obs, 
+                                 mjd_date_end, 
+                                 release, 
+                                 uri) in results:
+                                 
+                                # Only extract date_obs, date_end and release from 
+                                # raw data and demand that they be defined
+                                if not re.match(r'raw.*', prodid):
+                                    continue
                                 
-                                if date_obs:
-                                    if (earliest_utdate is None or 
-                                        date_obs < earliest_utdate):
+                                if (not mjd_date_obs or 
+                                    not mjd_date_end or
+                                    not release):
+                                    continue
 
-                                        earliest_utdate = date_obs
-                                        earliest_obs = obsid
+                                date_obs = Time(mjd_date_obs,
+                                                format='mjd').iso
+                                date_end = Time(mjd_date_end,
+                                                format='mjd').iso
+                                release_date = release
 
                                 # Cache provenance input candidates
                                 # Do NOT rewrite the file_id
                                 if uri not in self.input_cache:
                                     filecoll, this_file_id = uri.split('/')
                                     planeURI = mbrn + '/' + prodid
-                                    self.input_cache[file_id] = planeURI
+                                    self.input_cache[this_file_id] = planeURI
                                     self.input_cache[planeURI] = planeURI
 
+                                # cache the members mbrn, start, end and release
+                                # recording mbrn is NOT needlessly repetitive
+                                # because with obsn headers it will be different
+                                self.log.file('cache member metadata '
+                                              'for ' + mbrn,
+                                              logging.DEBUG)
+                                self.member_cache[mbrn] = (mbrn,
+                                                           date_obs, 
+                                                           date_end, 
+                                                           release_date)
+                    # At this point we have mbrn, date_obs, date_end and 
+                    # release_date either from the member_cache or from the query
+                    if date_obs:
+                        if (earliest_utdate is None or 
+                            date_obs < earliest_utdate):
+
+                            earliest_utdate = date_obs
+                            earliest_obs = obsid
+
                     if mbrn not in obstimes:
-                        obstimes[mbrn] = self.member_cache[mbrn]
+                        obstimes[mbrn] = (date_obs, date_end)
                     
                     self.memberset.add(mbrn)
         
@@ -523,93 +562,112 @@ class jcmt2caom2ingest(caom2ingest):
                     else:
                         continue
                     
-                    # Verify that the member header points to a real observation
-                    # Extract the start and end times from the member.
-                    # Also, do a nasty optimization for performance, caching
-                    # useful information from the member for later re-use.
+                    # Only get here if obsn has a defined value
+                    if obsn in self.member_cache:
+                        # Skip the query if this member has been cached
+                        (mbrn, 
+                         date_obs, 
+                         date_end, 
+                         release_date) = self.member_cache[mbrn]
                     
-                    # obsn contains an obsid_subsysnr 
-                    raw_regex = (r'(scuba2|acsis|DAS|AOSC|scuba)_'
-                                 r'\d+_(\d{8}[tT]\d{6})_\d+')
-                    m = re.match(raw_regex, obsn)
-                    if m:
-                        # obsid_pattern should match a single obsid, because the
-                        # datetime in group(2) should be unique to each 
-                        # observation
-                        obsid_pattern = m.group(1) + '%' + m.group(2)
                     else:
-                        self.dew.error(filename,
-                                       obskey + ' = "' + obsn + '" does not '
-                                       'match the pattern expected for the '
-                                       'observationID of a member: ' + 
-                                       raw_regex) 
-                        continue
-                    
-                    tapquery = '\n'.join([
-                        "SELECT",
-                        "       Observation.observationID,",
-                        "       Plane.productID,",
-                        "       Plane.time_bounds_cval1,",
-                        "       Plane.time_bounds_cval2,",
-                        "       Plane.dataRelease,",
-                        "       Artifact.uri",
-                        "FROM caom2.Observation as Observation",
-                        "         INNER JOIN caom2.Plane AS Plane",
-                        "             ON Observation.obsID=Plane.obsID",
-                        "         INNER JOIN caom2.Artifact AS Artifact",
-                        "             ON Plane.planeID=Artifact.planeID",
-                        "WHERE Observation.observationID LIKE '" + 
-                        obsid_pattern + "'"])
-                    answer = self.tap.query(tapquery)
-                    self.log.file(repr(answer), logging.DEBUG)
-                    if len(answer) > 0 and len(answer[0]) > 0:
-                        obsid_solitary = None
-                        for (obsid, prodid, date_obs, date_end, 
-                             release, uri) in answer:
-                            
-                            if obsid_solitary is None:
-                                obsid_solitary = obsid
-                            elif obsid != obsid_solitary:
-                                self.dew.error(obskey + ' = ' + obsn + ' with '
-                                               'obsid_pattern = ' + 
-                                               obsid_pattern + ' matched ' +
-                                               obsid_solitary + ' and ' +
-                                               obsid)
-                                break
-                            
-                            if date_obs:
-                                if (earliest_utdate is None or 
-                                    date_obs < earliest_utdate):
+                        # Verify that the member header points to a real observation
+                        # Extract the start, end release times from the member.
+                        # Also, do a nasty optimization for performance, caching
+                        # useful information from the member for later re-use.
+                        
+                        # obsn contains an obsid_subsysnr 
+                        raw_regex = (r'(scuba2|acsis|DAS|AOSC|scuba)_'
+                                     r'\d+_(\d{8}[tT]\d{6})_\d+')
+                        m = re.match(raw_regex, obsn)
+                        if m:
+                            # obsid_pattern should match a single obsid, because the
+                            # datetime in group(2) should be unique to each 
+                            # observation
+                            obsid_pattern = m.group(1) + '%' + m.group(2)
+                        else:
+                            self.dew.error(filename,
+                                           obskey + ' = "' + obsn + '" does not '
+                                           'match the pattern expected for the '
+                                           'observationID of a member: ' + 
+                                           raw_regex) 
+                            continue
+                        
+                        tapquery = '\n'.join([
+                            "SELECT",
+                            "       Observation.observationID,",
+                            "       Plane.productID,",
+                            "       Plane.time_bounds_cval1,",
+                            "       Plane.time_bounds_cval2,",
+                            "       Plane.dataRelease,",
+                            "       Artifact.uri",
+                            "FROM caom2.Observation as Observation",
+                            "         INNER JOIN caom2.Plane AS Plane",
+                            "             ON Observation.obsID=Plane.obsID",
+                            "         INNER JOIN caom2.Artifact AS Artifact",
+                            "             ON Plane.planeID=Artifact.planeID",
+                            "WHERE Observation.observationID LIKE '" + 
+                            obsid_pattern + "'"])
+                        answer = self.tap.query(tapquery)
+                        self.log.file(repr(answer), logging.DEBUG)
+                        if len(answer) > 0 and len(answer[0]) > 0:
+                            obsid_solitary = None
+                            for (obsid, 
+                                 prodid, 
+                                 mjd_date_obs, 
+                                 mjd_date_end, 
+                                 release, 
+                                 uri) in answer:
+                                
+                                if obsid_solitary is None:
+                                    obsid_solitary = obsid
+                                elif obsid != obsid_solitary:
+                                    self.dew.error(obskey + ' = ' + obsn + ' with '
+                                                   'obsid_pattern = ' + 
+                                                   obsid_pattern + ' matched ' +
+                                                   obsid_solitary + ' and ' +
+                                                   obsid)
+                                    break
+                                
+                                if (not mjd_date_obs or 
+                                    not mjd_date_end or
+                                    not release):
+                                    continue
 
-                                    earliest_utdate = date_obs
-                                    earliest_obs = obsid
-
-                            if release_date is None:
+                                date_obs = Time(mjd_date_obs,
+                                                format='mjd').iso
+                                date_end = Time(mjd_date_end,
+                                                format='mjd').iso
                                 release_date = release
-                            else:
-                                release_date = max(release_date, release)
-                            
-                            mbrn = 'caom:JCMT/' + obsid
-                            if mbrn not in self.member_cache:
-                                # cache the members start and end times
-                                self.member_cache[mbrn] = \
-                                    (date_obs, date_end)
-                                self.log.file('cache member metadata '
-                                              'for ' + mbrn,
-                                              logging.DEBUG)
-                            
-                            # Cache provenance input candidates
-                            # Do NOT rewrite the file_id!
-                            if uri not in self.input_cache:
-                                filecoll, this_file_id = uri.split('/')
-                                planeURI = mbrn + '/' + prodid
-                                self.input_cache[file_id] = planeURI
-                                self.input_cache[planeURI] = planeURI
 
-                            if mbrn not in obstimes:
-                                obstimes[mbrn] = self.member_cache[mbrn]
-                            
-                            self.memberset.add(mbrn)
+                                mbrn = 'caom:JCMT/' + obsid
+                                # cache the members start and end times
+                                self.member_cache[obsn] = \
+                                    (mbrn, date_obs, date_end, release_date)
+                                self.log.file('cache member metadata '
+                                              'for ' + obsn,
+                                              logging.DEBUG)
+                                
+                                # Cache provenance input candidates
+                                # Do NOT rewrite the file_id!
+                                if uri not in self.input_cache:
+                                    filecoll, this_file_id = uri.split('/')
+                                    planeURI = mbrn + '/' + prodid
+                                    self.input_cache[this_file_id] = planeURI
+                                    self.input_cache[planeURI] = planeURI
+
+                    # At this point we have mbrn, date_obs, date_end and 
+                    # release_date either from the member_cache or from the query
+                    if date_obs:
+                        if (earliest_utdate is None or 
+                            date_obs < earliest_utdate):
+
+                            earliest_utdate = date_obs
+                            earliest_obs = obsid
+
+                    if mbrn not in obstimes:
+                        obstimes[mbrn] = (date_obs, date_end)                    
+                    self.memberset.add(mbrn)
 
         # Environment
         if is_defined('SEEINGST', header) and header['SEEINGST'] > 0.0:
@@ -908,15 +966,15 @@ class jcmt2caom2ingest(caom2ingest):
                                                   self.observationID,
                                                   self.productID)
 
-        if self.collection == 'JCMT':
+        if (self.collection == 'JCMT' or
+            (self.collection == 'SANDBOX' and instream == 'JCMT')):
             if product in ['reduced', 'cube']:
                 # Do not set release dates for healpix products
                 if release_date:
-                    release_date_str = release_date.isoformat()
                     self.add_to_plane_dict('plane.metaRelease',
-                                           release_date_str)
+                                           release_date)
                     self.add_to_plane_dict('plane.dataRelease',
-                                           release_date_str)
+                                           release_date)
                 else:
                     self.dew.error(filename,
                                    'Release date could not be '
