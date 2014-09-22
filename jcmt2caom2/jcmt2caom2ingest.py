@@ -315,7 +315,8 @@ class jcmt2caom2ingest(caom2ingest):
         algorithm = 'custom'
         if is_defined('ASN_TYPE', header):
             algorithm = header['ASN_TYPE']
-        self.log.console('PROGRESS: ' + filename + '  "' + algorithm + '"')
+        self.log.console('PROGRESS: ' + header['SRCPATH'] + 
+                         '  "' + algorithm + '"')
 
         if algorithm == 'obs':
             if self.dew.expect_keyword(filename, 
