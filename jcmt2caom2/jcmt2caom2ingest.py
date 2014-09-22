@@ -968,10 +968,11 @@ class jcmt2caom2ingest(caom2ingest):
                                bwmode=bwmode,
                                subsysnr=subsysnr)
 
-        if ((self.collection == 'JCMT' or instream == 'JCMT') and
-            self.productID and 
-            is_defined('PRODID', header) and 
-            self.productID != header['PRODID']):
+        if (self.collection == 'JCMT' or instream == 'JCMT'):
+            if (self.productID and 
+                is_defined('PRODID', header) and 
+                self.productID != header['PRODID']):
+                
                 # In the JCMT collection, PRODID == self.productID
                 self.dew.warning(filename,
                                  'PRODID = ' + header['PRODID'] + 
