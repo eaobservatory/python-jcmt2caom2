@@ -911,7 +911,13 @@ class jcmt2caom2ingest(caom2ingest):
             if self.dew.expect_keyword(filename, 'BWMODE', header):
                 bwmode = header['BWMODE']
             
-        if (restfreq and bwmode and subsysnr):
+        if backend == 'SCUBA-2':
+            self.productID = product_id(backend, 
+                                        self.log,
+                                        product=product,
+                                        filter=filter)
+
+        elif (restfreq and bwmode and subsysnr):
             if product in ['reduced', 'rimg', 'rsp']:
                 science_product = 'reduced'
                 self.productID = \
@@ -931,6 +937,7 @@ class jcmt2caom2ingest(caom2ingest):
                                bwmode=bwmode,
                                subsysnr=subsysnr)
             elif product and restfreq and bwmode and subsysnr:
+                # This should catch cube and catalog products
                 science_product = product
                 self.productID = \
                     product_id(backend, 
