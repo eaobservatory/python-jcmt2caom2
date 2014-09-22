@@ -306,8 +306,9 @@ class jcmt2caom2ingest(caom2ingest):
         else:
             self.dew.restricted_value(filename, 
                                       'INSTREAM', header, (self.collection,))
-        
-        instream = header['INSTREAM']
+        instream = None
+        if is_defined('INSTREAM', header):
+            instream = header['INSTREAM']
         
         # Conditionally mandatory
         # Observation.algorithm
@@ -877,24 +878,27 @@ class jcmt2caom2ingest(caom2ingest):
         if self.dew.expect_keyword(filename, 'PRODUCT', header, mandatory=True):
             product = header['PRODUCT']
         
-        self.productID = None
+        # The standard and legacy pipelines must have some standard keywords
+        if (self.collection == 'JCMT' or instream == 'JCMT'):
+            if backend == 'SCUBA-2':
+                self.dew.expect_keyword(filename, 'FILTER', header)
+            else:
+                self.dew.expect_keyword(filename, 'RESTFRQ', header):
+                self.dew.expect_keyword(filename, 'SUBSYSNR', header):
+                self.dew.expect_keyword(filename, 'BWMODE', header):
+        
+        science_product = None
         filter = None
         restfreq = None
         subsysnr = None
         bwmode = None
-        # Extract backend specific metadata to construct productID
-        if backend == 'SCUBA-2':
-            if self.dew.expect_keyword(filename, 'FILTER', header):
-                filter = str(header['FILTER'])
-                self.productID = \
-                    product_id('SCUBA-2', 
-                                self.log,
-                                product=product,
-                                filter=filter)
+        self.productID = None
+        
+        # Try to compute self.productID using the standard rules
+        if backend == 'SCUBA-2' and is_defined('FILTER', header):
+            filter = str(header['FILTER'])
         else:
-            # ACSIS-like files must define either PRODID or 
-            # the SUBSYSNR, RESTFRQ and BWMODE.  Allow RESTFREQ and
-            # RESTWAV as equivalents to RESTFRQ.
+            # Allow RESTFREQ and RESTWAV as equivalents to RESTFRQ.
             if is_defined('RESTFREQ', header):
                 restfreq = float(header['RESTFREQ'])
             elif is_defined('RESTWAV', header):
@@ -906,58 +910,56 @@ class jcmt2caom2ingest(caom2ingest):
                 subsysnr = str(header['SUBSYSNR'])
             if self.dew.expect_keyword(filename, 'BWMODE', header):
                 bwmode = header['BWMODE']
+            
+        if (restfreq and bwmode and subsysnr):
+            if product in ['reduced', 'rimg', 'rsp']:
+                science_product = 'reduced'
+                self.productID = \
+                    product_id(backend, 
+                               self.log,
+                               product='reduced',
+                               restfreq=restfreq,
+                               bwmode=bwmode,
+                               subsysnr=subsysnr)
+            elif product in ['healpix', 'hpxrimg', 'hpxrsp']:
+                science_product = 'healpix'
+                self.productID = \
+                    product_id(backend, 
+                               self.log,
+                               product='healpix',
+                               restfreq=restfreq,
+                               bwmode=bwmode,
+                               subsysnr=subsysnr)
+            elif product and restfreq and bwmode and subsysnr:
+                science_product = product
+                self.productID = \
+                    product_id(backend, 
+                               self.log,
+                               product=product,
+                               restfreq=restfreq,
+                               bwmode=bwmode,
+                               subsysnr=subsysnr)
 
-        science_product = None
-        if is_defined('PRODID', header):
-            self.productID = header['PRODID']
+        if ((self.collection == 'JCMT' or instream == 'JCMT') and
+            self.productID and 
+            is_defined('PRODID', header) and 
+            self.productID != header['PRODID']):
+                # In the JCMT collection, PRODID == self.productID
+                self.dew.warning(filename,
+                                 'PRODID = ' + header['PRODID'] + 
+                                 ' does not match = ' + self.productID)
         else:
-            # Try to build the productID with the standard algorithm
-            if backend == 'SCUBA-2':
-                if self.dew.expect_keyword(filename, 'FILTER', header):
-                    filter = str(header['FILTER'])
-                    self.productID = \
-                        product_id('SCUBA-2', 
-                                    self.log,
-                                    product=product,
-                                    filter=filter)
-            else:
-                # ACSIS-like files must define either PRODID or 
-                # the SUBSYSNR, RESTFRQ and BWMODE
-                if self.dew.expect_keyword(filename, 'RESTFRQ', header):
-                    restfreq = float(header['RESTFRQ'])
-                if self.dew.expect_keyword(filename, 'SUBSYSNR', header):
-                    subsysnr = str(header['SUBSYSNR'])
-                if self.dew.expect_keyword(filename, 'BWMODE', header):
-                    bwmode = header['BWMODE']
-                if product in ['reduced', 'rimg', 'rsp']:
-                    self.productID = \
-                        product_id(backend, 
-                                   self.log,
-                                   product='reduced',
-                                   restfreq=restfreq,
-                                   bwmode=bwmode,
-                                   subsysnr=subsysnr)
-                elif product in ['healpix', 'hpxrimg', 'hpxrsp']:
-                    self.productID = \
-                        product_id(backend, 
-                                   self.log,
-                                   product='healpix',
-                                   restfreq=restfreq,
-                                   bwmode=bwmode,
-                                   subsysnr=subsysnr)
-                elif product and restfreq and bwmode and subsysnr:
-                    self.productID = \
-                        product_id(backend, 
-                                   self.log,
-                                   product=product,
-                                   restfreq=restfreq,
-                                   bwmode=bwmode,
-                                   subsysnr=subsysnr)
+            # In other collections, PRODID overrides self.productID
+            if is_defined('PRODID', header):
+                self.productID = header['PRODID']
+
+        # By this point self.productID should be defined
         if self.productID:
-            if re.search(r'-', self.productID):
-                science_product = self.productID.split('-')[0]
-            else:
-                science_product = self.productID
+            if not science_product:
+                if re.search(r'-', self.productID):
+                    science_product = self.productID.split('-')[0]
+                else:
+                    science_product = self.productID
         else:
             self.dew.error(filename, 'productID could not be determined')
         
