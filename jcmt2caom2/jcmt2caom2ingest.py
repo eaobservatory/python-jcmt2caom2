@@ -1156,25 +1156,37 @@ class jcmt2caom2ingest(caom2ingest):
 
         dprcinst = None
         if is_defined('VOSPATH', header):
-            self.add_to_plane_dict('provenance.runID', header['VOSPATH'])
-            if not self.dprcinst:
-                self.dprcinst = re.sub(r'[^0-9a-zA-Z]', '-', header['VOSPATH'])
+            # dprcinst is a vos URI; use as-is for runID; sanitize for names
+            dprcinst = header['VOSPATH']
+            if self.dprcinst is None:
+                self.dprcinst = re.sub(r'[^0-9a-zA-Z]', '-', dprcinst)
+        
         elif self.dew.expect_keyword(filename, 'DPRCINST', header, 
                                      mandatory=True):
             if isinstance(header['DPRCINST'], str):
                 m = re.match(r'jac-([1-9][0-9]*)', header['DPRCINST'])
                 if m:
+                    # dprcinst is a JAC recipe instance
                     dprcinst = 'jac-%09d' % (eval(m.group(1)),)
+                    
                 elif re.match(r'^0x[0-9a-fA-F]+$', header['DPRCINST']):
+                    # dprcinst is an old-style hex recipe_instance_id
                     dprcinst = str(eval(header['DPRCINST']))
                 else:
+                    # dprcinst is an arbitrary string; use without modification
                     dprcinst = header['DPRCINST']
             else:
+                # dprcisnt is an identity_instance_id integer; convert to string
                 dprcinst = str(header['DPRCINST'])
-            if dprcinst:
-                self.add_to_plane_dict('provenance.runID', dprcinst)
-                if not self.dprcinst:
-                    self.dprcinst = dprcinst
+            
+            if dprcinst and not self.dprcinst:
+                self.dprcinst = dprcinst
+
+        if dprcinst:
+            self.add_to_plane_dict('provenance.runID', dprcinst)
+            self.build_remove_dict(dprcinst)
+        else:
+            self.dew.error(filename, 'could not calculate dprcinst')
 
         # Report the earliest UTDATE
         if earliest_utdate and self.dprcinst:
