@@ -883,9 +883,9 @@ class jcmt2caom2ingest(caom2ingest):
             if backend == 'SCUBA-2':
                 self.dew.expect_keyword(filename, 'FILTER', header)
             else:
-                self.dew.expect_keyword(filename, 'RESTFRQ', header):
-                self.dew.expect_keyword(filename, 'SUBSYSNR', header):
-                self.dew.expect_keyword(filename, 'BWMODE', header):
+                self.dew.expect_keyword(filename, 'RESTFRQ', header)
+                self.dew.expect_keyword(filename, 'SUBSYSNR', header)
+                self.dew.expect_keyword(filename, 'BWMODE', header)
         
         science_product = None
         filter = None
