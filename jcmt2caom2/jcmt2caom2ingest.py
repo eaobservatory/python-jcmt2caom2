@@ -577,7 +577,8 @@ class jcmt2caom2ingest(caom2ingest):
                     # Only get here if obsn has a defined value
                     if obsn in self.member_cache:
                         # Skip the query if this member has been cached
-                        (mbrn, 
+                        (obsid,
+                         mbrn, 
                          date_obs, 
                          date_end, 
                          release_date) = self.member_cache[obsn]
@@ -655,7 +656,11 @@ class jcmt2caom2ingest(caom2ingest):
                                                   str(release_date) + ']',
                                                   logging.DEBUG)
                                     self.member_cache[obsn] = \
-                                        (mbrn, date_obs, date_end, release_date)
+                                        (obsid, 
+                                         mbrn, 
+                                         date_obs, 
+                                         date_end, 
+                                         release_date)
                                 
                                 elif obsid != obsid_solitary:
                                     self.dew.error(obskey + ' = ' + obsn + 
