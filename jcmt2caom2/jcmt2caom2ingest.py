@@ -858,13 +858,13 @@ class jcmt2caom2ingest(caom2ingest):
                 target_type = header['TARGTYPE']
         
         standard_target = 'FALSE'
-        if is_defined('STANDARD', header):
+        if is_defined('STANDARD', header) and header['STANDARD']:
             standard_target = 'TRUE'
         self.add_to_plane_dict('STANDARD', standard_target)
         
         moving = 'FALSE'
         if (is_blank('MOVING', header) or 
-        # Distinguish moving targets
+            # Distinguish moving targets
             is_blank('OBSRA', header) or
             is_blank('OBSDEC', header)):
             moving = 'TRUE'
