@@ -423,10 +423,12 @@ class jcmt2caom2ingest(caom2ingest):
         earliest_obs = None
         if algorithm == 'exposure':
             if is_defined('DATE-OBS', header):
-                earliest_utdate = header['DATE-OBS']
+                earliest_utdate = Time(header['DATE-OBS']).mjd
             if is_defined('OBSID', header):
                 earliest_obs = header['OBSID']
         
+        date_obs = None
+        date_end = None
         release_date = None
         # obstimes records the (date_obs, date_end) for this file.
         # self.member_cache records these intervals for use with subsequent
@@ -459,7 +461,14 @@ class jcmt2caom2ingest(caom2ingest):
                          date_obs, 
                          date_end, 
                          release_date) = self.member_cache[mbrn]
-                    
+
+                        self.log.file('fetch from member_cache[' + mbrn +
+                                      '] = [' + this_mbrn + ', ' +
+                                      str(date_obs) + ', ' +
+                                      str(date_end) + ', ' +
+                                      str(release_date) + ']',
+                                      logging.DEBUG)
+
                     else:
                         # Verify that the member header points to a real observation
                         # Extract the start, end release times from the member.
@@ -499,8 +508,8 @@ class jcmt2caom2ingest(caom2ingest):
                         if len(answer) > 0 and len(answer[0]) > 0:
                             missing = True
                             for (prodid, 
-                                 mjd_date_obs, 
-                                 mjd_date_end, 
+                                 date_obs, 
+                                 date_end, 
                                  release, 
                                  uri) in results:
                                  
@@ -509,16 +518,28 @@ class jcmt2caom2ingest(caom2ingest):
                                 if not re.match(r'raw.*', prodid):
                                     continue
                                 
-                                if (not mjd_date_obs or 
-                                    not mjd_date_end or
+                                if (not date_obs or 
+                                    not date_end or
                                     not release):
                                     continue
 
-                                date_obs = Time(mjd_date_obs,
-                                                format='mjd').iso
-                                date_end = Time(mjd_date_end,
-                                                format='mjd').iso
-                                release_date = release
+                                if missing:
+                                    missing = False
+                                    release_date = release
+                                    # cache mbrn, start, end and release
+                                    # caching mbrn is NOT needlessly repetitive
+                                    # because with obsn headers it will be 
+                                    # different
+                                    self.log.file('cache member_cache[' + mbrn +
+                                                  '] = [' + mbrn + ', ' +
+                                                  str(date_obs) + ', ' +
+                                                  str(date_end) + ', ' +
+                                                  str(release_date) + ']',
+                                                  logging.DEBUG)
+                                    self.member_cache[mbrn] = (mbrn,
+                                                               date_obs, 
+                                                               date_end, 
+                                                               release_date)
 
                                 # Cache provenance input candidates
                                 # Do NOT rewrite the file_id
@@ -528,16 +549,6 @@ class jcmt2caom2ingest(caom2ingest):
                                     self.input_cache[this_file_id] = planeURI
                                     self.input_cache[planeURI] = planeURI
 
-                                # cache the members mbrn, start, end and release
-                                # recording mbrn is NOT needlessly repetitive
-                                # because with obsn headers it will be different
-                                self.log.file('cache member metadata '
-                                              'for ' + mbrn,
-                                              logging.DEBUG)
-                                self.member_cache[mbrn] = (mbrn,
-                                                           date_obs, 
-                                                           date_end, 
-                                                           release_date)
                     # At this point we have mbrn, date_obs, date_end and 
                     # release_date either from the member_cache or from the query
                     if date_obs:
@@ -569,7 +580,13 @@ class jcmt2caom2ingest(caom2ingest):
                         (mbrn, 
                          date_obs, 
                          date_end, 
-                         release_date) = self.member_cache[mbrn]
+                         release_date) = self.member_cache[obsn]
+                        self.log.file('fetch from member_cache[' + obsn +
+                                      '] = [' + mbrn + ', ' +
+                                      str(date_obs) + ', ' +
+                                      str(date_end) + ', ' +
+                                      str(release_date) + ']',
+                                      logging.DEBUG)
                     
                     else:
                         # Verify that the member header points to a real observation
@@ -615,40 +632,39 @@ class jcmt2caom2ingest(caom2ingest):
                             obsid_solitary = None
                             for (obsid, 
                                  prodid, 
-                                 mjd_date_obs, 
-                                 mjd_date_end, 
+                                 date_obs, 
+                                 date_end, 
                                  release, 
                                  uri) in answer:
                                 
+                                if (not date_obs or 
+                                    not date_end or
+                                    not release):
+                                    continue
+
                                 if obsid_solitary is None:
                                     obsid_solitary = obsid
+                                    release_date = release
+
+                                    mbrn = 'caom:JCMT/' + obsid
+                                    # cache the members start and end times
+                                    self.log.file('cache member_cache[' + obsn +
+                                                  '] = [' + mbrn + ', ' +
+                                                  str(date_obs) + ', ' +
+                                                  str(date_end) + ', ' +
+                                                  str(release_date) + ']',
+                                                  logging.DEBUG)
+                                    self.member_cache[obsn] = \
+                                        (mbrn, date_obs, date_end, release_date)
+                                
                                 elif obsid != obsid_solitary:
-                                    self.dew.error(obskey + ' = ' + obsn + ' with '
-                                                   'obsid_pattern = ' + 
+                                    self.dew.error(obskey + ' = ' + obsn + 
+                                                   ' with obsid_pattern = ' + 
                                                    obsid_pattern + ' matched ' +
                                                    obsid_solitary + ' and ' +
                                                    obsid)
                                     break
-                                
-                                if (not mjd_date_obs or 
-                                    not mjd_date_end or
-                                    not release):
-                                    continue
 
-                                date_obs = Time(mjd_date_obs,
-                                                format='mjd').iso
-                                date_end = Time(mjd_date_end,
-                                                format='mjd').iso
-                                release_date = release
-
-                                mbrn = 'caom:JCMT/' + obsid
-                                # cache the members start and end times
-                                self.member_cache[obsn] = \
-                                    (mbrn, date_obs, date_end, release_date)
-                                self.log.file('cache member metadata '
-                                              'for ' + obsn,
-                                              logging.DEBUG)
-                                
                                 # Cache provenance input candidates
                                 # Do NOT rewrite the file_id!
                                 if uri not in self.input_cache:
@@ -1159,6 +1175,7 @@ class jcmt2caom2ingest(caom2ingest):
             rcinstprefix = 'caom-' + self.collection + '-' + earliest_obs
             self.log.file('Earliest utdate: ' + 
                           Time(earliest_utdate, 
+                               format='mjd',
                                out_subfmt='date').iso +
                           ' for ' + rcinstprefix +
                           '_vlink-' + self.dprcinst)
@@ -1367,17 +1384,18 @@ class jcmt2caom2ingest(caom2ingest):
                                     time_axis.bounds = CoordBounds1D()
                                     for key in thisCustom:
                                         date_start, date_end = thisCustom[key]
-                                        mjdstart = utc2mjd(date_start)
-                                        mjdend = utc2mjd(date_end)
+                                        # These are already MJDs
+                                        # mjdstart = utc2mjd(date_start)
+                                        # mjdend = utc2mjd(date_end)
                                         self.log.console(
                                             'time bounds = %f, %f' %
-                                            (mjdstart, mjdend),
+                                            (date_start, date_end),
                                             logging.DEBUG)
 
                                         time_axis.bounds.samples.append(
                                             CoordRange1D(
-                                                RefCoord(0.5, mjdstart),
-                                                RefCoord(1.5, mjdend)))
+                                                RefCoord(0.5, date_start),
+                                                RefCoord(1.5, date_end)))
 
                                 else:
                                     self.warnings = True
