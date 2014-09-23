@@ -343,18 +343,24 @@ class jcmt2caom2ingest(caom2ingest):
                     self.observationID + "'"])
                 results = self.tap.query(tapcmd)
                 if results:
-                    if not self.replace and self.collection in results[0]:
-                        self.dew.error(filename,
-                                       'observationID = "' + self.observationID +
-                                       '" must be unique in collection = "' +
-                                       self.collection + '"')
-                    elif (self.replace 
-                          and self.collection != 'SANDBOX' 
-                          and self.collection not in results[0]):
-                        self.dew.error(filename,
-                                       'observationID = "' + self.observationID +
-                                       '" must be already in collection = "' +
-                                       self.collection + '"')
+                    for (coll,) in results:
+                        if not self.replace and coll == self.collection:
+                            self.dew.error(filename,
+                                   'observationID = "' + self.observationID +
+                                   '" must be unique in collection = "' +
+                                   self.collection + '"')
+                        elif coll != self.collection:
+                            self.dew.warning(filename,
+                                   'observationID = "' + self.observationID +
+                                   '" is also in use in collection = "' +
+                                   coll + '"')
+                        elif (self.replace 
+                              and self.collection != 'SANDBOX' 
+                              and self.collection != coll):
+                            self.dew.error(filename,
+                                   'observationID = "' + self.observationID +
+                                   '" must be already in collection = "' +
+                                   self.collection + '"')
 
         self.add_to_plane_dict('algorithm.name', algorithm)
 
