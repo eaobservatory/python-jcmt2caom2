@@ -562,11 +562,11 @@ class jcmt2caom2_ingestion(tovos):
                             if not errors or (errors and verrors):
                                 vpath = vosdir + '/' +  vfile
                                 self.clean(vpath, 
-                                           prefix, 
-                                           rvosdir,
                                            root,
                                            vstamp,
-                                           vstampdate)
+                                           dvosdir,
+                                           rvosdir,
+                                           prefix)
             
 
     def clean(self, path, root, stamp, datedir, rawdir, rawprefix):
@@ -608,7 +608,7 @@ class jcmt2caom2_ingestion(tovos):
                                                       force=True)) == 0:
                             self.log.file('delete empty directory' + mydir)
                             self.vosclient.delete(mydir)
-                            myvosdir = os.path.dirname(mydir)
+                            mydir = os.path.dirname(mydir)
                         else:
                             break
         
@@ -623,7 +623,7 @@ class jcmt2caom2_ingestion(tovos):
                                 rlink)
                 if dmm:
                     if dmm.group('stamp').lower() < stamp:
-                        rpath = rawdir + '/' + rfile
+                        rpath = rawdir + '/' + rlink
                         self.log.file('delete ' + rpath)
                         self.vosclient.delete(rpath)
 
@@ -635,11 +635,10 @@ class jcmt2caom2_ingestion(tovos):
                                                           force=True)) == 0:
                                 self.log.file('delete empty directory' + mydir)
                                 self.vosclient.delete(mydir)
-                                myvosdir = os.path.dirname(mydir)
+                                mydir = os.path.dirname(mydir)
                             else:
                                 break
 
-        
 class qa_logs(tovos):
     """
     Identify check_rms logs and copy them to VOspace 
