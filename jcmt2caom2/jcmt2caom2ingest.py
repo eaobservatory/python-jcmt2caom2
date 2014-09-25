@@ -94,6 +94,16 @@ class jcmt2caom2ingest(caom2ingest):
     proc_scuba2_regex = \
         r'jcmts(20[\d]{2})(0[1-9]|1[012])(0[1-9]|[12][0-9]|3[01])_' +\
         r'([\d]{5})_([48]50)_(reduced[\d]{3})_(obs|nit|pro|pub)_([\d]{3})$'
+    productType = {'cube': '0=science,1=noise,auxiliary',
+                   'reduced': '0=science,1=noise,auxiliary',
+                   'rsp': '0=preview,1=noise,auxiliary',
+                   'rimg': '0=preview,1=noise,auxiliary',
+                   'healpix': '0=science,1=noise,auxiliary',
+                   'hpxrsp': '0=preview,1=noise,auxiliary',
+                   'hpxrimg': '0=preview,1=noise,auxiliary',
+                   'peak-cat': '0=catalog,auxiliary',
+                   'extent-cat': '0=catalog,auxiliary',
+                   'point-cat': '0=catalog,auxiliary'}
 
     def __init__(self):
         caom2ingest.__init__(self)
@@ -1228,35 +1238,54 @@ class jcmt2caom2ingest(caom2ingest):
         self.uri = self.fitsfileURI(self.archive, file_id)
         # Recall that the order self.add_fitsuri_dict is called is preserved
         # in the override file
-        if product == science_product:
-            primaryURI = self.fitsextensionURI(self.archive,
+        
+        # Translate the PRODTYPE header into a list of (extension_number, type)
+        # pairs, where the default with extension_number = None is always last
+        prodtype = 'auxiliary'
+        if is_defined('PRODTYPE', header):
+            prodtype = header['PRODTYPE']
+        if product in jcmt2caom2ingest.productType:
+            prodtype = jcmt2caom2ingest.productType[product]
+        
+        prodtype = re.sub(r'\s', '', prodtype)
+        if ',' in prodtype:
+            prodtype = re.sub(r',{2,}', ',', prodtype)
+            prodtype_list = prodtype.split(',')
+        else:
+            prodtype_list = [prodtype]
+        
+        prodtype_default = None
+        prodtypes = []
+        for pt in prodtype_list:
+            mpt = re.match(r'(\d+)=(science|calibration|preview|' + 
+                           r'info|catalog|noise|weight|auxiliary)', 
+                           pt)
+            if mpt:
+                prodtypes.append((mpt.group(1), mpt(2)))
+            else:
+                prodtype_default = (None, pt)
+        
+        prodtypes = sorted(prodtypes, key=lambda t: t[0])
+        if len(prodtypes):
+            for (ext, pt) in prodtypes:
+                extURI = self.fitsextensionURI(self.archive,
                                                file_id,
-                                               [0])
-            self.add_fitsuri_dict(primaryURI)
-            self.add_to_fitsuri_dict(primaryURI,
-                                     'part.productType', 
-                                     ProductType.SCIENCE.value)
-            if is_defined('PIPEVERS', header):
-                # if PIPEVERS is defined, assume Starlink software was used 
-                # to generate normal Strlink products
-                varianceURI = self.fitsextensionURI(self.archive,
-                                                   file_id,
-                                                   [1])
-                self.add_fitsuri_dict(varianceURI)
-                self.add_to_fitsuri_dict(varianceURI,
-                                         'part.productType',
-                                         ProductType.NOISE.value)
-
-            self.add_fitsuri_dict(self.uri)
-            self.add_to_fitsuri_dict(self.uri,
-                                     'part.productType',
-                                     ProductType.AUXILIARY.value)
+                                               [int(ext))
+                self.add_fitsuri_dict(extURI)
+                self.add_to_fitsuri_dict(extURI,
+                                         'part.productType', 
+                                         pt)
+            if prodtype_default:
+                self.add_fitsuri_dict(extURI)
+                self.add_to_fitsuri_dict(extURI,
+                                         'part.productType', 
+                                         partprod_default)
         else:
             self.add_fitsuri_dict(self.uri)
             self.add_to_fitsuri_dict(self.uri,
                                      'artifact.productType',
-                                     ProductType.AUXILIARY.value)
-
+                                     prodtype_default)
+        
         if product == science_product:
             # Record times for science products
             for key in sorted(obstimes, key=lambda t: t[1][0]):
