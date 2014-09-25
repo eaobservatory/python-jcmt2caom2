@@ -467,9 +467,18 @@ class jcmt2caom2ingest(caom2ingest):
                     # verify that the expected membership headers are present
                     mbrkey = 'MBR' + str(n+1)
                     if self.dew.expect_keyword(filename, mbrkey, header):
-                        mbrn = header[mbrkey]
+                        mbrn_str = header[mbrkey]
+                        # mbrn contains a caom observation uri 
+                        mbr_coll, obsid = mbrn_str.split('/')
+                        if mbr_coll != 'caom:JCMT':
+                            self.dew.error(filename,
+                                    mbrkey + ' must point to an '
+                                    'observation in the JCMT collection: ' +
+                                    mbrn_str)
+                            continue
                     else:
                         continue
+                    mbrn = self.observationURI('JCMT', obsid)
                     
                     # Only get here if obsn has a defined value
                     if mbrn in self.member_cache:
@@ -492,15 +501,6 @@ class jcmt2caom2ingest(caom2ingest):
                         # Also, do a nasty optimization for performance, caching
                         # useful information from the member for later re-use.
                         
-                        # mbrn contains a caom observation uri 
-                        mbr_coll, obsid = mbrn.split('/')
-                        if mbr_coll != 'caom:JCMT':
-                            self.dew.error(filename,
-                                           mbrkey + ' must point to an '
-                                           'observation in the JCMT collection: ' +
-                                           mbrn)
-                            continue
-                                           
                         # To reduce the number of TAP queries, we will return 
                         # all the files and planes in this observation, in the 
                         # expectation that they will be part of the membership
@@ -562,9 +562,11 @@ class jcmt2caom2ingest(caom2ingest):
                                 # Do NOT rewrite the file_id
                                 if uri not in self.input_cache:
                                     filecoll, this_file_id = uri.split('/')
-                                    planeURI = mbrn + '/' + prodid
+                                    planeURI = self.planeURI('JCMT',
+                                                             obsid,
+                                                             prodid)
                                     self.input_cache[this_file_id] = planeURI
-                                    self.input_cache[planeURI] = planeURI
+                                    self.input_cache[planeURI.uri()] = planeURI
 
                     # At this point we have mbrn, date_obs, date_end and 
                     # release_date either from the member_cache or from the query
@@ -664,10 +666,10 @@ class jcmt2caom2ingest(caom2ingest):
                                     obsid_solitary = obsid
                                     release_date = release
 
-                                    mbrn = 'caom:JCMT/' + obsid
+                                    mbrn = self.observationURI('JCMT', obsid)
                                     # cache the members start and end times
                                     self.log.file('cache member_cache[' + obsn +
-                                                  '] = [' + mbrn + ', ' +
+                                                  '] = [' + mbrn.uri() + ', ' +
                                                   str(date_obs) + ', ' +
                                                   str(date_end) + ', ' +
                                                   str(release_date) + ']',
@@ -691,9 +693,11 @@ class jcmt2caom2ingest(caom2ingest):
                                 # Do NOT rewrite the file_id!
                                 if uri not in self.input_cache:
                                     filecoll, this_file_id = uri.split('/')
-                                    planeURI = mbrn + '/' + prodid
+                                    planeURI = self.planeURI('JCMT', 
+                                                             obsid, 
+                                                             prodid)
                                     self.input_cache[this_file_id] = planeURI
-                                    self.input_cache[planeURI] = planeURI
+                                    self.input_cache[planeURI.uri()] = planeURI
 
                     # At this point we have mbrn, date_obs, date_end and 
                     # release_date either from the member_cache or from the query
@@ -1054,16 +1058,21 @@ class jcmt2caom2ingest(caom2ingest):
             if product and product == science_product and inpcnt > 0:
                 for n in range(inpcnt):
                     inpkey = 'INP' + str(i + 1)
-                    inpn = header[inpkey]
-                    self.dew.expect_keyword(filename, inpkey, header)
-                    self.log.file(inpkey + ' = ' + inpn,
+                    if not self.dew.expect_keyword(filename, inpkey, header):
+                        continue
+                    inpn_str = header[inpkey]
+                    self.log.file(inpkey + ' = ' + inpn_str,
                                   logging.DEBUG)
-                    if re.match(planeURI_regex, inpn):
+                    pm = re.match(planeURI_regex, inpn_str)
+                    if pm:
                         # inpn looks like a planeURI, so add it unconditionally 
                         # here and check later that the plane exists
+                        inpn = self.planeURI(pm.group(1),
+                                             pm.group(2),
+                                             pm.group(3))
                         inputset.add(inpn)
                     else:
-                        self.dew.error(inpkey + ' = ' + inpn + ' does not '
+                        self.dew.error(inpkey + ' = ' + inpn_str + ' does not '
                                        'match the regex for a plane URI: ' +
                                        planeURI_regex)
                         
@@ -1076,8 +1085,9 @@ class jcmt2caom2ingest(caom2ingest):
                     # Verify that files in provenance are being ingested
                     # or have already been ingested.
                     prvkey = 'PRV' + str(i + 1)
+                    if not self.dew.expect_keyword(filename, prvkey, header):
+                        continue
                     prvn = header[prvkey]
-                    self.dew.expect_keyword(filename, prvkey, header)
                     self.log.file(prvkey + ' = ' + prvn,
                                   logging.DEBUG)
                     # An existing problem is that some files include 
@@ -1091,8 +1101,14 @@ class jcmt2caom2ingest(caom2ingest):
                             'in its provenance as ' + prvkey)
                         continue
                     elif prvn_id in self.input_cache:
+                        # The input cache should already have uri's for 
+                        # raw data
                         self.inputset.add(self.input_cache[prvn_id])
                     else:
+                        # uri's for processed data are likely to be defined
+                        # during this ingestion, but cannot be checked until
+                        # metadata has been gathered from all the files.
+                        # See checkProvenanceInputs. 
                         self.fileset.add(prvn_id)
 
         dataProductType = None
@@ -1324,17 +1340,17 @@ class jcmt2caom2ingest(caom2ingest):
                 for row in answer:
                     c, o, p, u = row
                     fid = re.sub(r'ad:[^/]+/', '', u)
-                    if (c in c.collection,
+                    if (c in (c.collection,
                              'JCMT',
                              'JCMTLS',
-                             'JCMTUSER'): 
+                             'JCMTUSER')): 
                         
                         thisInputURI = self.planeURI(c, o, p)
                         if fid == file_id:
                             inputURI = thisInputURI
                         self.input_cache[fid] = thisInputURI
                         
-                        self.log.file('inputs: ' + fid + ': ' + thisInputURI,
+                        self.log.file('inputs: ' + fid + ': ' + thisInputURI.uri(),
                                       logging.DEBUG)
                 else:
                     self.dew.warning(filename, 
