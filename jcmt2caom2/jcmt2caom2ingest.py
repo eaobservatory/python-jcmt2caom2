@@ -566,7 +566,7 @@ class jcmt2caom2ingest(caom2ingest):
                                                              obsid,
                                                              prodid)
                                     self.input_cache[this_file_id] = planeURI
-                                    self.input_cache[planeURI.uri()] = planeURI
+                                    self.input_cache[planeURI.uri] = planeURI
 
                     # At this point we have mbrn, date_obs, date_end and 
                     # release_date either from the member_cache or from the query
@@ -697,7 +697,7 @@ class jcmt2caom2ingest(caom2ingest):
                                                              obsid, 
                                                              prodid)
                                     self.input_cache[this_file_id] = planeURI
-                                    self.input_cache[planeURI.uri()] = planeURI
+                                    self.input_cache[planeURI.uri] = planeURI
 
                     # At this point we have mbrn, date_obs, date_end and 
                     # release_date either from the member_cache or from the query
@@ -1350,7 +1350,7 @@ class jcmt2caom2ingest(caom2ingest):
                             inputURI = thisInputURI
                         self.input_cache[fid] = thisInputURI
                         
-                        self.log.file('inputs: ' + fid + ': ' + thisInputURI.uri(),
+                        self.log.file('inputs: ' + fid + ': ' + thisInputURI.uri,
                                       logging.DEBUG)
                 else:
                     self.dew.warning(filename, 
@@ -1377,11 +1377,12 @@ class jcmt2caom2ingest(caom2ingest):
                             inputURI = self.lookup_file_id(filename,
                                                            file_id)
                             if (inputURI and 
-                                inputURI not in thisPlane['inputset']):
+                                inputURI.uri not in thisPlane['inputset']):
                                 
                                 thisPlane['inputset'].add(inputURI)
-                                self.log.file('add ' + inputURI +
-                                              ' to inputset for ' + planeURI)
+                                self.log.file('add ' + inputURI.uri +
+                                              ' to inputset for ' + 
+                                              planeURI.uri)
 
     def build_fitsuri_custom(self,
                              xmlfile,
