@@ -672,7 +672,7 @@ class jcmt2caom2ingest(caom2ingest):
                                                    obsid)
                                     break
                                 
-                                if and re.match(r'raw.*', prodid):
+                                if re.match(r'raw.*', prodid):
                                     # Only cache member date_obs, date_end and 
                                     # release_date from raw planes
                                     mbrn = self.observationURI('JCMT', obsid)
