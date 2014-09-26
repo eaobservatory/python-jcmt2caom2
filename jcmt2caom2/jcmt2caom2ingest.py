@@ -528,19 +528,16 @@ class jcmt2caom2ingest(caom2ingest):
                                  date_obs, 
                                  date_end, 
                                  release, 
-                                 uri) in results:
+                                 uri) in answer:
                                  
-                                # Only extract date_obs, date_end and release from 
-                                # raw data and demand that they be defined
-                                if not re.match(r'raw.*', prodid):
-                                    continue
-                                
                                 if (not date_obs or 
                                     not date_end or
                                     not release):
                                     continue
 
-                                if missing:
+                                # Only extract date_obs, date_end and release 
+                                # raw planes 
+                                if missing and re.match(r'raw.*', prodid):
                                     missing = False
                                     release_date = release
                                     # cache mbrn, start, end and release
@@ -562,11 +559,11 @@ class jcmt2caom2ingest(caom2ingest):
                                 # Do NOT rewrite the file_id
                                 if uri not in self.input_cache:
                                     filecoll, this_file_id = uri.split('/')
-                                    planeURI = self.planeURI('JCMT',
-                                                             obsid,
-                                                             prodid)
-                                    self.input_cache[this_file_id] = planeURI
-                                    self.input_cache[planeURI.uri] = planeURI
+                                    inURI = self.planeURI('JCMT',
+                                                          obsid,
+                                                          prodid)
+                                    self.input_cache[this_file_id] = inURI
+                                    self.input_cache[inURI.uri] = inURI
 
                     # At this point we have mbrn, date_obs, date_end and 
                     # release_date either from the member_cache or from the query
@@ -589,6 +586,7 @@ class jcmt2caom2ingest(caom2ingest):
                     obskey = 'OBS' + str(n+1)
                     # verify that the expected membership headers are present
                     if self.dew.expect_keyword(filename, obskey, header):
+                        # This is the obsid_subsysnr of a plane of raw data
                         obsn = header[obskey]
                     else:
                         continue
@@ -602,7 +600,7 @@ class jcmt2caom2ingest(caom2ingest):
                          date_end, 
                          release_date) = self.member_cache[obsn]
                         self.log.file('fetch from member_cache[' + obsn +
-                                      '] = [' + mbrn + ', ' +
+                                      '] = [' + mbrn.uri + ', ' +
                                       str(date_obs) + ', ' +
                                       str(date_end) + ', ' +
                                       str(release_date) + ']',
@@ -662,14 +660,17 @@ class jcmt2caom2ingest(caom2ingest):
                                     not release):
                                     continue
 
-                                if obsid_solitary is None:
+                                # Only cache member date_obs, date_end and 
+                                # release_date from raw planes
+                                if obsid_solitary is None and re.match(r'raw.*',
+                                                                       prodid):
                                     obsid_solitary = obsid
                                     release_date = release
 
                                     mbrn = self.observationURI('JCMT', obsid)
                                     # cache the members start and end times
                                     self.log.file('cache member_cache[' + obsn +
-                                                  '] = [' + mbrn.uri() + ', ' +
+                                                  '] = [' + mbrn.uri + ', ' +
                                                   str(date_obs) + ', ' +
                                                   str(date_end) + ', ' +
                                                   str(release_date) + ']',
@@ -693,11 +694,11 @@ class jcmt2caom2ingest(caom2ingest):
                                 # Do NOT rewrite the file_id!
                                 if uri not in self.input_cache:
                                     filecoll, this_file_id = uri.split('/')
-                                    planeURI = self.planeURI('JCMT', 
-                                                             obsid, 
-                                                             prodid)
-                                    self.input_cache[this_file_id] = planeURI
-                                    self.input_cache[planeURI.uri] = planeURI
+                                    inURI = self.planeURI('JCMT', 
+                                                          obsid, 
+                                                          prodid)
+                                    self.input_cache[this_file_id] = inURI
+                                    self.input_cache[inURI.uri] = inURI
 
                     # At this point we have mbrn, date_obs, date_end and 
                     # release_date either from the member_cache or from the query
@@ -1048,7 +1049,9 @@ class jcmt2caom2ingest(caom2ingest):
 
         # Check for existence of provenance input headers, which are optional
         self.log.file('Reading provenance')
-        self.log.file('input_cache: ' + repr(self.input_cache),
+        self.log.file('input_cache: ' + 
+                      '\n'.join([str(k) + ': ' + repr(self.input_cache[k]) 
+                                 for k in sorted(self.input_cache.keys())]),
                       logging.DEBUG)
         
         if is_defined('INPCNT', header):
@@ -1272,39 +1275,42 @@ class jcmt2caom2ingest(caom2ingest):
         
         prodtype_default = None
         prodtypes = []
+        prodtype_options = (r'(science|calibration|preview|' + 
+                            r'info|catalog|noise|weight|auxiliary)')
         for pt in prodtype_list:
-            mpt = re.match(r'(\d+)=(science|calibration|preview|' + 
-                           r'info|catalog|noise|weight|auxiliary)', 
+            mpt = re.match(r'(\d+)=' + prodtype_options, 
                            pt)
             if mpt:
-                prodtypes.append((mpt.group(1), mpt(2)))
+                prodtypes.append((mpt.group(1), mpt.group(2)))
             else:
-                prodtype_default = (None, pt)
+                if re.match(prodtype_options, pt):
+                    prodtype_default = pt
         
         prodtypes = sorted(prodtypes, key=lambda t: t[0])
         if len(prodtypes):
             for (ext, pt) in prodtypes:
                 extURI = self.fitsextensionURI(self.archive,
                                                file_id,
-                                               [int(ext))
+                                               [int(ext)])
                 self.add_fitsuri_dict(extURI)
                 self.add_to_fitsuri_dict(extURI,
                                          'part.productType', 
                                          pt)
             if prodtype_default:
-                self.add_fitsuri_dict(extURI)
+                self.add_fitsuri_dict(self.uri)
                 self.add_to_fitsuri_dict(extURI,
                                          'part.productType', 
-                                         partprod_default)
+                                         prodtype_default)
         else:
             self.add_fitsuri_dict(self.uri)
             self.add_to_fitsuri_dict(self.uri,
                                      'artifact.productType',
                                      prodtype_default)
         
-        if product == science_product:
+        if product == science_product and len(obstimes):
+            self.add_fitsuri_dict(self.uri)
             # Record times for science products
-            for key in sorted(obstimes, key=lambda t: t[1][0]):
+            for key in sorted(obstimes, key=lambda t: obstimes[t][0]):
                 self.add_to_fitsuri_custom_dict(self.uri,
                                                 key,
                                                 obstimes[key])
