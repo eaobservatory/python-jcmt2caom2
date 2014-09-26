@@ -660,13 +660,21 @@ class jcmt2caom2ingest(caom2ingest):
                                     not release):
                                     continue
 
-                                # Only cache member date_obs, date_end and 
-                                # release_date from raw planes
-                                if obsid_solitary is None and re.match(r'raw.*',
-                                                                       prodid):
+                                if obsid_solitary is None:
                                     obsid_solitary = obsid
                                     release_date = release
-
+                                
+                                elif obsid != obsid_solitary:
+                                    self.dew.error(obskey + ' = ' + obsn + 
+                                                   ' with obsid_pattern = ' + 
+                                                   obsid_pattern + ' matched ' +
+                                                   obsid_solitary + ' and ' +
+                                                   obsid)
+                                    break
+                                
+                                if and re.match(r'raw.*', prodid):
+                                    # Only cache member date_obs, date_end and 
+                                    # release_date from raw planes
                                     mbrn = self.observationURI('JCMT', obsid)
                                     # cache the members start and end times
                                     self.log.file('cache member_cache[' + obsn +
@@ -681,14 +689,6 @@ class jcmt2caom2ingest(caom2ingest):
                                          date_obs, 
                                          date_end, 
                                          release_date)
-                                
-                                elif obsid != obsid_solitary:
-                                    self.dew.error(obskey + ' = ' + obsn + 
-                                                   ' with obsid_pattern = ' + 
-                                                   obsid_pattern + ' matched ' +
-                                                   obsid_solitary + ' and ' +
-                                                   obsid)
-                                    break
 
                                 # Cache provenance input candidates
                                 # Do NOT rewrite the file_id!
