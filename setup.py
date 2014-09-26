@@ -8,7 +8,7 @@ if sys.version_info[0] > 2:
     sys.exit(-1)
 
 setup(name="jcmt2caom2",
-      version='1.2.0',
+      version='1.2.1',
       description='Ingest JCMT data into CAOM-2',
       author='Russell Redman',
       author_email='russell.o.redman@gmail.com',
