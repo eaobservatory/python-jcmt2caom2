@@ -1035,17 +1035,26 @@ class jcmt2caom2ingest(caom2ingest):
                                    self.observationID)
 
         calibrationLevel = None
+        print 'PRODUCT = "' + product + '"'
         if is_defined('CALLEVEL', header):
             if header['CALLEVEL'] == 'CALIBRATED':
                 calibrationLevel = str(CalibrationLevel.CALIBRATED.value)
             elif header['CALLEVEL'] == 'PRODUCT':
                 calibrationLevel = str(CalibrationLevel.PRODUCT.value)
-        else:
+        elif product == 'cube':
+            calibrationLevel = str(CalibrationLevel.RAW_STANDARD.value)
+        elif product in ('reduced', 'rsp', 'rimg',
+                         'healpix', 'hpxrsp', 'hpxrimg'):
             calibrationLevel = str(CalibrationLevel.CALIBRATED.value)
-            if product in ('point-cat', 'extent-cat', 'peak-cat'):
-                calibrationLevel = str(CalibrationLevel.PRODUCT.value)
+        elif product in ('point-cat', 'extent-cat', 'peak-cat'):
+            calibrationLevel = str(CalibrationLevel.PRODUCT.value)
+        print calibrationLevel
+        
         if calibrationLevel:
             self.add_to_plane_dict('plane.calibrationLevel', calibrationLevel)
+        else:
+            self.dew.error(filename,
+                           'Calibration Level could not be determined')
 
         # Check for existence of provenance input headers, which are optional
         self.log.file('Reading provenance')
