@@ -329,6 +329,10 @@ class jcmt2caom2ingest(caom2ingest):
                          '  "' + algorithm + '"')
 
         if algorithm == 'obs':
+            # Obs products can only be ingested into the JCMT collection
+            # External data providers must choose a different grouping algorithm
+            self.dew.restricted_value(filename,
+                                      'INSTREAM', header, ['JCMT'])
             if self.dew.expect_keyword(filename, 
                                        'OBSID', 
                                        header, 
@@ -380,6 +384,8 @@ class jcmt2caom2ingest(caom2ingest):
         proposal_pi = None
         proposal_title = None
         survey_acronyms = ('CLS', 'DDS', 'GBS', 'JPS', 'NGS', 'SASSY', 'SLS')
+        # We may need the proposal_project for the data processing project,
+        # even if the PROJECT is ambiguous.
         if (is_defined('SURVEY', header) and
             self.dew.restricted_value(filename, 'SURVEY', header,
                                        survey_acronyms)):
@@ -713,37 +719,38 @@ class jcmt2caom2ingest(caom2ingest):
                         obstimes[mbrn] = (date_obs, date_end)                    
                     self.memberset.add(mbrn)
 
-        # Environment
-        if is_defined('SEEINGST', header) and header['SEEINGST'] > 0.0:
-            self.add_to_plane_dict('environment.seeing',
-                                   '%f' % (header['SEEINGST'],))
+        # Only record the environment from single-member observations
+        if algorthm == 'exposure' or (obscnt == 1 or mbrcnt == 1):
+            if is_defined('SEEINGST', header) and header['SEEINGST'] > 0.0:
+                self.add_to_plane_dict('environment.seeing',
+                                       '%f' % (header['SEEINGST'],))
 
-        if is_defined('HUMSTART', header):
-            # Humity is reported in %, but should be scaled to [0.0, 1.0]
-            if header['HUMSTART'] < 0.0:
-                humidity = 0.0
-            elif header['HUMSTART'] > 100.0:
-                humidity = 100.0
-            else:
-                humidity = header['HUMSTART']
-            self.add_to_plane_dict('environment.humidity',
-                                   '%f' % (humidity,))
+            if is_defined('HUMSTART', header):
+                # Humity is reported in %, but should be scaled to [0.0, 1.0]
+                if header['HUMSTART'] < 0.0:
+                    humidity = 0.0
+                elif header['HUMSTART'] > 100.0:
+                    humidity = 100.0
+                else:
+                    humidity = header['HUMSTART']
+                self.add_to_plane_dict('environment.humidity',
+                                       '%f' % (humidity,))
 
-        if is_defined('ELSTART', header):
-            self.add_to_plane_dict('environment.elevation',
-                                   '%f' % (header['ELSTART'],))
+            if is_defined('ELSTART', header):
+                self.add_to_plane_dict('environment.elevation',
+                                       '%f' % (header['ELSTART'],))
 
-        if is_defined('TAU225ST', header):
-            self.add_to_plane_dict('environment.tau',
-                                   '%f' % (header['TAU225ST'],))
-            wave_tau = '%12.9f' % (jcmt2caom2ingest.speedOfLight /
-                                   jcmt2caom2ingest.lambda_csotau)
-            self.add_to_plane_dict('environment.wavelengthTau',
-                                   wave_tau)
+            if is_defined('TAU225ST', header):
+                self.add_to_plane_dict('environment.tau',
+                                       '%f' % (header['TAU225ST'],))
+                wave_tau = '%12.9f' % (jcmt2caom2ingest.speedOfLight /
+                                       jcmt2caom2ingest.lambda_csotau)
+                self.add_to_plane_dict('environment.wavelengthTau',
+                                       wave_tau)
 
-        if is_defined('ATSTART', header):
-            self.add_to_plane_dict('environment.ambientTemp',
-                                   '%f' % (header['ATSTART'],))
+            if is_defined('ATSTART', header):
+                self.add_to_plane_dict('environment.ambientTemp',
+                                       '%f' % (header['ATSTART'],))
 
         # Calculate the observation type from OBS_TYPE and SAM_MODE,
         # if they are unambiguous.
