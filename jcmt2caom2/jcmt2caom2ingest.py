@@ -357,24 +357,52 @@ class jcmt2caom2ingest(caom2ingest):
                     self.observationID + "'"])
                 results = self.tap.query(tapcmd)
                 if results:
+                    # Check for duplicate observationIDs.
+                    # This is always OK in the SANDBOX.
+                    # In JCMT, --replace is never needed for observations in the
+                    # JCMT collection because replacement is expected.
+                    # Otherwise, 
+                    #  issue an error if --replace is not specified and
+                    # the observation exists in the collection, or if --replace
+                    # is specified and the observation does not already exist,
+                    # or a warning if the observation pre-exists in another 
+                    #collection.
                     for (coll,) in results:
-                        if not self.replace and coll == self.collection:
-                            self.dew.error(filename,
-                                   'observationID = "' + self.observationID +
-                                   '" must be unique in collection = "' +
-                                   self.collection + '"')
-                        elif coll != self.collection:
-                            self.dew.warning(filename,
-                                   'observationID = "' + self.observationID +
-                                   '" is also in use in collection = "' +
-                                   coll + '"')
-                        elif (self.replace 
-                              and self.collection != 'SANDBOX' 
-                              and self.collection != coll):
-                            self.dew.error(filename,
-                                   'observationID = "' + self.observationID +
-                                   '" must be already in collection = "' +
-                                   self.collection + '"')
+                        # Do not raise errors for ingestions into the SANDBOX
+                        # or into JCMT if coll is also JCMT.
+                        if not (self.collection == 'SANDBOX' 
+                                or (self.collection == 'JCMT'
+                                    and coll == 'JCMT')):
+                            
+                            if coll == self.collection:
+                                if not self.replace:
+                                    # Raise an error if --replace not is 
+                                    # specified but the observation already 
+                                    # exists in the collection
+                                    self.dew.error(filename,
+                                           'Must specify --replace if' +
+                                           'observationID = "' + 
+                                           self.observationID +
+                                           '" already exists in collection = "' +
+                                           self.collection + '"')
+                            else:
+                                #
+                                self.dew.warning(filename,
+                                       'observationID = "' + self.observationID +
+                                       '" is also in use in collection = "' +
+                                       coll + '"')
+                            elif (self.replace 
+                                  and self.collection != 'SANDBOX' 
+                                  and self.collection != coll):
+                elif self.replace:
+                    # Raise an error if --replace is specified
+                    # but the observation does not exist
+                    self.dew.error(filename,
+                           'when --replace is specified, observationID = "' + 
+                           self.observationID +
+                           '" must be already in collection = "' +
+                           self.collection + '"')
+                        
 
         self.add_to_plane_dict('algorithm.name', algorithm)
 
