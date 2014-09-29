@@ -391,9 +391,6 @@ class jcmt2caom2ingest(caom2ingest):
                                        'observationID = "' + self.observationID +
                                        '" is also in use in collection = "' +
                                        coll + '"')
-                            elif (self.replace 
-                                  and self.collection != 'SANDBOX' 
-                                  and self.collection != coll):
                 elif self.replace:
                     # Raise an error if --replace is specified
                     # but the observation does not exist
