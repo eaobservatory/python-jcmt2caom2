@@ -745,7 +745,7 @@ class jcmt2caom2ingest(caom2ingest):
                     self.memberset.add(mbrn)
 
         # Only record the environment from single-member observations
-        if algorthm == 'exposure' or (obscnt == 1 or mbrcnt == 1):
+        if algorithm == 'exposure' or (obscnt == 1 or mbrcnt == 1):
             if is_defined('SEEINGST', header) and header['SEEINGST'] > 0.0:
                 self.add_to_plane_dict('environment.seeing',
                                        '%f' % (header['SEEINGST'],))
@@ -1056,6 +1056,8 @@ class jcmt2caom2ingest(caom2ingest):
             if product in ['reduced', 'cube']:
                 # Do not set release dates for healpix products
                 if release_date:
+                    self.add_to_plane_dict('obs.metaRelease',
+                                           release_date)
                     self.add_to_plane_dict('plane.metaRelease',
                                            release_date)
                     self.add_to_plane_dict('plane.dataRelease',
@@ -1067,7 +1069,6 @@ class jcmt2caom2ingest(caom2ingest):
                                    self.observationID)
 
         calibrationLevel = None
-        print 'PRODUCT = "' + product + '"'
         if is_defined('CALLEVEL', header):
             if header['CALLEVEL'] == 'CALIBRATED':
                 calibrationLevel = str(CalibrationLevel.CALIBRATED.value)
@@ -1080,7 +1081,6 @@ class jcmt2caom2ingest(caom2ingest):
             calibrationLevel = str(CalibrationLevel.CALIBRATED.value)
         elif product in ('point-cat', 'extent-cat', 'peak-cat'):
             calibrationLevel = str(CalibrationLevel.PRODUCT.value)
-        print calibrationLevel
         
         if calibrationLevel:
             self.add_to_plane_dict('plane.calibrationLevel', calibrationLevel)
