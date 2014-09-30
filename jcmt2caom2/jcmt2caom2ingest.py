@@ -475,6 +475,8 @@ class jcmt2caom2ingest(caom2ingest):
             if is_defined('OBSID', header):
                 earliest_obs = header['OBSID']
         
+        obscnt = None
+        mbrcnt = None
         date_obs = None
         date_end = None
         release_date = None
