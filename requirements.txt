@@ -1,5 +1,7 @@
 -e git+https://github.com/jac-h/python-jcmt2caom2.git#egg=jcmt2caom2
 -e git+https://github.com/jac-h/python-tools4caom2.git#egg=tools4caom2
+-e http://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/software/pyCAOM2-0.5.1.tar.gz#caom2
+-e http://www.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/software/caom2repoClient-0.5.1.tar.gz#caom2repoClient
 -e .
 
 astropy==0.4.1
