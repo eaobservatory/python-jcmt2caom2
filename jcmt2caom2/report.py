@@ -141,7 +141,7 @@ def run():
     this_begin = None
     if a.begin is not None:
         if int(a.begin) > 19800101:
-            this_begin = a.begin
+            this_begin = a.begin[0:4] + '/' + a.begin[4:6] + '/' + a.begin[6:8]
         else:
             thisutc = zerotime - timedelta(int(a.begin))
             this_begin = '%04d/%02d/%02d' % (thisutc.year, 
@@ -151,14 +151,14 @@ def run():
     this_end = None
     if a.end is not None:
         if int(a.end) > 19800101:
-            this_end = a.end
+            this_end = a.end[0:4] + '/' + a.end[4:6] + '/' + a.end[6:8]
         else:
             thisutc = zerotime - timedelta(int(a.end))
             this_end = '%04d/%02d/%02d' % (thisutc.year, 
                                            thisutc.month, 
                                            thisutc.day)
     
-    # Since this_begin and this_end are both YYYYMMDD strings
+    # Since this_begin and this_end are both YYYY/MM/DD strings
     # alphabetic comparisons are legitimate.
     if this_begin > this_end:
         store = this_begin
