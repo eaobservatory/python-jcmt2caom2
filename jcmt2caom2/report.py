@@ -359,7 +359,7 @@ def summary(vosclient, logpath, localpath, ERRORWARNING_REGEX):
                 repline = re.sub(r'WARNING', r'INFO', line)
             
             print '   ' + repline.rstrip()
-            prevline = line
         else:
             fileline = ''
+        prevline = line
     print
