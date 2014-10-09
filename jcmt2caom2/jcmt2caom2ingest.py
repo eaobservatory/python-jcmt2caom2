@@ -616,6 +616,7 @@ class jcmt2caom2ingest(caom2ingest):
             obscnt = header['OBSCNT']
             if obscnt > 0:
                 for n in range(obscnt):
+                    mbrn = None
                     obskey = 'OBS' + str(n+1)
                     # verify that the expected membership headers are present
                     if self.dew.expect_keyword(filename, obskey, header):
@@ -733,18 +734,24 @@ class jcmt2caom2ingest(caom2ingest):
                                     self.input_cache[this_file_id] = inURI
                                     self.input_cache[inURI.uri] = inURI
 
-                    # At this point we have mbrn, date_obs, date_end and 
-                    # release_date either from the member_cache or from the query
-                    if date_obs:
-                        if (earliest_utdate is None or 
-                            date_obs < earliest_utdate):
+                    if mbrn is None:
+                        self.dew.error(filename,
+                                       obskey + ' = ' + obsn +
+                                       ' is not present in the JSA')
+                    else:
+                        # At this point we have mbrn, date_obs, date_end and 
+                        # release_date either from the member_cache or from 
+                        # the query
+                        if date_obs:
+                            if (earliest_utdate is None or 
+                                date_obs < earliest_utdate):
 
-                            earliest_utdate = date_obs
-                            earliest_obs = obsid
+                                earliest_utdate = date_obs
+                                earliest_obs = obsid
 
-                    if mbrn not in obstimes:
-                        obstimes[mbrn] = (date_obs, date_end)                    
-                    self.memberset.add(mbrn)
+                        if mbrn not in obstimes:
+                            obstimes[mbrn] = (date_obs, date_end)                    
+                        self.memberset.add(mbrn)
 
         # Only record the environment from single-member observations
         if algorithm == 'exposure' or (obscnt == 1 or mbrcnt == 1):
