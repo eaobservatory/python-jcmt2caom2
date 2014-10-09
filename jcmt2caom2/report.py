@@ -326,27 +326,40 @@ def summary(vosclient, logpath, localpath, ERRORWARNING_REGEX):
     os.remove(localpath)
     reportfile = True
     everyline = False
+    prevline = ''
+    fileline = ''
     for line in text:
         #if EXTRA_REGEX.search(line):
         #    everyline = True
         #    pass
         #elif END_REGEX.search(line):
         #    everyline = False
-            
+        
         if (everyline or
             ERRORWARNING_REGEX.search(line)):
+            if reportfile:
+                print logpath
+                reportfile = False
+            
             # Remove logging time stamp for clarity
-            line = re.sub(r'^(ERROR|WARNING) '
+            if not fileline:
+                fileline = re.sub(r'^INFO '
+                       r'[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}',
+                       r'',
+                       prevline)
+                print '   ' + fileline.rstrip()
+            
+            repline = re.sub(r'^(ERROR|WARNING) '
                    r'[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}',
                    r'\1 ',
                    line)
             
             # JUNK observations are not real warnings
-            if re.search(r'JUNK', line):
-                line = re.sub(r'WARNING', r'INFO', line)
-                
-            if reportfile:
-                print logpath
-                reportfile = False
-            print '   ' + line.rstrip()
+            if re.search(r'JUNK', repline):
+                repline = re.sub(r'WARNING', r'INFO', line)
+            
+            print '   ' + repline.rstrip()
+            prevline = line
+        else:
+            fileline = ''
     print
