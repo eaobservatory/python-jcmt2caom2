@@ -344,8 +344,8 @@ def summary(vosclient, logpath, localpath, ERRORWARNING_REGEX):
             # Remove logging time stamp for clarity
             if not fileline:
                 fileline = re.sub(r'^INFO '
-                       r'[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2} '
-                       '(.*\fits)',
+                       r'[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\s+'
+                       r'(vos:|/)',
                        r'\1',
                        prevline)
                 print '   ' + fileline.rstrip()
