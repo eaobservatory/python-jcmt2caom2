@@ -318,8 +318,6 @@ class raw(object):
         self.obsid = args.key
         self.schema = args.schema
         
-        self.caom_db = (self.userconfig.get('jcmt', 'caom_db') + '.' + 
-                        self.schema + '.')
         self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' + 
                         self.schema + '.')
         self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' + 
