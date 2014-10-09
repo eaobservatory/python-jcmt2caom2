@@ -320,6 +320,8 @@ def summary(vosclient, logpath, localpath, ERRORWARNING_REGEX):
     localpath: the name of the file on the local disk
     ERRORWARNINFG_REGEX: the regex to use to search for errors and warnings
     """
+    fregex = re.compile(r'^INFO [\d]{4}-[\d]{2}-'
+                        r'[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\s+(vos:|/)')
     vosclient.copy(logpath, localpath)
     with open(localpath) as LF:
         text = LF.readlines()
@@ -342,12 +344,8 @@ def summary(vosclient, logpath, localpath, ERRORWARNING_REGEX):
                 reportfile = False
             
             # Remove logging time stamp for clarity
-            if not fileline:
-                fileline = re.sub(r'^INFO '
-                       r'[\d]{4}-[\d]{2}-[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\s+'
-                       r'(vos:|/)',
-                       r'\1',
-                       prevline)
+            if not fileline and fregex.match(prevline):
+                fileline = fregex.sub(r'\1', prevline)
                 print '   ' + fileline.rstrip()
             
             repline = re.sub(r'^(ERROR|WARNING) '
