@@ -167,7 +167,7 @@ def run():
     
     cwd = os.path.abspath('.')
     
-    if a.success:
+    if a.successk:
         ERRORWARNING_REGEX = \
             re.compile(r'^ERROR|^WARNING|java.lang|^INFO.*SUCCESS observationID')
     else:

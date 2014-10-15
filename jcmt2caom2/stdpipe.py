@@ -970,13 +970,13 @@ class stdpipe(ingest2caom2):
                 # the observation does not include hybrid mode sybsystems.
                 sqlcmd = '\n'.join(
                     ['SELECT min(a.subsysnr)',
-                     'FROM ' + self.omp_db + 'ACSIS a',
+                     'FROM ' + self.jcmt_db + 'ACSIS a',
                      '    INNER JOIN (',
                      '        SELECT aa.obsid,',
                      '               aa.restfreq,',
                      '               aa.iffreq,',
                      '               aa.ifchansp',
-                     '        FROM ' + self.omp_db + 'ACSIS aa',
+                     '        FROM ' + self.jcmt_db + 'ACSIS aa',
                      '        WHERE aa.obsid="%s" AND' % (header['OBSID'], ),
                      '              aa.subsysnr=%s) s' % (header['SUBSYSNR'], ),
                      '            ON a.obsid=s.obsid AND',
