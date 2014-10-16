@@ -410,7 +410,9 @@ class raw(object):
                             'FROM ' + self.jcmt_db + 'COMMON',
                             'WHERE',
                             '    obsid = "%s"' % (self.obsid,)])
-        return self.conn.read(sqlcmd)[0][0]
+        count = self.conn.read(sqlcmd)[0][0]
+        self.log.file('query complete', logging.DEBUG)
+        return count
 
     def query_table(self,
                     table,
@@ -435,6 +437,7 @@ class raw(object):
                             'WHERE obsid = "%s"' % (self.obsid,)])
 
         answer = self.conn.read(sqlcmd)
+        self.log.file('query complete', logging.DEBUG)
         rowlist = []
         for row in answer:
             rowdict = {}
@@ -462,6 +465,7 @@ class raw(object):
             '    left join ' + self.omp_db + 'ompuser ou on op.pi=ou.userid',
             'WHERE c.obsid="%s"' % (obsid,)])
         answer = self.conn.read(sqlcmd)
+        self.log.file('query complete', logging.DEBUG)
 
         results = {}
         if len(answer):
@@ -491,6 +495,7 @@ class raw(object):
             'GROUP BY obsid',
             'HAVING commentdate=max(commentdate)'])
         answer = self.conn.read(sqlcmd)
+        self.log.file('query complete', logging.DEBUG)
 
         results = {'quality': quality(JCMT_QA.GOOD, self.log)}
         if len(answer):
@@ -515,6 +520,7 @@ class raw(object):
             'WHERE obsid="%s"' % (obsid,),
             'ORDER BY obsid_subsysnr, file_id'])
         answer = self.conn.read(sqlcmd)
+        self.log.file('query complete', logging.DEBUG)
 
         results = {}
         if len(answer):
@@ -1142,6 +1148,7 @@ class raw(object):
                                              self.obsid,
                                              self.conn,
                                              self.log)
+        self.log.file('query complete', logging.DEBUG)
         
         ingestibility = self.check_observation(common, subsystem)
         if ingestibility == INGESTIBILITY.BAD:
@@ -1173,7 +1180,6 @@ class raw(object):
             files = self.get_files(self.obsid)
 
             with repository.process(uri) as xmlfile:
-                orig_xmlfile = xmlfile
                 observation = None
                 if os.path.exists(xmlfile):
                     observation = self.reader.read(xmlfile)
@@ -1201,8 +1207,7 @@ class raw(object):
         prefix = ''
         
         with logger(self.logfile, 
-                    loglevel = self.loglevel,
-                    sender='jcmtops').record() as self.log:
+                    loglevel = self.loglevel).record() as self.log:
             try:
                 self.logCommandLineSwitches()
                 with connection(self.userconfig,
