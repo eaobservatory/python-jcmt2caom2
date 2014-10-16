@@ -642,6 +642,7 @@ class stdpipe(ingest2caom2):
                             # Also cache the productID's for each file
                             fdict = raw_product_id(backend,
                                                    'prod',
+                                                   self.jcmt_db,
                                                    obsid,
                                                    self.conn,
                                                    self.log)

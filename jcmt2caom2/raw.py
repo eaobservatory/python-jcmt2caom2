@@ -264,7 +264,7 @@ class raw(object):
             default='SYBASE',
             help='logical name of Sybase server')
         ap.add_argument('--database',
-            help='database containing COMMON, ACSIS, SCUVBA2 and FILES tables')
+            help='database containing COMMON, ACSIS, SCUBA2 and FILES tables')
         ap.add_argument('--schema',
             default='dbo',
             help='database schema to use')
@@ -1138,6 +1138,7 @@ class raw(object):
         # get dictionary of productID's for each subsystem
         self.productID_dict = raw_product_id(backend,
                                              'raw',
+                                             self.jcmt_db,
                                              self.obsid,
                                              self.conn,
                                              self.log)

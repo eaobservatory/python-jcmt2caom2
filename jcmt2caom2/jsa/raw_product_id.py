@@ -8,13 +8,14 @@ import logging
 from jcmt2caom2.__version__ import version
 from jcmt2caom2.jsa.product_id import product_id
 
-def raw_product_id(backend, context, obsid, conn, log):
+def raw_product_id(backend, context, jcmt_db, obsid, conn, log):
     """
     Generates raw (observationID, productID) values for an observation.
     
     Arguments:
     backend: one of ACSIS, DAS, AOS-C, SCUBA-2
     context: one of "raw", "prod"
+    jcmt_db: prefix fot the database and schem where ACSIS, FILES are located
     obsid: observation identifier, primary key in COMMON table
     conn: connection to database
     
@@ -31,8 +32,8 @@ def raw_product_id(backend, context, obsid, conn, log):
             sqlcmd = '\n'.join([
                      'SELECT substring(f.file_id, 1, len(f.file_id)-4),',
                      '       s.filter',
-                     'FROM jcmtmd.dbo.FILES f',
-                     '    INNER JOIN jcmtmd.dbo.SCUBA2 s',
+                     'FROM ' + jcmt_db + 'FILES f',
+                     '    INNER JOIN ' + jcmt_db + 'SCUBA2 s',
                      '        ON f.obsid_subsysnr=s.obsid_subsysnr',
                      'WHERE f.obsid = "%s"' % (obsid,)])
             result = conn.read(sqlcmd)
@@ -57,8 +58,8 @@ def raw_product_id(backend, context, obsid, conn, log):
                      '       min(a.bwmode),',
                      '       min(aa.subsysnr),',
                      '       count(aa.subsysnr)',
-                     'FROM jcmtmd.dbo.ACSIS a',
-                     '    INNER JOIN jcmtmd.dbo.ACSIS aa',
+                     'FROM ' + jcmt_db + 'ACSIS a',
+                     '    INNER JOIN ' + jcmt_db + 'ACSIS aa',
                      '        ON a.obsid=aa.obsid',
                      '        AND a.restfreq=aa.restfreq',
                      '        AND a.iffreq=aa.iffreq',
@@ -72,8 +73,8 @@ def raw_product_id(backend, context, obsid, conn, log):
                      '       a.bwmode,',
                      '       a.specid,',
                      '       count(aa.subsysnr)',
-                     'FROM jcmtmd.dbo.ACSIS a',
-                     '    INNER JOIN jcmtmd.dbo.ACSIS aa',
+                     'FROM ' + jcmt_db + 'ACSIS a',
+                     '    INNER JOIN ' + jcmt_db + 'ACSIS aa',
                      '        ON a.obsid=aa.obsid',
                      '        AND a.specid=aa.specid',
                      'WHERE a.obsid = "%s"' % (obsid,),
@@ -102,8 +103,8 @@ def raw_product_id(backend, context, obsid, conn, log):
             sqlcmd = '\n'.join([
                      'SELECT substring(f.file_id, 1, len(f.file_id)-4),',
                      '       a.subsysnr',
-                     'FROM jcmtmd.dbo.FILES f',
-                     '    INNER JOIN jcmtmd.dbo.ACSIS a',
+                     'FROM ' + jcmt_db + 'FILES f',
+                     '    INNER JOIN ' + jcmt_db + 'ACSIS a',
                      '        ON f.obsid_subsysnr=a.obsid_subsysnr',
                      'WHERE f.obsid = "%s"' % (obsid,)])
             result = conn.read(sqlcmd)
