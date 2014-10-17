@@ -90,8 +90,16 @@ def rewrite_fits(insdf, outfits, headerdict, workdir, log):
     hdulist = pyfits.open(fitscopy)
     head = hdulist[0].header
 
-    # Uncomment lines below as required and supply an algorithmic
-    # value for the specified header
+    # Rather than query the JCMT database, which might not be available to 
+    # everyone, I used a TAP query to find the PI and Title associated with 
+    # each PROJECT, and captured the values into the following dictionary.  The
+    # TAP query was:
+    # tapquery --adql "SELECT DISTINCT \
+    #                      Observation.proposal_id, \
+    #                      Observation.proposal_pi, \
+    #                      Observation.proposal_title \
+    #                  FROM caom2.Observation AS Observation \
+    #                  WHERE Observation.proposal_project = 'NGS'"
     
     pi_title = {
         'M11AEC30': ('Remo Tilanus', 

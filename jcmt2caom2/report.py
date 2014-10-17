@@ -63,6 +63,9 @@ def run():
     ap.add_argument('--success',
                     action='store_true',
                     help='list successful ingestions')
+    ap.add_argument('--procdate',
+                    action='store_true',
+                    help='report on processed ingestions for the dates')
     
     # ap.add_argument('--missing',
     #                 action='store_true',
@@ -255,8 +258,12 @@ def run():
                                 rcinst_dict[source].append(m.group(1))
     
     # Read the list of directories from vos:jsaops/raw_ingestion
+    if a.procdate:
+        vosroot = 'vos:jsaops/proc_ingestion_date'
+    else:
+        vosroot = 'vos:jsaops/raw_ingestion'
+    
     vosclient = vos.Client()
-    vosroot = 'vos:jsaops/raw_ingestion'
     vosdaylist = []
     if this_begin and this_end:
         firstday = vosroot + '/' + this_begin
@@ -275,7 +282,12 @@ def run():
     # Read the files for each day
     needspace = False
     if vosdaylist:
-        print 'REPORT OF INGESTION LOGS FOR ' + this_begin + ' TO ' + this_end
+        if a.procdate:
+            print ('PROCESSED DATA INGESTION LOGS BY DATE FOR ' + 
+                   this_begin + ' TO ' + this_end)
+        else:
+            print ('REPORT OF INGESTION LOGS FOR ' + 
+                   this_begin + ' TO ' + this_end)
         for vosday in sorted(vosdaylist, reverse=True):
             if needspace:
                 print
@@ -290,7 +302,7 @@ def run():
     if obsid_dict:
         pass
     
-    if rcinst_dict:
+    if rcinst_dict and not a.procdate:
         print 'REPORT OF INGESTION LOGS FOR RCINST INPUTS'
         for source in sorted(rcinst_dict.keys()):
             print 'SUMMARY OF LOGS IN ' + source
@@ -308,7 +320,10 @@ def run():
                     if m:
                         logpath = logdir + '/' + filename
                         localpath = os.path.join(cwd, filename)
-                        summary(vosclient, logpath, localpath, ERRORWARNING_REGEX)
+                        summary(vosclient, 
+                                logpath, 
+                                localpath, 
+                                ERRORWARNING_REGEX)
                          
 
 def summary(vosclient, logpath, localpath, ERRORWARNING_REGEX):
@@ -322,7 +337,14 @@ def summary(vosclient, logpath, localpath, ERRORWARNING_REGEX):
     """
     fregex = re.compile(r'^INFO [\d]{4}-[\d]{2}-'
                         r'[\d]{2}T[\d]{2}:[\d]{2}:[\d]{2}\s+(vos:|/)')
-    vosclient.copy(logpath, localpath)
+    try:
+        vosclient.copy(logpath, localpath)
+    except KeyboardInterrupt:
+        sys.exit(0)
+    except:
+        print 'Could not access ' + logpath + '\n'
+        return
+    
     with open(localpath) as LF:
         text = LF.readlines()
     os.remove(localpath)
