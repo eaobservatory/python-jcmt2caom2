@@ -425,9 +425,13 @@ class jcmt2caom2_ingestion(tovos):
         """
         filename = os.path.basename(path)
         file_id, ext = os.path.splitext(filename)
+        self.log.file('jcmt2caom2_ingestion - examine ' + file_id,
+                      logging.DEBUG)
         if ext == '.log':
             m = self.regex.match(file_id)
             if m:
+                self.log.file('jcmt2caom2_ingestion - matched ' + file_id,
+                              logging.DEBUG)
                 root = m.group('root')
                 stamp = m.group('stamp').lower()
                 stampdate = m.group('stampdate')
@@ -484,13 +488,78 @@ class jcmt2caom2_ingestion(tovos):
             
             # As needed, create the /thousands/ directory and store the file
             vosdir = self.make_subdir(self.vosroot, thousands)
+            self.log.file('vosdir = ' + vosdir, logging.DEBUG)
+
+            dvosdir = self.make_subdir(self.dateroot, stampyear)
+            dvosdir = self.make_subdir(dvosdir, stampmonth)
+            dvosdir = self.make_subdir(dvosdir, stampday)
+            self.log.file('dvosdir = ' + dvosdir, logging.DEBUG)
+
+            utdate = None
+            prefix = None
+            rvosdir = None
+            
+            with open(path, 'r') as L:
+                for line in L:
+                    m = re.search(r'Earliest utdate: '
+                                  r'(?P<utdate>[-0-9]+)'
+                                  r' for (?P<prefix>\S+)',
+                                  line)
+                    if m:
+                        (utdate, prefix) = m.group('utdate', 'prefix')
+                        break
+                self.log.file('utdate = ' + utdate, logging.DEBUG)
+                self.log.file('prefix = ' + prefix, logging.DEBUG)
+            
+            if utdate and prefix:
+                (ryear, rmonth, rday) = re.split(r'-', utdate)
+                # As needed, create the /year/month/day/ directories
+                # Beware that these are URI's, not directory paths in the OS
+                rvosdir = self.make_subdir(self.rawroot, ryear)
+                rvosdir = self.make_subdir(rvosdir, rmonth)
+                rvosdir = self.make_subdir(rvosdir, rday)
+                self.log.file('rvosdir = ' + rvosdir, logging.DEBUG)
 
             filename = os.path.basename(path)
             fileid = os.path.splitext(filename)[0]
             
-            vospath = vosdir + '/' + filename
-            success = self.push_file(path, vospath)
+            # Before pushing the new file, delete older files that are already 
+            # present.  Do NOT delete more recent copies, nor copies without
+            # errors if the current copy reports errors.  Record files being
+            # deleted before doing the deletion.
+            deleted_files = []
+            print 'ROOT = ' + root
+            for vfile in self.vosclient.listdir(vosdir, force=True):
+                vpath = vosdir + '/' +  vfile
+                vfile_id, vext = os.path.splitext(vfile)
+                m = self.regex.search(vfile_id)
+                if m:
+                    (vroot, 
+                     verrors, 
+                     vstamp,
+                     vstampdate) = m.group('root', 
+                                           'errors',
+                                           'stamp',
+                                           'stampdate')
+                    print 'VROOT = ' + vroot
+                    if root == vroot:
+                        print stamp + ' =? ' + vstamp
+                    if vroot == root and vstamp < stamp:
+                        # If no errors, delete all earlier logs
+                        # if errors, delete earlier logs with errors
+                        self.log.file('jcmt2caom2_ingestion - cleanup ' + 
+                                      vfile,
+                                      logging.DEBUG)
+                        if not errors or (errors and verrors):
+                            self.log.file('clean ' + vpath, logging.DEBUG)
+                            self.clean(vpath, 
+                                       root,
+                                       vstamp,
+                                       dvosdir,
+                                       rvosdir,
+                                       prefix)
 
+            # Now, push the new file into vosdir
             filename = os.path.basename(path)
             vospath = vosdir + '/' + filename
             
@@ -501,10 +570,6 @@ class jcmt2caom2_ingestion(tovos):
                 # Try to create a link in the proc_date_ingestion directories
                 # Clean out links to older copies of the log
                 ##############################################################
-                dvosdir = self.make_subdir(self.dateroot, stampyear)
-                dvosdir = self.make_subdir(dvosdir, stampmonth)
-                dvosdir = self.make_subdir(dvosdir, stampday)
-                
                 dvospath = dvosdir + '/' + filename
                 self.log.file('make link ' + dvospath + ' -> ' + vospath)
                 self.push_link(vospath, dvospath)
@@ -513,27 +578,7 @@ class jcmt2caom2_ingestion(tovos):
                 # Try to create a link in the raw_ingestion directories
                 # Read the necessary metadata from the log file.
                 ##############################################################
-                utdate = None
-                prefix = None
-                rvosdir = None
-                
-                with open(filename, 'r') as L:
-                    for line in L:
-                        m = re.search(r'Earliest utdate: '
-                                      r'(?P<utdate>[-0-9]+)'
-                                      r' for (?P<prefix>\S+)',
-                                      line)
-                        if m:
-                            (utdate, prefix) = m.group('utdate', 'prefix')
-                            break
-                
                 if utdate and prefix:
-                    (ryear, rmonth, rday) = re.split(r'-', utdate)
-                    # As needed, create the /year/month/day/ directories
-                    # Beware that these are URI's, not directory paths in the OS
-                    rvosdir = self.make_subdir(self.rawroot, ryear)
-                    rvosdir = self.make_subdir(rvosdir, rmonth)
-                    rvosdir = self.make_subdir(rvosdir, rday)
                     # The link needs to sort properly, so the prefix must 
                     # match the raw data ingestion log
                     rvospath = rvosdir + '/' + prefix + '_stamp-' + stamp
@@ -544,30 +589,6 @@ class jcmt2caom2_ingestion(tovos):
                     rvospath += '.log'
                     self.log.file('make link ' + rvospath + ' -> ' + vospath)
                     self.push_link(vospath, rvospath)
-                
-                # Try to clean up the directory by deleting old log files
-                for vfile in self.vosclient.listdir(vosdir, force=True):
-                    m = self.regex.search(vfile)
-                    if m:
-                        (vroot, 
-                         verrors, 
-                         vstamp,
-                         vstampdate) = m.group('root', 
-                                               'errors',
-                                               'stamp',
-                                               'stampdate')
-                        if vroot == root and vstamp < stamp:
-                            # If no errors, delete all earlier logs
-                            # if errors, delete earlier logs with errors
-                            if not errors or (errors and verrors):
-                                vpath = vosdir + '/' +  vfile
-                                self.clean(vpath, 
-                                           root,
-                                           vstamp,
-                                           dvosdir,
-                                           rvosdir,
-                                           prefix)
-            
 
     def clean(self, path, root, stamp, datedir, rawdir, rawprefix):
         """
@@ -590,7 +611,7 @@ class jcmt2caom2_ingestion(tovos):
         # Find any links in proc_ingestion_date matching the root-part of
         # the existing filename but with an earlier time stamp and
         # delete them.
-        for dfile in self.vosclient.listdir(datedir):
+        for dfile in self.vosclient.listdir(datedir,force=True):
             dmm = self.regex.search(dfile)
             if dmm:
                 if (dmm.group('root') == root and
@@ -615,7 +636,7 @@ class jcmt2caom2_ingestion(tovos):
         # Find any links in raw_ingestion matching the rawprefix but with an 
         # earlier time stamp and delete them
         if rawprefix and rawdir:
-            for rlink in self.vosclient.listdir(rawdir):
+            for rlink in self.vosclient.listdir(rawdir, force=True):
                 dmm =  re.match(rawprefix + '.*' + 
                                 UTDATE_REGEX +
                                 r'(?P<errors>(_ERRORS)?)' +
@@ -677,7 +698,7 @@ class qa_logs(tovos):
         """
         filename = os.path.basename(path)
         file_id, ext = os.path.splitext(filename)
-        self.log.file('examine ' + file_id,
+        self.log.file('qa_logs - examine ' + file_id,
                       logging.DEBUG)
         if ext == '.log':
             m = self.regex.match(file_id)
@@ -786,7 +807,7 @@ class oracdr_logs(tovos):
         """
         filename = os.path.basename(path)
         file_id, ext = os.path.splitext(filename)
-        self.log.file('examine ' + file_id,
+        self.log.file('oracdr_logs - examine ' + file_id,
                       logging.DEBUG)
         if ext == '.log':
             m = self.regex.match(file_id)
