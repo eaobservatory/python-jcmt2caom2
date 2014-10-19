@@ -28,12 +28,15 @@ Custom code to prepare files from the JLS Nearby Galaxy Survey (NGS)
 for ingestion into the JSA.
 """
 
-def rewrite_fits(insdf, outfits, headerdict, workdir, log):
+def rewrite_fits(insdf, outfits, workdir, log):
     """
-    Customize this routine to suit the needs of your data.  
+    Rewrite a single sdf file into FITS, setting custom headers as needed.
     """
     # ndfcopy will update the PROVENANCE structure to avoid needless repetition
     mydir, myfile = os.path.split(insdf)
+    # Extract the product from the sdf file name
+    name_token = myfile.split('_')
+    
     sdfcopy = os.path.join(workdir, 'copy_' + myfile)
     
     mydir, myfile = os.path.split(outfits)
@@ -55,13 +58,23 @@ def rewrite_fits(insdf, outfits, headerdict, workdir, log):
     
     # fitswrite will add the product header that is needed for the provenance 
     # to be written
+    if len(name_token) == 3:
+        product = 'reduced'
+    elif len(name_token) == 4:
+        product = name_token[2]
+    elif len(name_token) == 5:
+        product = name_token[2] + '-' + name_token[3]
+    else:
+        print 'filename = ' + insdf
+        print repr(name_token)
+    
     fitsmod_cmd = [fitsmod,
                    'edit=write',
                    'mode=interface',
                    'position=\!',
                    sdfcopy,
                    'product',
-                   'value=reduced',
+                   'value=' + product,
                    'comment="science product"']
     log.console(' '.join(fitsmod_cmd))
     output = subprocess.check_output(fitsmod_cmd,
@@ -91,9 +104,9 @@ def rewrite_fits(insdf, outfits, headerdict, workdir, log):
     head = hdulist[0].header
 
     # Rather than query the JCMT database, which might not be available to 
-    # everyone, I used a TAP query to find the PI and Title associated with 
-    # each PROJECT, and captured the values into the following dictionary.  The
-    # TAP query was:
+    # everyone, use a TAP query to find the PI and Title associated with 
+    # each PROJECT.  These values have been captured into the following 
+    # dictionary.  The TAP query was:
     # tapquery --adql "SELECT DISTINCT \
     #                      Observation.proposal_id, \
     #                      Observation.proposal_pi, \
@@ -120,6 +133,11 @@ def rewrite_fits(insdf, outfits, headerdict, workdir, log):
                     'Nearby Galaxies Legacy Survey (Spectroscopic Extension)}')
         }
     
+    # Gather all the modified headers into headerdict, 
+    # then update them in head
+    headerdict = {}
+    
+    # First, parse the filename for useful
     headerdict['INSTREAM'] = 'JCMTLS'
     # headerdict['ASN_ID'] = <observationID for observation>
     # headerdict['ASN_TYPE'] = 'custom'
@@ -132,22 +150,23 @@ def rewrite_fits(insdf, outfits, headerdict, workdir, log):
             pi, title = pi_title[project]
             headerdict['PI'] = pi
             headerdict['TITLE'] = title
+    
+    headerdict['PROJECT'] = 'jcmt-ngs' # This is the data processing project
+    headerdict['SURVEY'] = 'NGS'
 
-    # headerdict['SURVEY'] = <JCMT Legacy Survey acronym>
-    headerdict['DPPROJ'] = 'NGS'
-    # headerdict['INSTRUME'] = <full instrument name or frontend>
-    # headerdict['INBEAM'] = <optical components in the beam>
-    # headerdict['BACKEND'] = <backend>
-    # headerdict['SW_MODE'] = <switching mode>
-    # headerdict['SCAN_PAT'] = <scan pattern>
-    # headerdict['OBS_SB'] = <signal sideband>
-    # headerdict['SB_MODE'] = <instrument sideband mode>
-    # headerdict['TELESCOPE'] = 'JCMT'
-    # headerdict['OBSGEO_X'] = -5464588.652191697
-    # headerdict['OBSGEO_Y'] = -2493003.0215722183
-    # headerdict['OBSGEO_Z'] = 2150655.6609171447
-    # headerdict['OBJECT'] = <target name>
-    # headerdict['TARGTYPE'] = 'OBJECT' # or 'FIELD'
+    # headerdict['INSTRUME'] already set correctly
+    # headerdict['INBEAM'] already set correctly
+    # headerdict['BACKEND'] already set correctly
+    # headerdict['SW_MODE'] already set correctly
+    # headerdict['SCAN_PAT'] already set correctly
+    # headerdict['OBS_SB'] already set correctly
+    # headerdict['SB_MODE'] already set correctly
+    headerdict['TELESCOP'] = 'JCMT'
+    headerdict['OBSGEO_X'] = -5464588.652191697
+    headerdict['OBSGEO_Y'] = -2493003.0215722183
+    headerdict['OBSGEO_Z'] = 2150655.6609171447
+    # headerdict['OBJECT'] already set correctly
+    headerdict['TARGTYPE'] = 'OBJECT' # or 'FIELD'
     # headerdict['ZSOURCE'] = <redshift in BARYCENT frame>
     # headerdict['TARGKEYW'] = <target keyword string>
     headerdict['MOVING'] = 'F'
@@ -155,8 +174,8 @@ def rewrite_fits(insdf, outfits, headerdict, workdir, log):
     # headerdict['OBSDEC'] = <target Dec in ICRS>
     # headerdict['RADESYS'] = <RA/Dec system>
     # headerdict['EQUINOX'] = <equinox of coordinates>
+    
     # headerdict['PRODID'] = <productID for plane>
-    # headerdict['PRODUCT'] = <kind of product in the file>
     # headerdict['FILTER'] = <characteristic wavelength>
     # headerdict['RESTFREQ'] = <heterodyne rest frequency>
     # headerdict['BWMODE'] = <ACSIS/DAS bandwidth mode>
@@ -176,6 +195,7 @@ def rewrite_fits(insdf, outfits, headerdict, workdir, log):
             newkeys = True
     
     # if so, add a comment to label the section containing new keys
+    # Existing keywords will be updated in-place
     if newkeys:
         endcard = len(head)
         head.add_comment('JSA Headers', after=endcard)
@@ -245,53 +265,6 @@ def run():
     of FITS headers.
     """
     progname = os.path.basename(os.path.splitext(sys.path[1])[0])
-    # Comment out header names that should not be in the csv file
-    header_order =  [
-                     'inputfile',
-                     'outputfile',
-                     'INSTREAM',
-                     'ASN_ID',
-                     'ASN_TYPE',
-                     'MBRCNT',
-                     'OBS-TYPE',
-                     'PROJECT',
-                     'PI',
-                     'TITLE',
-                     'SURVEY',
-                     'DPPROJ',
-                     'INSTRUME',
-                     'INBEAM',
-                     'BACKEND',
-                     'SW_MODE',
-                     'SCAN_PAT',
-                     'OBS_SB',
-                     'SB_MODE',
-                     'TELESCOP',
-                     'OBSGEO_X',
-                     'OBSGEO_Y',
-                     'OBSGEO_Z',
-                     'OBJECT',
-                     'TARGTYPE',
-                     'ZSOURCE',
-                     'TARGKEYW'
-                     'MOVING',
-                     'OBSRA',
-                     'OBSDEC',
-                     'RADESYS',
-                     'EQUINOX',
-                     'PRODID',
-                     'PRODUCT',
-                     'FILTER',
-                     'RESTFREQ',
-                     'BWMODE',
-                     'SUBSYSNR',
-                     'RECIPE',
-                     'PROCVERS',
-                     'ENGVERS',
-                     'PRODUCER',
-                     'DPDATE',
-                     'INPCNT'
-                    ]
 
     ap = argparse.ArgumentParser('ngs_prepare_files')
     ap.add_argument('--major',
@@ -311,10 +284,6 @@ def run():
                     default='.',
                     help='directory to hold working files (default=cwd)')
     
-    ap.add_argument('-c', '--csv',
-                    help='comma-separated value file listing files to edit and '
-                         'headers to change')
-    
     ap.add_argument('--log',
                     default='ngs_prepare_files_' + utdate_string() + '.log',
                     help='(optional) name of log file')
@@ -323,10 +292,6 @@ def run():
     ap.add_argument('--debug', '-d',
                     action='store_true',
                     help='run in debug mode')
-
-    ap.add_argument('keyvalue',
-                    nargs='*',
-                    help='set of key=value pairs for default headers')
 
     a = ap.parse_args()
 
@@ -346,18 +311,6 @@ def run():
         workdir = os.path.abspath(
                     os.path.expandvars(
                         os.path.expanduser(a.workdir)))
-
-        # if any keyvalue arguments were supplied save them in a dictionary
-        keydict = {}
-        if a.keyvalue:
-            for keyvalue in a.keyvalue:
-                m = re.match(r'^([A-Z0-9]+)=(\w+)$', keyvalue)
-                if m:
-                    keydict[m.group(1)] = m.group(2)
-                else:
-                    log.console(keyvalue + ' does not match key=value and is '
-                                'being ignored',
-                                logging.WARN)
 
         if not a.major and not a.csv:
             log.console('specify either --major or --csv for input; '
@@ -399,85 +352,15 @@ def run():
             
             filelist = []
             readfilelist(a.major, a.minor, sdf, filelist, log)
-            infile = [os.path.join(a.major, f) for f in filelist]
-            outfile = [fix_name(a.newmajor, a.prefix, f) for f in filelist]
+            inoutfiles = [(os.path.join(a.major, f),
+                           fix_name(a.newmajor, a.prefix, f)) 
+                          for f in filelist]
             
-            # if a CSV filename is given, open it for output
-            try:
-                CSV = None
-                csvwriter = None
-                if a.csv:
-                    CSV = open(a.csv, 'wb')
-                    csvwriter = csv.DictWriter(CSV, header_order)
-                    csvwriter.writeheader()
-                
-                # Open each sdf file and update it as required
-                for i in range(len(filelist)):
-                    if a.debug:
-                        log.console('infile = ' + infile[i])
-                        log.console('    outfile = ' + outfile[i])
-                    else:
-                        log.file('infile = ' + infile[i])
-                        log.file('    outfile = ' + outfile[i])
-
-                    if CSV and csvwriter:
-                        # If a CSV file is open, write a row in the CSV file for
-                        # each input file
-                        rowdict = {}
-                        rowdict.update(keydict)
-                        rowdict['inputfile'] = infile[i]
-                        rowdict['outputfile'] = outfile[i]
-                        
-                        csvwriter.writerow(rowdict)
-                    else:
-                        # If the file is an sdf file, convert to FITS and update
-                        # the headers in the primary HDU
-                        ext = os.path.splitext(infile[i])[1].lower()
-                        if ext in ('.sdf'):
-                            rewrite_fits(infile[i], 
-                                         outfile[i], 
-                                         keydict, 
-                                         workdir,
-                                         log)
-                        else:
-                            shutil.copy(nfile[i], outfile[i])
-            finally:
-                if CSV:
-                    CSV.close()
-
-        else:
-            if not os.path.isfile(a.csv):
-                log.console(a.csv + 'is not a file', logging.ERROR)
-
-            with open(a.csv, 'r') as csvfile:
-                reader = csv.DictReader(csvfile, delimiter=',', quotechar='"')
-                for csvdict in reader:
-                    if 'inputfile' in csvdict:
-                        infile = csvdict.pop('inputfile')
-                    else:
-                        log.console('"inputfile" must be a column in ' + a.csv,
-                                    logging.ERROR)
-                    
-                    if 'outputfile' in csvdict:
-                        outfile = csvdict.pop('outputfile')
-                    else:
-                        log.console('"outputfile" must be a column in ' + a.csv,
-                                    logging.ERROR)
-
-                    if not os.path.isfile(csvdict['inputfile']):
-                        log.console('The FITS file ' + csvdict['inputfile'] +
-                                    ' does not exist',
-                                    logging.ERROR)
-
-                    headerdict = {}
-                    headerdict.update(keydict)
-                    headerdict.update(csvdict)
-                    
-                    rewrite_fits(infile, 
-                                 outfile, 
-                                 headerdict, 
-                                 workdir,
-                                 log)
+            for infile, outfile in inoutfiles:
+                rewrite_fits(infile, 
+                             outfile, 
+                             workdir,
+                             log)
 
 if __name__ == '__main__':
     run()

@@ -486,7 +486,10 @@ class jcmt2caom2_ingestion(tovos):
             if re.match(r'vos.*', rcinst):
                 thousands = 'vos'
             
-            # As needed, create the /thousands/ directory and store the file
+            # As needed, create directories and store files and links
+            # vosdir: directory in proc_ingestion
+            # dvosdir: directory in proc_ingestion_date for new link
+            # rvosdir: directory in raw_ingestion for new link
             vosdir = self.make_subdir(self.vosroot, thousands)
             self.log.file('vosdir = ' + vosdir, logging.DEBUG)
 
@@ -541,6 +544,7 @@ class jcmt2caom2_ingestion(tovos):
                                            'errors',
                                            'stamp',
                                            'stampdate')
+
                     print 'VROOT = ' + vroot
                     if root == vroot:
                         print stamp + ' =? ' + vstamp
@@ -551,12 +555,46 @@ class jcmt2caom2_ingestion(tovos):
                                       vfile,
                                       logging.DEBUG)
                         if not errors or (errors and verrors):
+                            # find directories and delete old links
+                            # dolddir: directory in proc_ingestion_date
+                            # rolddir: directory in raw_ingestion
+                            doldyear = vstampdate[:4]
+                            doldmonth = vstampdate[4:6]
+                            doldday = vstampdate[6:]
+                            dolddir = self.make_subdir(self.dateroot, doldyear)
+                            dolddir = self.make_subdir(dolddir, doldmonth)
+                            dolddir = self.make_subdir(dolddir, doldday)
+                            self.log.file('dolddir = ' + dolddir, logging.DEBUG)
+
+                            utdate = None
+                            prefix = None
+                            rolddir = None
+                            with open(vpath, 'r') as L:
+                                for line in L:
+                                    m = re.search(r'Earliest utdate: '
+                                                  r'(?P<utdate>[-0-9]+)'
+                                                  r' for (?P<prefix>\S+)',
+                                                  line)
+                                    if m:
+                                        (utdate, prefix) = m.group('utdate', 'prefix')
+                                        break
+                            
+                            if utdate and prefix:
+                                (royear, romonth, roday) = re.split(r'-', utdate)
+                                # As needed, create the /year/month/day/ directories
+                                # Beware that these are URI's, not directory paths in the OS
+                                rolddir = self.make_subdir(self.rawroot, royear)
+                                rolddir = self.make_subdir(rolddir, romonth)
+                                rolddir = self.make_subdir(rolddir, roday)
+                                self.log.file('rolddir = ' + rolddir, 
+                                              logging.DEBUG)
+
                             self.log.file('clean ' + vpath, logging.DEBUG)
                             self.clean(vpath, 
                                        root,
                                        vstamp,
-                                       dvosdir,
-                                       rvosdir,
+                                       dolddir,
+                                       rolddir,
                                        prefix)
 
             # Now, push the new file into vosdir
