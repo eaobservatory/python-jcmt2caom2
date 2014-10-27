@@ -1123,7 +1123,7 @@ class jcmt2caom2ingest(caom2ingest):
                         inpn = self.planeURI(pm.group(1),
                                              pm.group(2),
                                              pm.group(3))
-                        inputset.add(inpn)
+                        self.inputset.add(inpn)
                     else:
                         self.dew.error(inpkey + ' = ' + inpn_str + ' does not '
                                        'match the regex for a plane URI: ' +
