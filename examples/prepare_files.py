@@ -68,6 +68,7 @@ def rewrite_fits(infits, outfits, headerdict):
     # headerdict['PRODUCT'] = <kind of product in the file>
     # headerdict['DATAPROD'] = <DataProductType in the file>
     # headerdict['PRODTYPE'] = <ProductType in the Artifact/Part/Chunk>
+    # headerdict['CALLEVEL'] = <CalibrationLevel in the file>
     # headerdict['FILTER'] = <characteristic wavelength>
     # headerdict['RESTFREQ'] = <heterodyne rest frequency>
     # headerdict['BWMODE'] = <ACSIS/DAS bandwidth mode>
@@ -144,8 +145,7 @@ def run():
     """
     progname = os.path.basename(os.path.splitext(sys.path[0])[0])
     # Comment out header names that should not be in the csv file
-    header_order =  [
-                     'inputfile',
+    header_order =  ['inputfile',
                      'outputfile',
                      'INSTREAM',
                      'ASN_ID',
@@ -181,6 +181,7 @@ def run():
                      'PRODUCT',
                      'DATAPROD',
                      'PRODTYPE',
+                     'CALLEVEL',
                      'FILTER',
                      'RESTFREQ',
                      'BWMODE',
@@ -190,8 +191,7 @@ def run():
                      'ENGVERS',
                      'PRODUCER',
                      'DPDATE',
-                     'INPCNT'
-                    ]
+                     'INPCNT']
 
     ap = argparse.ArgumentParser('jcmt_prepare_files')
     ap.add_argument('--major',

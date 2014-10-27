@@ -325,8 +325,7 @@ class jcmt2caom2ingest(caom2ingest):
         algorithm = 'custom'
         if is_defined('ASN_TYPE', header):
             algorithm = header['ASN_TYPE']
-        self.log.console('PROGRESS: ' + header['SRCPATH'] + 
-                         '  "' + algorithm + '"')
+        self.log.console('PROGRESS: ' + header['SRCPATH'])
 
         if algorithm == 'obs':
             # Obs products can only be ingested into the JCMT collection
@@ -1079,10 +1078,14 @@ class jcmt2caom2ingest(caom2ingest):
 
         calibrationLevel = None
         if is_defined('CALLEVEL', header):
-            if header['CALLEVEL'] == 'CALIBRATED':
+            if header['CALLEVEL'] == 'calibrated':
                 calibrationLevel = str(CalibrationLevel.CALIBRATED.value)
-            elif header['CALLEVEL'] == 'PRODUCT':
+            elif header['CALLEVEL'] == 'product':
                 calibrationLevel = str(CalibrationLevel.PRODUCT.value)
+            else:
+                self.dew(filename,
+                         'CALLEVEL = ' + header['CALLEVEL'] +
+                         ' must be one of (calibrated, product)')
         elif product == 'cube':
             calibrationLevel = str(CalibrationLevel.RAW_STANDARD.value)
         elif product in ('reduced', 'rsp', 'rimg',
@@ -1167,7 +1170,7 @@ class jcmt2caom2ingest(caom2ingest):
         dataProductType = None
         if is_defined('DATAPROD', header):
             if not self.dew.restricted_value(filename, 'DATAPROD', header,
-                                    ("image", "spectrum", "cube" and "catalog")):
+                                    ("image", "spectrum", "cube", "catalog")):
                 dataProductType = None
         elif product == science_product:
             # Assume these are like standard pipeline products
@@ -1197,9 +1200,9 @@ class jcmt2caom2ingest(caom2ingest):
         dpproject = None
         if is_defined('DPPROJ', header):
             dpproject = header['DPPROJ'].strip()
-        elif self.collection == 'JCMTLS' and proposal_project:
+        elif instream == 'JCMTLS' and proposal_project:
             dpproject = proposal_project
-        elif self.collection in ('JCMT', 'SANDBOX'):
+        elif instream == 'JCMT':
             standard_products = ['reduced', 'cube', 'rsp', 'rimg']
             legacy_products = ['healpix', 'hpxrsp', 'hpxrimg', 
                                'peak-cat', 'extent-cat']

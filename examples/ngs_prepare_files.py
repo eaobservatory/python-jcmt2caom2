@@ -258,9 +258,9 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
     
     # DataProductType is a crude classification of the shape of the data
     if product in ['reduced', '20kms']:
-        headerdict['DATAPROD'] = 'CUBE'
+        headerdict['DATAPROD'] = 'cube'
     else:
-        headerdict['DATAPROD'] = 'IMAGE'
+        headerdict['DATAPROD'] = 'image'
 
     # ProductType is a crude classification of the nature of the data 
     # in each extension of a FITS file
@@ -275,9 +275,9 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
     # Ask who gets the credit
     headerdict['PRODUCER'] = 'NGS'
     
-    # Supply a default for DPPROJ, which will be overridden when the 
+    # Supply a default for DPRCINST, which will be overridden when the 
     # real ingestion in made from VOspace
-    headerdict['DPPROJ'] = 'DEFAULT'
+    headerdict['DPRCINST'] = 'DEFAULT'
     
     # A suitable, representative processing datetime
     headerdict['DPDATE'] = '2010-07-07T00:00:00'
