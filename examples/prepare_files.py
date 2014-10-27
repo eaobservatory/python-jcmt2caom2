@@ -66,6 +66,8 @@ def rewrite_fits(infits, outfits, headerdict):
     # headerdict['EQUINOX'] = <equinox of coordinates>
     # headerdict['PRODID'] = <productID for plane>
     # headerdict['PRODUCT'] = <kind of product in the file>
+    # headerdict['DATAPROD'] = <DataProductType in the file>
+    # headerdict['PRODTYPE'] = <ProductType in the Artifact/Part/Chunk>
     # headerdict['FILTER'] = <characteristic wavelength>
     # headerdict['RESTFREQ'] = <heterodyne rest frequency>
     # headerdict['BWMODE'] = <ACSIS/DAS bandwidth mode>
@@ -177,6 +179,8 @@ def run():
                      'EQUINOX',
                      'PRODID',
                      'PRODUCT',
+                     'DATAPROD',
+                     'PRODTYPE',
                      'FILTER',
                      'RESTFREQ',
                      'BWMODE',

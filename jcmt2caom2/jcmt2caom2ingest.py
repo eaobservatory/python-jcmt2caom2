@@ -1110,7 +1110,7 @@ class jcmt2caom2ingest(caom2ingest):
             inpcnt = int(header['INPCNT'])
             if product and product == science_product and inpcnt > 0:
                 for n in range(inpcnt):
-                    inpkey = 'INP' + str(i + 1)
+                    inpkey = 'INP' + str(n + 1)
                     if not self.dew.expect_keyword(filename, inpkey, header):
                         continue
                     inpn_str = header[inpkey]
@@ -1313,7 +1313,7 @@ class jcmt2caom2ingest(caom2ingest):
         prodtype = 'auxiliary'
         if is_defined('PRODTYPE', header):
             prodtype = header['PRODTYPE']
-        if product in jcmt2caom2ingest.productType:
+        elif product in jcmt2caom2ingest.productType:
             prodtype = jcmt2caom2ingest.productType[product]
         
         prodtype = re.sub(r'\s', '', prodtype)

@@ -240,7 +240,7 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
     headerdict['TARGTYPE'] = 'OBJECT' # or 'FIELD'
     # headerdict['ZSOURCE'] = <redshift in BARYCENT frame>
     # headerdict['TARGKEYW'] = <target keyword string>
-    headerdict['MOVING'] = 'F'
+    headerdict['MOVING'] = False
     # headerdict['OBSRA'] = <target RA in ICRS>
     # headerdict['OBSDEC'] = <target Dec in ICRS>
     # headerdict['RADESYS'] = <RA/Dec system>
@@ -256,6 +256,22 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
     # headerdict['PROCVERS'] = <data processing software version>
     # headerdict['ENGVERS'] = <data processing engine version>
     
+    # DataProductType is a crude classification of the shape of the data
+    if product in ['reduced', '20kms']:
+        headerdict['DATAPROD'] = 'CUBE'
+    else:
+        headerdict['DATAPROD'] = 'IMAGE'
+
+    # ProductType is a crude classification of the nature of the data 
+    # in each extension of a FITS file
+    if product == 'reduced':
+        headerdict['PRODTYPE'] = '0=science,auxiliary'
+    else:
+        headerdict['PRODTYPE'] = 'auxiliary'
+
+    # CalibrationLevel is a crude classification of the degree of processing 
+    headerdict['CALLEVEL'] = 'calibrated'
+
     # Ask who gets the credit
     headerdict['PRODUCER'] = 'NGS'
     
