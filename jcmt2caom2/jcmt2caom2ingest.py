@@ -787,6 +787,7 @@ class jcmt2caom2ingest(caom2ingest):
 
         # Calculate the observation type from OBS_TYPE and SAM_MODE,
         # if they are unambiguous.
+        raw_obs_type = None
         obs_type = None
         if is_defined('OBS_TYPE', header):
             if obs_type in ('flatfield', 'noise', 'setup', 'skydip'):
@@ -952,7 +953,7 @@ class jcmt2caom2ingest(caom2ingest):
                                    '2000.0')
         intent_val = None
         if obs_type and backend:
-            intent_val = intent(obs_type, backend).value
+            intent_val = intent(raw_obs_type, backend).value
             self.add_to_plane_dict('obs.intent', intent_val)
 
         # Plane metadata
