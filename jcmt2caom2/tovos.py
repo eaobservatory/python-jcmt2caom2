@@ -569,15 +569,23 @@ class jcmt2caom2_ingestion(tovos):
                             utdate = None
                             prefix = None
                             rolddir = None
-                            with open(filename, 'r') as L:
-                                for line in L:
-                                    m = re.search(r'Earliest utdate: '
-                                                  r'(?P<utdate>[-0-9]+)'
-                                                  r' for (?P<prefix>\S+)',
-                                                  line)
-                                    if m:
-                                        (utdate, prefix) = m.group('utdate', 'prefix')
-                                        break
+                            # Copy the old file to the local disk
+                            lpath = os.path.abspath(vfile)
+                            try:
+                                filesize == self.vosclient.copy(vpath, lpath))
+                                with open(filename, 'r') as L:
+                                    for line in L:
+                                        m = re.search(r'Earliest utdate: '
+                                                      r'(?P<utdate>[-0-9]+)'
+                                                      r' for (?P<prefix>\S+)',
+                                                      line)
+                                        if m:
+                                            (utdate, prefix) = m.group('utdate', 
+                                                                       'prefix')
+                                            break
+                            finally:
+                                if os.path.exists(lpath):
+                                    os.remove(lpath)
                             
                             if utdate and prefix:
                                 (royear, romonth, roday) = re.split(r'-', utdate)
