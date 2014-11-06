@@ -33,6 +33,13 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
     """
     Rewrite a single sdf file into FITS, setting custom headers as needed.
     
+    The NGS did not originally preserve the membership headers OBSCNT, OBSn
+    when converting from sdf to fits, but the headers are still present in 
+    the sdf files.  This code therefore does the conversion again, using the
+    same conversion that is done by the jsawrapdr pipeline script.  It calls
+    the Starlink programs ndfcopy, fitsmod, and ndf2fits, so Starlink 
+    must be installed and the kappa and convert packages configured.
+    
     Arguments:
     insdf: input file, which will be in Starlink NDF format
     outfits: output file, which will be in FITS format
@@ -51,9 +58,7 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
     myindir, mysdfile = os.path.split(insdf)
     sdfcopy = os.path.join(workdir, 'copy_' + mysdfile)
     
-    # We will also work with a copy of the FITS file rather than the final file.
     mydir, myfile = os.path.split(outfits)
-    # fitscopy = os.path.join(workdir, 'copy_' + myfile)
     
     # Find some useful Starlink commands
     if 'KAPPA_DIR' not in os.environ:
@@ -101,9 +106,13 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
                     ' does not have 3-5 tokens',
                     logging.ERROR)
 
+    # The set of science_products guides how we will sort files into planes.
+    # NGS had originally intended two planes, for totint20 and reduced+others.
+    # However totint20 dors not have energy metadata, so we will start with just
+    # one plane.
     science_product = 'reduced'
-    if product == 'totint20':
-        science_product = product
+    # if product == 'totint20':
+    #     science_product = product
 
     # fitswrite will add the product header that is needed for the provenance 
     # to be written.  
@@ -114,7 +123,7 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
                    sdfcopy,
                    'product',
                    'value=' + product,
-                   'comment="science product"']
+                   'comment="product"']
     log.file(' '.join(fitsmod_cmd))
     try:
         output = subprocess.check_output(fitsmod_cmd,
@@ -122,11 +131,6 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
     except subprocess.CalledProcessError as e:
         log.console('fitsmod command failed: \n' + output,
                     logging.ERROR)
-    
-    # Be sure the directory path exists before creating the FITS file
-    dirpath = os.path.dirname(outfits)
-    if not os.path.isdir(dirpath):
-        os.makedirs(dirpath)
     
     # Now convert the sdfcopy into outfits
     comp = 'd'
@@ -264,7 +268,7 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
 
     # ProductType is a crude classification of the nature of the data 
     # in each extension of a FITS file
-    if product == 'reduced':
+    if product == science_product:
         headerdict['PRODTYPE'] = '0=science,auxiliary'
     else:
         headerdict['PRODTYPE'] = 'auxiliary'
@@ -360,11 +364,11 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
         if key not in head:
             newkeys = True
     
-    # if so, add a comment to label the section containing new keys
+    # If so, add a comment to label the section containing new keys
     # Existing keywords will be updated in-place
     if newkeys:
         endcard = len(head)
-        head.add_comment('JSA Headers', after=endcard)
+        head.update('', '', comment='JSA Headers', after=endcard)
     
     # update FITS headers with those supplied in headerdict
     for key in sorted(headerdict.keys(), reverse=True):
@@ -386,46 +390,46 @@ def fix_name(outdir, prefix, filename):
     file_id = os.path.splitext(basename)[0].lower()
     return os.path.join(outdir, dirpath, prefix + '_' + file_id + '.fits')
 
-def readfilelist(rootdir, indir, filter, filelist, log):
+def readfilelist(rootdir, subdirpath, filelist, log):
     """
     Construct a list of file names rooted at indir by reading names from indir
-    and calling readfilelist recursively for each directory.  Include only
-    filenames for which filter returns True.
+    and calling readfilelist recursively for each directory.
     """  
     dirlist = []
-    if indir:
-        readdir = os.path.join(rootdir, indir)
+    if subdirpath:
+        readdir = os.path.join(rootdir, subdirpath)
     else:
         readdir = rootdir
     
     for f in os.listdir(readdir):
         log.file('examine: ' + f)
-        filename = os.path.join(rootdir, indir, f)
-        if os.path.isfile(filename) and filter(f):
-            filelist.append(os.path.join(indir, f))
-        if os.path.isdir(filename):
-            dirlist.append(os.path.join(indir, f))
+        filename = os.path.join(rootdir, subdirpath, f)
+        
+        if os.path.isfile(filename):
+            # Append the path to the file to filelist
+            filelist.append(os.path.join(subdirpath, f))
+        
+        elif os.path.isdir(filename):
+            # Append the subdirectory to the list awaitin recursion
+            dirlist.append(os.path.join(subdirpath, f))
     for d in dirlist:
-        readfilelist(rootdir, d, filter, filelist, log)
+        # recurse into the subdirectory d
+        readfilelist(rootdir, d, filelist, log)
 
-def fits_and_png(filename):
-    """
-    Return True if the extension is a FITS or PNG file, False otherwise
-    """
-    return (os.path.splitext(filename)[1].lower() in ('.fits', '.fit', '.png'))
-
-def sdf(filename):
+def is_ingestible(filename):
     """
     Return True if the extension is an sdf file, False otherwise
     """
-    return (os.path.splitext(filename)[1].lower() in ('.sdf'))
+    return os.path.splitext(filename)[1] == '.sdf'
 
 def run():
     """
-    The run() method for ngs_prepare_files.  This is intended to be a template
-    for a custom program to prepare externally generated data files for ingestion
-    into the JSA by changing the name and decorating the file with a standard set 
-    of FITS headers.
+    The run() method for ngs_prepare_files.  In addition to its function in
+    preparing NGS files, it serves as an example of how other projects
+    can prepare their own files.
+    
+    The code has been simplified in comparison to prepare_files.py by the
+    elimination of command line and csv file methods for setting file headers.
     """
     progname = os.path.basename(os.path.splitext(sys.path[1])[0])
 
@@ -436,18 +440,13 @@ def run():
                     help='path to CADC proxy')
 
     ap.add_argument('--major',
-                    help='existing major release directory')
-    ap.add_argument('--minor',
-                    help='existing minor release subdirectory within the '
-                         'major release; if omited, minor=major')
+                    help='existing release directory')
     ap.add_argument('--newmajor',
-                    help='new major release directory to which files will be '
-                         'written, preserving the minor release directory '
-                         'structure')
+                    help='new major release directory to which files will be written')
     # default prefix is the same as the NGS project name
     ap.add_argument('--prefix',
                     default='jcmt-ngs',
-                    help='optional prefix for new file names')
+                    help='prefix for ingestible file names')
 
     ap.add_argument('--workdir',
                     default='.',
@@ -487,57 +486,60 @@ def run():
                     os.path.expandvars(
                         os.path.expanduser(a.workdir)))
 
-        if not a.major and not a.csv:
-            log.console('specify either --major or --csv for input; '
-                        'if both are given the csv file will be output',
+        # Convert a.major into an abspath and verify that it is a directory
+        if not a.major:
+            log.console('specify --major as the path to the input directory',
+                        logging.ERROR)
+        a.major = os.path.abspath(
+                    os.path.expandvars(
+                        os.path.expanduser(a.major)))
+        if not os.path.isdir(a.major):
+            log.console('major directory ' + a.major + 
+                        ' is not a directory',
                         logging.ERROR)
 
-        if a.major:
-            if not a.minor:
-                a.minor = ''
+        # Convert a.newmajor into an abspath and verify that it is a directory
+        if not a.newmajor:
+            log.console('specify both --major and --newmajor, since it is '
+                        'forbidden to overwrite the original files',
+                        logging.ERROR)
+        a.newmajor = os.path.abspath(
+                   os.path.expandvars(
+                       os.path.expanduser(a.newmajor)))
+        if not os.path.isdir(a.newmajor):
+            log.console('output directory ' + a.newmajor + 
+                        ' is not a directory',
+                        logging.ERROR)
         
-            if not a.newmajor:
-                log.console('specify both --major and --newmajor, since it is '
-                            'forbidden to overwrite the original files',
-                            logging.ERROR)
+        # filelist contains a list of file paths relative to a.major.
+        filelist = []
+        readfilelist(a.major, '', filelist, log)
+        
+        for infile in filelist:
+            # Be sure the directory path exists before creating the FITS file
+            dirpath = os .path.join(a.newmajor, 
+                                    os.path.dirname(infile))
+            if not os.path.isdir(dirpath):
+                os.makedirs(dirpath)
             
-            a.major = os.path.abspath(
-                        os.path.expandvars(
-                            os.path.expanduser(a.major)))
-            
-            a.newmajor = os.path.abspath(
-                            os.path.expandvars(
-                                os.path.expanduser(a.newmajor)))
-            
-            if not os.path.isdir(a.major):
-                log.console('major directory ' + a.major + 
-                            ' is not a directory',
-                            logging.ERROR)
-
-            abs_minor = os.path.abspath(os.path.join(a.major, a.minor))
-            if not os.path.isdir(abs_minor):
-                log.console('minor directory ' + abs_minor + 
-                            ' is not a directory',
-                            logging.ERROR)
-            
-            if not os.path.isdir(a.newmajor):
-                log.console('output directory ' + a.newmajor + 
-                            ' is not a directory',
-                            logging.ERROR)
-            
-            filelist = []
-            readfilelist(a.major, a.minor, sdf, filelist, log)
-            inoutfiles = [(os.path.join(a.major, f),
-                           fix_name(a.newmajor, a.prefix, f)) 
-                          for f in filelist]
-            
-            for infile, outfile in inoutfiles:
-                rewrite_fits(infile, 
-                             outfile, 
+            # Existing FITDS files are defective, so skip them
+            if os.path.splitext(infile)[1] == '.fits':
+                continue
+    
+            inpath = os.path.join(a.major, infile)
+            if is_ingestible(inpath):
+                # Add the prefix to fits files generated from sdf files,
+                # but not to other files that will simply be copied.
+                newfile = fix_name(a.newmajor, a.prefix, infile)
+                rewrite_fits(inpath, 
+                             newfile, 
                              a.prefix,
                              workdir,
                              tap,
                              log)
+            else:
+                newfile = fix_name(a.newmajor, '', infile)
+                shutil.copyfile(inpath, newfile)
 
 if __name__ == '__main__':
     run()

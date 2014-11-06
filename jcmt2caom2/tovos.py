@@ -569,7 +569,7 @@ class jcmt2caom2_ingestion(tovos):
                             utdate = None
                             prefix = None
                             rolddir = None
-                            with open(vpath, 'r') as L:
+                            with open(filename, 'r') as L:
                                 for line in L:
                                     m = re.search(r'Earliest utdate: '
                                                   r'(?P<utdate>[-0-9]+)'
