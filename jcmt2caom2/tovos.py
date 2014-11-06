@@ -531,7 +531,6 @@ class jcmt2caom2_ingestion(tovos):
             # errors if the current copy reports errors.  Record files being
             # deleted before doing the deletion.
             deleted_files = []
-            print 'ROOT = ' + root
             for vfile in self.vosclient.listdir(vosdir, force=True):
                 vpath = vosdir + '/' +  vfile
                 vfile_id, vext = os.path.splitext(vfile)
@@ -545,7 +544,6 @@ class jcmt2caom2_ingestion(tovos):
                                            'stamp',
                                            'stampdate')
 
-                    print 'VROOT = ' + vroot
                     if root == vroot:
                         print stamp + ' =? ' + vstamp
                     if vroot == root and vstamp < stamp:
