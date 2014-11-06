@@ -572,7 +572,7 @@ class jcmt2caom2_ingestion(tovos):
                             # Copy the old file to the local disk
                             lpath = os.path.abspath(vfile)
                             try:
-                                filesize == self.vosclient.copy(vpath, lpath)
+                                self.vosclient.copy(vpath, lpath)
                                 with open(filename, 'r') as L:
                                     for line in L:
                                         m = re.search(r'Earliest utdate: '
