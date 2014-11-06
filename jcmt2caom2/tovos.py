@@ -544,8 +544,6 @@ class jcmt2caom2_ingestion(tovos):
                                            'stamp',
                                            'stampdate')
 
-                    if root == vroot:
-                        print stamp + ' =? ' + vstamp
                     if vroot == root and vstamp < stamp:
                         # If no errors, delete all earlier logs
                         # if errors, delete earlier logs with errors
