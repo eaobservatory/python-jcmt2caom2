@@ -596,7 +596,7 @@ class jcmt2caom2_ingestion(tovos):
                             self.log.file('clean ' + vpath)
                             self.clean(vpath, 
                                        root,
-                                       vstamp,
+                                       stamp,
                                        dolddir,
                                        rolddir,
                                        rprefix)
