@@ -238,7 +238,7 @@ class jcmt2caom2ingest(caom2ingest):
                 'SELECT',
                 '    Observation.collection,',
                 '    Observation.observationID,',
-                '    Observation.productID,',
+                '    Plane.productID,',
                 '    Plane.provenance_runID',
                 'FROM',
                 '    caom2.Observation AS Observation',
