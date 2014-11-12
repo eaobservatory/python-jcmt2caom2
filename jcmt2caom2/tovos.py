@@ -672,12 +672,7 @@ class jcmt2caom2_ingestion(tovos):
         # the existing filename but with an earlier time stamp and
         # delete them.
         ddel = False
-        self.log.console('DEBUG: search ' + datedir +
-                         ' matching ' + root +
-                         ' with stamp < ' + stamp,
-                         logging.WARN)
         for dfile in self.vosclient.listdir(datedir, force=True):
-            self.log.console('EXAMINE: ' + dfile)
             dmm = self.regex.search(dfile)
             if dmm:
                 if (dmm.group('root') == root and
@@ -689,22 +684,17 @@ class jcmt2caom2_ingestion(tovos):
                     self.vosclient.delete(dpath)
                     
         if not ddel:
-            self.log.console('nothing to delete in ' + datedir +
-                             ' matching ' + root +
-                             ' with stamp < ' + stamp,
-                             logging.WARN)
+            self.log.file('nothing to delete in ' + datedir +
+                          ' matching ' + root +
+                          ' with stamp < ' + stamp,
+                          logging.WARN)
         
         # Find any links in raw_ingestion matching the rawprefix but with an 
         # earlier time stamp and delete them
         rdel = True
-        self.log.console('DEBUG: search ' + rawdir +
-                         ' matching ' + rawprefix +
-                         ' with stamp < ' + stamp,
-                         logging.WARN)
         if rawprefix and rawdir:
             rdel = False
             for rlink in self.vosclient.listdir(rawdir, force=True):
-                self.log.console('EXAMINE: ' + rlink)
                 dmm =  re.match(rawprefix + '.*' + 
                                 UTDATE_REGEX +
                                 r'(?P<errors>(_ERRORS)?)' +
@@ -718,10 +708,10 @@ class jcmt2caom2_ingestion(tovos):
                         self.vosclient.delete(rpath)
 
         if not rdel:
-            self.log.console('nothing to delete in ' + rawdir +
-                             ' matching ' + rawprefix +
-                             ' with stamp < ' + stamp,
-                             logging.WARN)
+            self.log.file('nothing to delete in ' + rawdir +
+                          ' matching ' + rawprefix +
+                          ' with stamp < ' + stamp,
+                          logging.WARN)
 
         self.vosclient.delete(path)
 
