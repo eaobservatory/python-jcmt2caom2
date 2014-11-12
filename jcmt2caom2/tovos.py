@@ -652,7 +652,12 @@ class jcmt2caom2_ingestion(tovos):
         # the existing filename but with an earlier time stamp and
         # delete them.
         ddel = False
+        self.log.console('DEBUG: search ' + datedir +
+                         ' matching ' + root +
+                         ' with stamp < ' + stamp,
+                         logging.WARN)
         for dfile in self.vosclient.listdir(datedir, force=True):
+            self.log.console('EXAMINE: ' + dfile)
             dmm = self.regex.search(dfile)
             if dmm:
                 if (dmm.group('root') == root and
