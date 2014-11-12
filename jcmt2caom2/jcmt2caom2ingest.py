@@ -1316,7 +1316,7 @@ class jcmt2caom2ingest(caom2ingest):
         # pairs, where the default with extension_number = None is always last
         prodtype = 'auxiliary'
         if is_defined('PRODTYPE', header):
-            prodtype = header['PRODTYPE']
+            prodtype = header['PRODTYPE'].lower()
         elif product in jcmt2caom2ingest.productType:
             prodtype = jcmt2caom2ingest.productType[product]
         
@@ -1352,14 +1352,17 @@ class jcmt2caom2ingest(caom2ingest):
                                          pt)
             if prodtype_default:
                 self.add_fitsuri_dict(self.uri)
-                self.add_to_fitsuri_dict(extURI,
+                self.add_to_fitsuri_dict(self.uri,
                                          'part.productType', 
                                          prodtype_default)
-        else:
+        elif prodtype_default:
             self.add_fitsuri_dict(self.uri)
             self.add_to_fitsuri_dict(self.uri,
                                      'artifact.productType',
                                      prodtype_default)
+        else:
+            self.dew.error(filename,
+                           'ProductType is not defined')
         
         if product == science_product and len(obstimes):
             self.add_fitsuri_dict(self.uri)
