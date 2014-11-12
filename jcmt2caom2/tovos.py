@@ -678,7 +678,7 @@ class jcmt2caom2_ingestion(tovos):
             self.log.console('nothing to delete in ' + datedir +
                              ' matching ' + root +
                              ' with stamp < ' + stamp,
-                             logging.DEBUG)
+                             logging.WARN)
         
         # Find any links in raw_ingestion matching the rawprefix but with an 
         # earlier time stamp and delete them
@@ -713,10 +713,9 @@ class jcmt2caom2_ingestion(tovos):
             self.log.console('nothing to delete in ' + rawdir +
                              ' matching ' + rawprefix +
                              ' with stamp < ' + stamp,
-                             logging.DEBUG)
+                             logging.WARN)
 
-        if ddel and rdel:
-            self.vosclient.delete(path)
+        self.vosclient.delete(path)
 
 
 class qa_logs(tovos):
