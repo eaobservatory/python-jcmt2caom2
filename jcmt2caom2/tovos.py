@@ -548,8 +548,7 @@ class jcmt2caom2_ingestion(tovos):
                         # If no errors, delete all earlier logs
                         # if errors, delete earlier logs with errors
                         self.log.file('jcmt2caom2_ingestion - cleanup ' + 
-                                      vfile,
-                                      logging.DEBUG)
+                                      vfile)
                         if not errors or (errors and verrors):
                             # find directories and delete old links
                             # dolddir: directory in proc_ingestion_date
@@ -562,8 +561,8 @@ class jcmt2caom2_ingestion(tovos):
                             dolddir = self.make_subdir(dolddir, doldday)
                             self.log.file('dolddir = ' + dolddir, logging.DEBUG)
 
-                            utdate = None
-                            prefix = None
+                            rutdate = None
+                            rprefix = None
                             rolddir = None
                             # Copy the old file to the local disk
                             lpath = os.path.abspath(vfile)
@@ -576,15 +575,16 @@ class jcmt2caom2_ingestion(tovos):
                                                       r' for (?P<prefix>\S+)',
                                                       line)
                                         if m:
-                                            (utdate, prefix) = m.group('utdate', 
-                                                                       'prefix')
+                                            (rutdate, rprefix) = \
+                                                m.group('utdate', 'prefix')
                                             break
                             finally:
                                 if os.path.exists(lpath):
                                     os.remove(lpath)
                             
-                            if utdate and prefix:
-                                (royear, romonth, roday) = re.split(r'-', utdate)
+                            if rutdate and rprefix:
+                                (royear, romonth, roday) = \
+                                    re.split(r'-', rutdate)
                                 # As needed, create the /year/month/day/ directories
                                 # Beware that these are URI's, not directory paths in the OS
                                 rolddir = self.make_subdir(self.rawroot, royear)
@@ -593,13 +593,13 @@ class jcmt2caom2_ingestion(tovos):
                                 self.log.file('rolddir = ' + rolddir, 
                                               logging.DEBUG)
 
-                            self.log.file('clean ' + vpath, logging.DEBUG)
+                            self.log.file('clean ' + vpath)
                             self.clean(vpath, 
                                        root,
                                        vstamp,
                                        dolddir,
                                        rolddir,
-                                       prefix)
+                                       rprefix)
 
             # Now, push the new file into vosdir
             filename = os.path.basename(path)
@@ -648,12 +648,11 @@ class jcmt2caom2_ingestion(tovos):
         
         If the observation has no members, rawdir and rawprefix will be None.
         """
-        self.vosclient.delete(path)
-
         # Find any links in proc_ingestion_date matching the root-part of
         # the existing filename but with an earlier time stamp and
         # delete them.
-        for dfile in self.vosclient.listdir(datedir,force=True):
+        ddel = False
+        for dfile in self.vosclient.listdir(datedir, force=True):
             dmm = self.regex.search(dfile)
             if dmm:
                 if (dmm.group('root') == root and
@@ -662,6 +661,7 @@ class jcmt2caom2_ingestion(tovos):
                     dpath = datedir + '/' + dfile
                     self.log.file('delete ' + dpath)
                     self.vosclient.delete(dpath)
+                    ddel = True
                     
                     # Clean up empty directories, up to three levels
                     # corresponding to YYYY/MM/DD
@@ -674,10 +674,17 @@ class jcmt2caom2_ingestion(tovos):
                             mydir = os.path.dirname(mydir)
                         else:
                             break
+        if not ddel:
+            self.log.console('nothing to delete in ' + datedir +
+                             ' matching ' + root +
+                             ' with stamp < ' + stamp,
+                             logging.DEBUG)
         
         # Find any links in raw_ingestion matching the rawprefix but with an 
         # earlier time stamp and delete them
+        rdel = True
         if rawprefix and rawdir:
+            rdel = False
             for rlink in self.vosclient.listdir(rawdir, force=True):
                 dmm =  re.match(rawprefix + '.*' + 
                                 UTDATE_REGEX +
@@ -701,6 +708,16 @@ class jcmt2caom2_ingestion(tovos):
                                 mydir = os.path.dirname(mydir)
                             else:
                                 break
+
+        if not rdel:
+            self.log.console('nothing to delete in ' + rawdir +
+                             ' matching ' + rawprefix +
+                             ' with stamp < ' + stamp,
+                             logging.DEBUG)
+
+        if ddel and rdel:
+            self.vosclient.delete(path)
+
 
 class qa_logs(tovos):
     """
