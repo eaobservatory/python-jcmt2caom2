@@ -697,9 +697,13 @@ class jcmt2caom2_ingestion(tovos):
         # Find any links in raw_ingestion matching the rawprefix but with an 
         # earlier time stamp and delete them
         rdel = True
-        if rawprefix and rawdir:
+        self.log.console('DEBUG: search ' + rawdir +
+                         ' matching ' + rawprefix +
+                         ' with stamp < ' + stamp,
+                         logging.WARN)        if rawprefix and rawdir:
             rdel = False
             for rlink in self.vosclient.listdir(rawdir, force=True):
+                self.log.console('EXAMINE: ' + rlink)
                 dmm =  re.match(rawprefix + '.*' + 
                                 UTDATE_REGEX +
                                 r'(?P<errors>(_ERRORS)?)' +
@@ -708,7 +712,7 @@ class jcmt2caom2_ingestion(tovos):
                 if dmm:
                     if dmm.group('stamp').lower() < stamp:
                         rpath = rawdir + '/' + rlink
-                        self.log.file('delete ' + rpath)
+                        self.log.console('delete ' + rpath)
                         rdel = True
                         self.vosclient.delete(rpath)
 
