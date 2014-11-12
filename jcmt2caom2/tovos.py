@@ -703,7 +703,7 @@ class jcmt2caom2_ingestion(tovos):
                 if dmm:
                     if dmm.group('stamp').lower() < stamp:
                         rpath = rawdir + '/' + rlink
-                        self.log.console('delete ' + rpath)
+                        self.log.file('delete ' + rpath)
                         rdel = True
                         self.vosclient.delete(rpath)
 
@@ -714,7 +714,6 @@ class jcmt2caom2_ingestion(tovos):
                           logging.WARN)
 
         self.vosclient.delete(path)
-
 
 class qa_logs(tovos):
     """
