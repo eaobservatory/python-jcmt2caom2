@@ -700,7 +700,8 @@ class jcmt2caom2_ingestion(tovos):
         self.log.console('DEBUG: search ' + rawdir +
                          ' matching ' + rawprefix +
                          ' with stamp < ' + stamp,
-                         logging.WARN)        if rawprefix and rawdir:
+                         logging.WARN)
+        if rawprefix and rawdir:
             rdel = False
             for rlink in self.vosclient.listdir(rawdir, force=True):
                 self.log.console('EXAMINE: ' + rlink)
