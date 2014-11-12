@@ -600,6 +600,10 @@ class jcmt2caom2_ingestion(tovos):
                                        dolddir,
                                        rolddir,
                                        rprefix)
+                            if dolddir != dvosdir:
+                                self.clean_empty(dolddir)
+                            if rolddir != rvosdir:
+                                self.clean_empty(rolddir)
 
             # Now, push the new file into vosdir
             filename = os.path.basename(path)
@@ -632,6 +636,22 @@ class jcmt2caom2_ingestion(tovos):
                     self.log.file('make link ' + rvospath + ' -> ' + vospath)
                     self.push_link(vospath, rvospath)
 
+    def clean_empty(self, datedir):
+        """
+        Remove empty VOspace directories up to three levels deep (YYYY/MM/DD)
+        """
+        # Clean up empty directories, up to three levels
+        # corresponding to YYYY/MM/DD
+        mydir = datedir
+        for n in range(3):
+            if len(self.vosclient.listdir(mydir, 
+                                          force=True)) == 0:
+                self.log.file('delete empty directory' + mydir)
+                self.vosclient.delete(mydir)
+                mydir = os.path.dirname(mydir)
+            else:
+                break        
+        
     def clean(self, path, root, stamp, datedir, rawdir, rawprefix):
         """
         Delete a file from vosroot and clean up any links to that file
@@ -665,20 +685,9 @@ class jcmt2caom2_ingestion(tovos):
                     
                     dpath = datedir + '/' + dfile
                     self.log.file('delete ' + dpath)
-                    self.vosclient.delete(dpath)
                     ddel = True
+                    self.vosclient.delete(dpath)
                     
-                    # Clean up empty directories, up to three levels
-                    # corresponding to YYYY/MM/DD
-                    mydir = datedir
-                    for n in range(3):
-                        if len(self.vosclient.listdir(mydir, 
-                                                      force=True)) == 0:
-                            self.log.file('delete empty directory' + mydir)
-                            self.vosclient.delete(mydir)
-                            mydir = os.path.dirname(mydir)
-                        else:
-                            break
         if not ddel:
             self.log.console('nothing to delete in ' + datedir +
                              ' matching ' + root +
@@ -700,19 +709,8 @@ class jcmt2caom2_ingestion(tovos):
                     if dmm.group('stamp').lower() < stamp:
                         rpath = rawdir + '/' + rlink
                         self.log.file('delete ' + rpath)
+                        rdel = True
                         self.vosclient.delete(rpath)
-
-                        # Clean up empty directories, up to three levels
-                        # corresponding to YYYY/MM/DD
-                        mydir = rawdir
-                        for n in range(3):
-                            if len(self.vosclient.listdir(mydir, 
-                                                          force=True)) == 0:
-                                self.log.file('delete empty directory' + mydir)
-                                self.vosclient.delete(mydir)
-                                mydir = os.path.dirname(mydir)
-                            else:
-                                break
 
         if not rdel:
             self.log.console('nothing to delete in ' + rawdir +
