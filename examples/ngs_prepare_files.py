@@ -538,7 +538,7 @@ def run():
                              tap,
                              log)
             else:
-                newfile = fix_name(a.newmajor, '', infile)
+                newfile = os.path.join(a.newmajor, infile)
                 shutil.copyfile(inpath, newfile)
 
 if __name__ == '__main__':
