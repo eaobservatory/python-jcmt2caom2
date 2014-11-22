@@ -274,7 +274,7 @@ class raw(object):
             default='JCMT',
             help='collection to use for ingestion')
 
-        ap.add_argument('-c', '--check',
+        ap.add_argument('--check',
             action='store_true',
             dest='checkmode',
             help='Check the validity of metadata for this'

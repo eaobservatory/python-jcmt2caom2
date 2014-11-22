@@ -204,7 +204,7 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
                                                 head['OBJECT']).lower(),
                                          'continuum'])
         filter = str(head['FILTER']) + 'um'
-        headerdict['PRODID'] = '-'.join([science-product,
+        headerdict['PRODID'] = '-'.join([science_product,
                                          filter]) 
     
     headerdict['ASN_TYPE'] = 'custom'
@@ -517,7 +517,7 @@ def run():
         
         for infile in filelist:
             # Be sure the directory path exists before creating the FITS file
-            dirpath = os .path.join(a.newmajor, 
+            dirpath = os.path.join(a.newmajor, 
                                     os.path.dirname(infile))
             if not os.path.isdir(dirpath):
                 os.makedirs(dirpath)
