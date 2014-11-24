@@ -96,13 +96,14 @@ class INGESTIBILITY(object):
 class raw(object):
     """
     Use pyCAOM2 to ingest raw JCMT raw data for a single observation using
-    metadata from the COMMON, ACSIS, SCUBA2 and FILES tables in
-    self.database + '.' + self.schema on SYBASE.
-
-    This class requires direct access to the copies of these tables at the CADC.
+    metadata from the COMMON, ACSIS, SCUBA2 and FILES tables from the jcmt
+    database and from the ompproj, ompuser, and ompobslog tables from the 
+    omp database.  This class requires direct access to a database server 
+    hosting copies of these tables.  The module tools4caom2.database is used
+    to query the tables.
+    
     Only read access is required inside this routine to gather the metadata and
-    create the CAOM-2 xml file for the observation.  The module
-    tools4caom2.database is used to query the tables.
+    create the CAOM-2 xml file for the observation.  
 
     The resulting xml file will be pushed back to the CAOM-2 repository to
     complete the put/update, and this must be separately configured.
@@ -204,7 +205,14 @@ class raw(object):
 
         self.outdir = None
         
+        # Database attributes
+        self.conn = None
+        self.schema = 'dbo'
+        self.jcmt_db = None
+        self.omp_db = None
+        
         self.collection = None
+        self.obsid = None
         
         self.checkmode = None
 
@@ -274,12 +282,6 @@ class raw(object):
         else:
             raise RuntimeError('userconfig is not a file: ' +
                                self.userconfigpath)
-        
-        # REQUIRED: onfigure database access
-        if self.userconfig.has_option('database', 'server'):
-            self.server = self.userconfig.get('database', 'server')
-        else:
-            raise RuntimeError('userconfig does not define database server')
         
         # OPTIONAL: configure schema (defaults to dbo)
         if self.userconfig.has_option('database', 'schema'):
@@ -364,8 +366,6 @@ class raw(object):
         self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
         self.log.file('tools4caom2version   = ' + tools4caom2version)
         for line in ['obsid = ' + self.obsid,
-                     'server = ' + self.server,
-                     'database = ' + self.database,
                      'schema = ' + self.schema,
                      'outdir = ' + self.outdir,
                      'loglevel = %d' % self.loglevel,
