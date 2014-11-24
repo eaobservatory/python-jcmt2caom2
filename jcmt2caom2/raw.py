@@ -261,7 +261,6 @@ class raw(object):
             help='working directory for output files')
 
         ap.add_argument('--server',
-            default='SYBASE',
             help='logical name of Sybase server')
         ap.add_argument('--database',
             help='database containing COMMON, ACSIS, SCUBA2 and FILES tables')
@@ -302,7 +301,7 @@ class raw(object):
         
         if args.server:
             self.server = args.server
-        else:
+        if self.userconfig.has_option('database', 'server'):
             self.server = self.userconfig.get('database', 'server')
         
         if args.database:
