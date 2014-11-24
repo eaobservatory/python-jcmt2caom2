@@ -219,7 +219,7 @@ def run():
             for filename in os.listdir(outdir):
                 filepath = os.path.join(outdir, filename)
                 basename, ext = os.path.splitext(filename)
-                if (ext == '.xml') 
+                if (ext == '.xml'):
                     or (ext == '.log' and 
                         re.match(r'caom', filename))):
                     log.console('remove ' + filepath, 
