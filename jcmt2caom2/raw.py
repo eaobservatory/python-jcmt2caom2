@@ -194,7 +194,7 @@ class raw(object):
         Arguments:
         outdir:      working directory for output files
         """
-        self.exedir = os.path.abspath(os.path.dirname(sys.argv[0]))
+        self.exedir = os.path.abspath(os.path.dirname(sys.path[0]))
         self.configpath = os.path.abspath(self.exedir + '/../config')
 
         # config object optionally contains a user configuration object
