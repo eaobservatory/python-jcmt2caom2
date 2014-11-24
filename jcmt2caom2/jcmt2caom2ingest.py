@@ -541,7 +541,7 @@ class jcmt2caom2ingest(caom2ingest):
                             "SELECT"
                             "       Plane.productID, ",
                             "       Plane.time_bounds_cval1,",
-                            "       Plane.time_bounds_cval2",
+                            "       Plane.time_bounds_cval2,",
                             "       Plane.dataRelease,",
                             "       Artifact.uri",
                             "FROM caom2.Observation as Observation",
@@ -1387,7 +1387,7 @@ class jcmt2caom2ingest(caom2ingest):
             tapquery = '\n'.join([
                 "SELECT Observation.collection,",
                 "       Observation.observationID,",
-                "       Plane.productID",
+                "       Plane.productID,",
                 "       Artifact.uri",
                 "FROM caom2.Observation AS Observation",
                 "    INNER JOIN caom2.Plane as Plane",
