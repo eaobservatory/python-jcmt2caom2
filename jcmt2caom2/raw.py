@@ -197,31 +197,12 @@ class raw(object):
         self.exedir = os.path.abspath(os.path.dirname(sys.path[0]))
         self.configpath = os.path.abspath(self.exedir + '/../config')
 
-        # config object optionally contains a user configuration object
-        # this can be left undefined at the CADC, but is needed at other sites
+        # The userconfig contains an instance of ConfigParser.SafeConfigparser.
+        # This is required to configure access to the database.
         self.userconfigpath = '~/.tools4caom2/tools4caom2.config'
-
         self.userconfig = SafeConfigParser()
 
-        if not self.userconfig.has_section('database'):
-            self.userconfig.add_section('database')
-        self.userconfig.set('database', 'server', 'SYBASE')
-        self.userconfig.set('database', 'cred_db', 'jcmt')
-        self.userconfig.set('database', 'read_db', 'jcmt')
-        self.userconfig.set('database', 'write_db', 'jcmt')
-
-        # Set the site-dependent databases containing necessary tables
-        if not self.userconfig.has_section('jcmt'):
-            self.userconfig.add_section('jcmt')
-        self.userconfig.set('jcmt', 'caom_db', 'jcmt')
-        self.userconfig.set('jcmt', 'jcmt_db', 'jcmtmd')
-        self.userconfig.set('jcmt', 'omp_db', 'jcmtmd')
-        
         self.outdir = None
-        
-        self.server = 'SYBASE'
-        self.database = None
-        self.schema = None
         
         self.collection = None
         
@@ -260,20 +241,12 @@ class raw(object):
         ap.add_argument('--outdir',
             help='working directory for output files')
 
-        ap.add_argument('--server',
-            help='logical name of Sybase server')
-        ap.add_argument('--database',
-            help='database containing COMMON, ACSIS, SCUBA2 and FILES tables')
-        ap.add_argument('--schema',
-            default='dbo',
-            help='database schema to use')
-
         ap.add_argument('--collection',
             choices=('JCMT', 'SANDBOX'),
             default='JCMT',
             help='collection to use for ingestion')
 
-        ap.add_argument('-c', '--check',
+        ap.add_argument('--check',
             action='store_true',
             dest='checkmode',
             help='Check the validity of metadata for this'
@@ -282,7 +255,7 @@ class raw(object):
             help='path to log file directory')
         ap.add_argument('--log',
             help='path to log file')
-        ap.add_argument('-d', '--debug',
+        ap.add_argument('--debug',
             dest='loglevel',
             action='store_const',
             const=logging.DEBUG)
@@ -298,30 +271,38 @@ class raw(object):
         if os.path.isfile(self.userconfigpath):
             with open(self.userconfigpath) as UC:
                 self.userconfig.readfp(UC)
+        else:
+            raise RuntimeError('userconfig is not a file: ' +
+                               self.userconfigpath)
         
-        if args.server:
-            self.server = args.server
+        # REQUIRED: onfigure database access
         if self.userconfig.has_option('database', 'server'):
             self.server = self.userconfig.get('database', 'server')
+        else:
+            raise RuntimeError('userconfig does not define database server')
         
-        if args.database:
-            self.userconfig.set('jcmt', 'jcmt_db', args.database)
-            self.userconfig.set('jcmt', 'omp_db', args.database)
-            self.database = args.database
-        elif self.userconfig.has_option('jcmt', 'jcmt_db'):
-            self.database = self.userconfig.get('jcmt', 'jcmt_db')
+        # OPTIONAL: configure schema (defaults to dbo)
+        if self.userconfig.has_option('database', 'schema'):
+            self.schema = self.userconfig.get('database', 'schema')
+        
+        # REQUIRED: Configure database prefixes for the jcmt and omp databases
+        if self.userconfig.has_option('jcmt', 'jcmt_db'):
+            self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' + 
+                            self.schema + '.')
+        else:
+            raise RuntimeError('userconfig does not define jcmt_db')
+
+        if self.userconfig.has_option('jcmt', 'omp_db'):
+            self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' + 
+                           self.schema + '.')
+        else:
+            raise RuntimeError('userconfig does not define omp_db')
 
         if args.collection:
             self.collection = args.collection
 
         self.obsid = args.key
-        self.schema = args.schema
-        
-        self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' + 
-                        self.schema + '.')
-        self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' + 
-                       self.schema + '.')
-        
+                
         if args.outdir:
             self.outdir = os.path.abspath(
                               os.path.expanduser(
