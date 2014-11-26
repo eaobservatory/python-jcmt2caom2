@@ -177,16 +177,16 @@ def run():
         retvals = None
         # ingest the recipe instances in subprocesses
         rawcmd = [os.path.join(sys.path[0], 'jcmt2caom2raw'),
-                  ' --logdir=' + logdir,
-                  ' --outdir=' + outdir,
-                  ' --userconfig=' + userconfigpath]
+                  '--logdir=' + logdir,
+                  '--outdir=' + outdir,
+                  '--userconfig=' + userconfigpath]
         if a.debug:
-            rawcmd.append(' --debug')
+            rawcmd.append('--debug')
 
         for obsid in obsid_list:
             thisrawcmd = []
             thisrawcmd.extend(rawcmd)
-            thisrawcmd.append(' --key=' + obsid)
+            thisrawcmd.append('--key=' + obsid)
             log.console('PROGRESS: ' + obsid)
             log.file(' '.join(thisrawcmd))
             
