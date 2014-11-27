@@ -1,0 +1,6 @@
+#!/usr/bin/env python2.7
+
+from jcmt2caom2.setfield import setfield
+
+mysetfield = setfield()
+mysetfield.run()
