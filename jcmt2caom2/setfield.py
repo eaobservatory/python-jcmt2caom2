@@ -3,121 +3,77 @@
 __author__ = "Russell O. Redman"
 
 import argparse
-from ConfigParser import SafeConfigParser
-import errno
+from collections import OrderedDict
+from datetime import datetime
 import logging
-import math
 import os.path
 import re
 import shutil
 import sys
 import traceback
-import vos
 
 from caom2.xml.caom2_observation_reader import ObservationReader
 from caom2.xml.caom2_observation_writer import ObservationWriter
 
-from caom2.caom2_simple_observation import SimpleObservation
-from caom2.caom2_enums import CalibrationLevel
-from caom2.caom2_enums import ObservationIntentType
-from caom2.caom2_energy_transition import EnergyTransition
-from caom2.caom2_environment import Environment
-from caom2.caom2_instrument import Instrument
-from caom2.caom2_proposal import Proposal
-from caom2.caom2_target import Target
-from caom2.caom2_target_position import TargetPosition
-from caom2.caom2_telescope import Telescope
+from caom2.caom2_observation import Observation
 from caom2.caom2_observation_uri import ObservationURI
 from caom2.caom2_plane import Plane
-from caom2.caom2_artifact import Artifact
-from caom2.caom2_part import Part
-from caom2.caom2_chunk import Chunk
-from caom2.types.caom2_point import Point
-from caom2.wcs.caom2_axis import Axis
-from caom2.wcs.caom2_spatial_wcs import SpatialWCS
-from caom2.wcs.caom2_coord_axis2d import CoordAxis2D
-from caom2.wcs.caom2_dimension2d import Dimension2D
-from caom2.wcs.caom2_coord_polygon2d import CoordPolygon2D
-from caom2.wcs.caom2_value_coord2d import ValueCoord2D
-from caom2.wcs.caom2_ref_coord import RefCoord
-from caom2.wcs.caom2_spectral_wcs import SpectralWCS
-from caom2.wcs.caom2_coord_axis1d import CoordAxis1D
-from caom2.wcs.caom2_coord_error import CoordError
-from caom2.wcs.caom2_coord_bounds1d import CoordBounds1D
-from caom2.wcs.caom2_coord_circle2d import CoordCircle2D
-from caom2.wcs.caom2_coord_range1d import CoordRange1D
-from caom2.wcs.caom2_coord_range2d import CoordRange2D
-from caom2.wcs.caom2_temporal_wcs import TemporalWCS
-from caom2.caom2_enums import ProductType
 
-from tools4caom2.database import database
-from tools4caom2.database import connection
 from tools4caom2.caom2repo_wrapper import Repository
-from tools4caom2.mjd import utc2mjd
+from tools4caom2.timezone import UTC
 from tools4caom2.logger import logger
+from tools4caom2.tapclient import tapclient
 from tools4caom2.utdate_string import utdate_string
 import tools4caom2.__version__
-
-from jcmt2caom2.jsa.quality import JCMT_QA
-from jcmt2caom2.jsa.quality import JSA_QA
-from jcmt2caom2.jsa.quality import quality
-
-from jcmt2caom2.jsa.intent import intent
-from jcmt2caom2.jsa.target_name import target_name
-from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
-from jcmt2caom2.jsa.instrument_name import instrument_name
-from jcmt2caom2.jsa.raw_product_id import raw_product_id
-from jcmt2caom2.jsa.twod import TwoD
-from jcmt2caom2.jsa.threed import ThreeD
-
-from jcmt2caom2 import tovos 
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 __doc__ = """
-The update class is used to update specific fields in a set of existing caom2 
-observations, i.e. each observation will be read from the CAOM-2 repository,
-updated, and written back to the repository.  Observations to be updated are 
-identified through the provenance_runID.  Only a few fields can be
-updated, based on values passed in through the command line arguments,
-and the same value will be assigned to the specified field in every observation.
+The setfield class is used to update specific fields in a set of existing caom2 
+observations identified by the value of provenance_runID in at least one
+of their planes.  Each observation will be read from the CAOM-2 repository,
+the specified fields will be updated in the planes with the matching values of
+provenance_runID, and the observations written back to the repository.  Only a 
+few fields can be set with this routine, selected by command line arguments,
+and the same value will be assigned to the specified field in every matching
+plane.
 """
 
-class update(object):
+class setfield(object):
     def __init__(self):
         """
-        Create a jcmt2caom2.update instance to update specific fields in a set
-        of observations.
+        Create a jcmt2caom2.update instance to update specific fields in the
+        matching planes of a set of observations.
         """
-        self.exedir = os.path.abspath(os.path.dirname(sys.argv[0]))
+        if sys.argv[0] and sys.argv[0] != '-c':
+            self.progname = os.path.basename(sys.argv[0])
+        else:
+            self.progname = 'setfield'
+        
+        if sys.path[0]:
+            self.exedir = os.path.abspath(os.path.dirname(sys.path[0]))
+        else:
+            self.exedir = os.getcwd()
+        
         self.configpath = os.path.abspath(self.exedir + '/../config')
 
-        # config object optionally contains a user configuration object
-        # this can be left undefined at the CADC, but is needed at other sites
-        self.userconfigpath = '~/.tools4caom2/tools4caom2.config'
-
-        self.userconfig = SafeConfigParser()
-
-        self.outdir = '.'
+        self.outdir = None
         
         self.collection = None
         self.collections = ('JCMT', 'JCMTLS', 'JCMRUSER', 'SANDBOX')
+        
+        self.runid = None
+        self.releasedate = None
+        self.reference = None
         
         self.logdir = ''
         self.logfile = ''
         self.loglevel = logging.INFO
         self.log = None
-        self.errors = False
-        self.warnings = False
-        self.junk = False
-        
-        self.voscopy = None
-        self.vosroot = 'vos:jsaops'
         
         self.reader = ObservationReader(True)
         self.writer = ObservationWriter()
-        self.conn = None
 
     def parse_command_line(self):
         """
@@ -131,6 +87,10 @@ class update(object):
         and --reference must be specified.
         """
         ap = argparse.ArgumentParser()
+        ap.add_argument('--proxy',
+            default='~/.ssl/cadcproxy.pem',
+            help='path to CADC proxy')
+        
         ap.add_argument('--outdir',
             default='.',
             help='working directory for output files')
@@ -160,24 +120,51 @@ class update(object):
             dest='loglevel',
             action='store_const',
             const=logging.DEBUG)
-        args = ap.parse_args()
+        self.args = ap.parse_args()
 
-        if args.collection:
-            self.collection = args.collection
+        self.proxy = os.path.abspath(
+                        os.path.expandvars(
+                            os.path.expanduser(self.args.proxy)))
+
+        if self.args.collection == 'ALL':
+            self.collection = self.collections
+        else:
+            self.collection = (self.args.collection,)
+        self.runid = self.args.runid
+        if self.args.releasedate:
+            dt_string =  self.args.releasedate
+            if re.match(r'^\d{8}$',
+                        self.args.releasedate):
+                dt = ('-'.join([dt_string[0:4], 
+                                dt_string[4:6], 
+                                dt_string[6:8]]) + 'T00:00:00')
+            elif re.match(r'^[^\d]*(\d{1,4}-\d{2}-\d{2})$', dt_string):
+                dt = dt_string + 'T00:00:00'
+            else:
+                raise ValueError('the string "%s" does not match a utdate '
+                                 'YYYYMMDD or ISO YYYY-MM-DD format:' 
+                                 % (dt_string))
+            self.releasedate = datetime.strptime(dt, 
+                                                 '%Y-%m-%dT%H:%M:%S')
+        elif self.args.reference:
+            self.reference = self.args.reference
+        else:
+            raise RuntimeError('one of --releasedate or --reference '
+                               'must be given')
 
         self.outdir = os.path.abspath(
                           os.path.expanduser(
-                              os.path.expandvars(args.outdir)))
+                              os.path.expandvars(self.args.outdir)))
 
         self.logdir = os.path.abspath(
                            os.path.expanduser(
-                               os.path.expandvars(args.logdir)))        
-        if args.log:
-            self.logfile = args.log
-        if args.loglevel:
-            self.loglevel = args.loglevel
+                               os.path.expandvars(self.args.logdir)))        
+        if self.args.log:
+            self.logfile = self.args.log
+        if self.args.loglevel:
+            self.loglevel = self.args.loglevel
 
-        self.checkmode = args.checkmode
+        self.test = self.args.test
 
     def setup_logger(self):
         """
@@ -192,7 +179,7 @@ class update(object):
                                os.path.expanduser(
                                    os.path.expandvars(self.logfile)))
         else:
-            defaultlogname = 'jcmt2caom2setfields_' + utdate_string() + '.log'
+            defaultlogname = 'jcmt2caom2setfield_' + utdate_string() + '.log'
             if self.logdir:
                 if not os.path.isdir(self.logdir):
                     raise RuntimeError('logdir = ' + self.logdir +
@@ -211,18 +198,17 @@ class update(object):
         Arguments:
         <None>
         """
-        self.log.file(sys.argv[0])
+        self.log.console('logfile = ' + self.logfile)
+        self.log.file(self.progname)
         self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
         self.log.file('tools4caom2version   = ' + tools4caom2version)
-        for line in ['obsid = ' + self.obsid,
-                     'server = ' + self.server,
-                     'database = ' + self.database,
-                     'schema = ' + self.schema,
-                     'outdir = ' + self.outdir,
-                     'loglevel = %d' % self.loglevel,
-                     'checkmode = ' + str(self.checkmode)]:
-            self.log.file(line)
-        self.log.console('Logfile = ' + self.logfile)
+        for attr in dir(self.args):
+            if attr != 'id' and attr[0] != '_':
+                self.log.file('%-15s= %s' % 
+                                 (attr, str(getattr(self.args, attr))))
+        self.log.file('exedir = ' + self.exedir)
+        self.log.file('outdir = ' + self.outdir)
+        self.log.file('logdir = ' + self.logdir)
 
     def update(self):
         """
@@ -237,53 +223,62 @@ class update(object):
         else:
             repository = Repository(self.outdir, self.log, debug=False)
 
+        tapcmd = '\n'.join([
+            'SELECT',
+            '    Observation.collection,',
+            '    Observation.observationID,',
+            '    Plane.productID',
+            'FROM',
+            '    caom2.Observation AS Observation',
+            '        INNER JOIN caom2.Plane AS Plane',
+            '            ON Observation.obsID=Plane.obsID',
+            'WHERE',
+            '    Plane.provenance_runID=' + "'" + self.runid + "'",
+            'ORDER BY Observation.collection, ',
+            '         Observation.observationID, ',
+            '         Plane.productID'])
+        result = self.tap.query(tapcmd)
+        result_dict = OrderedDict()
+        
+        if result:
+            for coll, obsid, prodid in result:
+                if coll not in result_dict:
+                    result_dict[coll] = OrderedDict()
+                if obsid not in result_dict[coll]:
+                    result_dict[coll][obsid] = []
+                if prodid not in result_dict[coll][obsid]:
+                    result_dict[coll][obsid].append(prodid)
 
-        if run_id not in self.remove_id:
-            self.remove_id.append(run_id)
-            tapcmd = '\n'.join([
-                'SELECT',
-                '    Observation.collection,',
-                '    Observation.observationID,',
-                '    Plane.productID,',
-                '    Plane.provenance_runID',
-                'FROM',
-                '    caom2.Observation AS Observation',
-                '        INNER JOIN caom2.Plane AS Plane',
-                '            ON Observation.obsID=Plane.obsID',
-                '        INNER JOIN caom2.Plane AS Plane2',
-                '            ON observation.obsID=Plane2.obsID',
-                'WHERE',
-                '    Plane2.provenance_runID=' + "'" + run_id + "'",
-                'ORDER BY Observation.collection, ',
-                '         Observation.observationID, ',
-                '         Plane.productID'])
-            result = self.tap.query(tapcmd)
-            if result:
-                for coll, obsid, prodid, run in result:
-                    this_runID = run
-                    eq = (1 if this_runID == run_id else 0)
-                    # Ignore entries in other collections
-                    if coll == self.collection:
-                        if coll not in self.remove_dict:
-                            self.remove_dict[coll] = {}
-                        if obsid not in self.remove_dict[coll]:
-                            self.remove_dict[coll][obsid] = {}
-                        if prodid not in self.remove_dict[coll][obsid]:
-                            self.remove_dict[coll][obsid][prodid] = eq
+        for coll in result_dict:
+            for obsid in result_dict[coll]:
+                uri = 'caom:' + coll + '/' + obsid
+                self.log.console('PROGRESS: ' + uri)
+                with repository.process(uri) as xmlfile:
+                    try:
+                        observation = self.reader.read(xmlfile)
+                        if self.releasedate:
+                            observation.metaRelease = self.releasedate
+                        for productID in observation.planes:
+                            self.log.console('PROGRESS:    ' + uri + '/' +
+                                             productID,
+                                             logging.DEBUG)
+                            plane = observation.planes[productID]
+                            if productID in result_dict[coll][obsid]:
+                                if self.releasedate:
+                                    plane.data_release = self.releasedate
+                                    plane.meta_release = self.releasedate
+                                if self.reference:
+                                    plane.provenance_reference = self.reference
 
-        uri = 'caom:' + self.collection + '/' + common['obsid']
-            with repository.process(uri) as xmlfile:
-                try:
-                    observation = self.reader.read(xmlfile)
-                    # do something
+                        if not self.test:
+                            with open(xmlfile, 'w') as XMLFILE:
+                                self.writer.write(observation, XMLFILE)
+                    except:
+                        self.log.console('Cannot process ' + uri + ':\n' +
+                                         traceback.format_exc(),
+                                         logging.ERROR)
 
-                    with open(xmlfile, 'w') as XMLFILE:
-                        self.writer.write(observation, XMLFILE)
-                except:
-                    self.log.console('Cannot get observation ' + uri,
-                                     logging.ERROR)
-
-            self.log.console('SUCCESS: Observation ' + self.obsid + 
+            self.log.console('SUCCESS: Observation ' + obsid + 
                  ' has been ingested')
 
 
@@ -300,6 +295,7 @@ class update(object):
                     loglevel = self.loglevel).record() as self.log:
             try:
                 self.logCommandLineSwitches()
+                self.tap = tapclient(self.log, self.proxy)
                 self.update()
                 self.log.console('DONE')
             except Exception as e:
