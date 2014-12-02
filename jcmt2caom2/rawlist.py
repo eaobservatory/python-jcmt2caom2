@@ -24,11 +24,11 @@ from jcmt2caom2.__version__ import version as jcmt2caom2version
 def run():
     """
     Ingest raw JCMT observations from one or more obsid lists.
-    This is just a mid-level script to run jcmt2caom2raw many times.
+    This is just a mid-level script to run jsaraw many times.
     
     Examples:
-    jcmt2caom2rawlist scuba2_00021_20141116T072609 scuba2_00020_20141116T072123
-    jcmt2caom2rawlist reingest_list.obsid
+    jsarawlist scuba2_00021_20141116T072609 scuba2_00020_20141116T072123
+    jsarawlist reingest_list.obsid
     """
     if sys.path[0]:
         exedir = sys.path[0]
@@ -39,13 +39,13 @@ def run():
     utdate_str = utdate_string()
     userconfigpath = '~/.tools4caom2/tools4caom2.config'
 
-    ap = argparse.ArgumentParser('jcmt2caom2rawlist')
+    ap = argparse.ArgumentParser('jsarawlist')
     ap.add_argument('--userconfig',
                     default=userconfigpath,
                     help='path to user configuration file')
 
     ap.add_argument('--log',
-                    default='jcmt2caom2rawlist_' + utdate_str + '.log',
+                    default='jsarawlist_' + utdate_str + '.log',
                     help='(optional) name of log file')
     ap.add_argument('--logdir',
                     default='.',
@@ -86,7 +86,7 @@ def run():
     
     loglevel = logging.INFO
     
-    # Not used inside jcmt2caom2rawlist, but passed to jcmt2caom2raw
+    # Not used inside jsarawlist, but passed to jsaraw
     userconfigpath = os.path.abspath(
                         os.path.expanduser(
                             os.path.expandvars(a.userconfig)))
@@ -176,7 +176,7 @@ def run():
         
         retvals = None
         # ingest the recipe instances in subprocesses
-        rawcmd = [os.path.join(sys.path[0], 'jcmt2caom2raw'),
+        rawcmd = [os.path.join(sys.path[0], 'jsaraw'),
                   '--logdir=' + logdir,
                   '--outdir=' + outdir,
                   '--userconfig=' + userconfigpath]
