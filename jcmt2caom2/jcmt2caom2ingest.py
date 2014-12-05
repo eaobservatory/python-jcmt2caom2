@@ -369,11 +369,8 @@ class jcmt2caom2ingest(caom2ingest):
                     for (coll,) in results:
                         # Do not raise errors for ingestions into the SANDBOX
                         # or into JCMT if coll is also JCMT.
-                        if not (self.collection == 'SANDBOX' 
-                                or (self.collection == 'JCMT'
-                                    and coll == 'JCMT')):
-                            
-                            if coll == self.collection:
+                        if coll == self.collection:
+                            if self.collection in ('JCMTLS', 'JCMTUSER'):
                                 if not self.replace:
                                     # Raise an error if --replace not is 
                                     # specified but the observation already 
@@ -384,21 +381,14 @@ class jcmt2caom2ingest(caom2ingest):
                                            self.observationID +
                                            '" already exists in collection = "' +
                                            self.collection + '"')
-                            else:
-                                #
-                                self.dew.warning(filename,
-                                       'observationID = "' + self.observationID +
-                                       '" is also in use in collection = "' +
-                                       coll + '"')
-                elif self.replace:
-                    # Raise an error if --replace is specified
-                    # but the observation does not exist
-                    self.dew.error(filename,
-                           'when --replace is specified, observationID = "' + 
-                           self.observationID +
-                           '" must be already in collection = "' +
-                           self.collection + '"')
-                        
+                        elif self.collection != 'SANDBOX':
+                            # Complain if the observation matches
+                            # an observation in a different collection
+                            self.dew.warning(filename,
+                                   'observationID = "' + self.observationID +
+                                   '" is also in use in collection = "' +
+                                   coll + '"')
+        
 
         self.add_to_plane_dict('algorithm.name', algorithm)
 
