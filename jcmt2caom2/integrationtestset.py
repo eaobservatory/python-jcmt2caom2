@@ -32,7 +32,7 @@ https://wiki.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/caom2/index.php/IntegrationTestSet
 
 class integrationtestset(object):
     """
-    Use jcmt2caom2raw and jcmt2caom2proc to ingest the integration test set
+    Use jsaraw and jsaingest to ingest the integration test set
     into the SANDBOX collection and/or caom2repo.py to remove the the test
     set observations from the SANDBOX.
     
@@ -143,13 +143,13 @@ class integrationtestset(object):
                 self.testset[title][criterion]['proc'] = []
                 self.testset[title][criterion]['clean'] = []
             
-            mr = re.match(r'^.*jcmt2caom2raw.*--key=(\S+)\s*$', line)
+            mr = re.match(r'^.*jsaraw.*--key=(\S+)\s*$', line)
             if mr:
                 self.testset[title][criterion]['raw'].append(mr.group(1))
                 self.log.file('  raw: ' + mr.group(1),
                               logging.DEBUG)
 
-            mp = re.match(r'^.*jcmt2caom2proc.*dp:(\S+)([#\s].*)$', line)
+            mp = re.match(r'^.*jsaingest.*dp:(\S+)([#\s].*)$', line)
             if mp:
                 self.testset[title][criterion]['proc'].append(mp.group(1))
                 self.log.file(' proc: ' + mp.group(1),
@@ -198,10 +198,10 @@ class integrationtestset(object):
            
     def ingest_raw(self):
         """
-        Ingest the set of raw observations into SANDBOX using jcmt2caom2raw
+        Ingest the set of raw observations into SANDBOX using jsaraw
         """
         if self.args.raw:
-            rawcmd = os.path.join(sys.path[0], 'jcmt2caom2raw')
+            rawcmd = os.path.join(sys.path[0], 'jsaraw')
             rawcmd += ' --outdir=' + self.outdir
             rawcmd += ' --collection=SANDBOX'
             for raw in self.rawlist:
@@ -218,10 +218,10 @@ class integrationtestset(object):
                 
     def ingest_proc(self):
         """
-        ingest the set of recipe instances into SANDBOX using jcmt2caom2proc
+        ingest the set of recipe instances into SANDBOX using jsaingest
         """
         if self.args.proc:
-            proccmd = os.path.join(sys.path[0], 'jcmt2caom2proc')
+            proccmd = os.path.join(sys.path[0], 'jsaingest')
             proccmd += ' --outdir=' + self.outdir 
             proccmd += ' --collection=SANDBOX'
             if self.args.debug:

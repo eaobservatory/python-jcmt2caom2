@@ -1455,18 +1455,9 @@ class jcmt2caom2ingest(caom2ingest):
                              fitsuri):
         """
         Customize the xml file with fitsuri-specific metadata.  For
-        jcmt2caom2proc, this comprises the time structure constructed from the
+        jsaingest, this comprises the time structure constructed from the
         OBSID for simple observations or list of OBSn values for composite
         observations.
-        
-        It has been found that fits2caom2 is generating false WCS structures 
-        for JCMT files and that these fluff up the xml file to the point that
-        fits2caom2 runs out of memory and crashes.  This is exacerbated by the
-        large number of files that can be present in a JCMT observation, 
-        especially multi-tiled obs products.  The kludge to work around this 
-        problem is to check whether each part has product_type == 
-        ProductType.SCIENCE, if so add the time to each chunk and if not
-        to DELETE ALL CHUNKS IN TH PART!!!
         """
         thisCustom = \
             self.metadict[collection][observationID][planeID][fitsuri]['custom']
