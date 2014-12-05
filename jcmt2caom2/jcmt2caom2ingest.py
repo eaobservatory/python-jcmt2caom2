@@ -72,11 +72,9 @@ def is_defined(key, header):
         
 def is_blank(key, header):
     """
-    return True if key is in header and has a defined value, False otherwise
-    This is useful for optional headers whose absence is not an error, or for
-    metadata with more complicated logic than is supported using the prepackaged
-    tests in delayed_error_warn.  Use the error() or warn() methods from that 
-    package to report errors and warnings that affect ingestion.
+    return True if key is in header and has an undefined value, False otherwise
+    This is useful for optional headers whose presence or absence acts as a flag
+    for some condition. 
     """
     return (key in header and header[key] == pyfits.card.UNDEFINED)
 
@@ -115,9 +113,8 @@ class jcmt2caom2ingest(caom2ingest):
         
         # These defaults are for CADC use, but can be overriden in userconfig.
 
-        # The server and cred_db are used to get database credentials at the CADC.
-        # Other sites should supply cadc_id, cadc_key in the section [cadc] of
-        # the userconfig file.
+        # Database credenials are set using cred_id, cred_key in the section 
+        # [database] of the userconfig file.
         self.userconfigpath = '~/.tools4caom2/tools4caom2.config'
         if self.sybase_defined:
             if not self.userconfig.has_section('database'):
@@ -138,6 +135,7 @@ class jcmt2caom2ingest(caom2ingest):
         # should not be used for the JCMT.
         self.database = 'jcmt'
         self.collection_choices = ['JCMT', 'JCMTLS', 'JCMTUSER', 'SANDBOX']
+        self.collection_prefix = ['JCMTLS', 'JCMTUSER']
 
         # set default locations for the fits2caom2 config files
         if not os.path.isdir(self.configpath):

@@ -29,7 +29,7 @@ for ingestion into the JSA.
 
 planeURI_cache = {}
  
-def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
+def rewrite_fits(insdf, outfits, project_name, dprcisnt, workdir, tap, log):
     """
     Rewrite a single sdf file into FITS, setting custom headers as needed.
     
@@ -44,6 +44,7 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
     insdf: input file, which will be in Starlink NDF format
     outfits: output file, which will be in FITS format
     project_name: used to label things, esp. in observationID
+    dprcinst: data processing recipe instance identifier
     workdir: absolute path to the working directory (cwd by default)
     tap: a tools4caom2.tapclient object
     log: a tools4caom2.logger object
@@ -279,9 +280,9 @@ def rewrite_fits(insdf, outfits, project_name, workdir, tap, log):
     # Ask who gets the credit
     headerdict['PRODUCER'] = 'NGS'
     
-    # Supply a default for DPRCINST, which will be overridden when the 
-    # real ingestion in made from VOspace
-    headerdict['DPRCINST'] = 'DEFAULT'
+    # Fill the data processing recipe instance identifier, filled in this project
+    # with the project name, galaxy class and galaxy ID.
+    headerdict['DPRCINST'] = dprcinst
     
     # A suitable, representative processing datetime
     headerdict['DPDATE'] = '2010-07-07T00:00:00'
@@ -433,16 +434,16 @@ def run():
     """
     progname = os.path.basename(os.path.splitext(sys.path[1])[0])
 
-    ap = argparse.ArgumentParser('ngs_prepare_files')
+    ap = argparse.ArgumentParser(progname)
 
     ap.add_argument('--proxy',
                     default='~/.ssl/cadcproxy.pem',
                     help='path to CADC proxy')
 
-    ap.add_argument('--major',
+    ap.add_argument('--indir',
                     help='existing release directory')
-    ap.add_argument('--newmajor',
-                    help='new major release directory to which files will be written')
+    ap.add_argument('--outdir',
+                    help='new release directory to which files will be written')
     # default prefix is the same as the NGS project name
     ap.add_argument('--prefix',
                     default='jcmt-ngs',
@@ -486,38 +487,38 @@ def run():
                     os.path.expandvars(
                         os.path.expanduser(a.workdir)))
 
-        # Convert a.major into an abspath and verify that it is a directory
-        if not a.major:
-            log.console('specify --major as the path to the input directory',
+        # Convert a.indir into an abspath and verify that it is a directory
+        if not a.indir:
+            log.console('specify --indir as the path to the input directory',
                         logging.ERROR)
-        a.major = os.path.abspath(
+        a.indir = os.path.abspath(
                     os.path.expandvars(
-                        os.path.expanduser(a.major)))
-        if not os.path.isdir(a.major):
-            log.console('major directory ' + a.major + 
+                        os.path.expanduser(a.indir)))
+        if not os.path.isdir(a.indir):
+            log.console('indir = ' + a.indir + 
                         ' is not a directory',
                         logging.ERROR)
 
-        # Convert a.newmajor into an abspath and verify that it is a directory
-        if not a.newmajor:
-            log.console('specify both --major and --newmajor, since it is '
+        # Convert a.outdir into an abspath and verify that it is a directory
+        if not a.outdir:
+            log.console('specify both --indir and --outdir, since it is '
                         'forbidden to overwrite the original files',
                         logging.ERROR)
-        a.newmajor = os.path.abspath(
+        a.outdir = os.path.abspath(
                    os.path.expandvars(
-                       os.path.expanduser(a.newmajor)))
-        if not os.path.isdir(a.newmajor):
-            log.console('output directory ' + a.newmajor + 
+                       os.path.expanduser(a.outdir)))
+        if not os.path.isdir(a.outdir):
+            log.console('output directory ' + a.outdir + 
                         ' is not a directory',
                         logging.ERROR)
         
-        # filelist contains a list of file paths relative to a.major.
+        # filelist contains a list of file paths relative to a.indir.
         filelist = []
-        readfilelist(a.major, '', filelist, log)
+        readfilelist(a.indir, '', filelist, log)
         
         for infile in filelist:
             # Be sure the directory path exists before creating the FITS file
-            dirpath = os.path.join(a.newmajor, 
+            dirpath = os.path.join(a.outdir, 
                                     os.path.dirname(infile))
             if not os.path.isdir(dirpath):
                 os.makedirs(dirpath)
@@ -526,19 +527,37 @@ def run():
             if os.path.splitext(infile)[1] == '.fits':
                 continue
     
-            inpath = os.path.join(a.major, infile)
+            inpath = os.path.join(a.indir, infile)
             if is_ingestible(inpath):
+                # Data files are always in a dirctory called Data in the NGS.
+                # The galaxy class and object name are the preceding two
+                # directories.
+                dirparts = infile.split('/')
+                dprcinst = ''
+                i = -1
+                for part in dirparts:
+                    i += 1
+                    if part == 'Data':
+                        break
+                if i > 1:
+                    dprcinst = '/'.join([prefix, dirparts[i-2], dirparts[i-1]])
+                if not dprcinst:
+                    log.console('could not form dprcinst from ' + repr(dirparts),
+                                logging.ERROR) 
+                                
                 # Add the prefix to fits files generated from sdf files,
                 # but not to other files that will simply be copied.
-                newfile = fix_name(a.newmajor, a.prefix, infile)
+                newfile = fix_name(a.outdir, a.prefix, infile)
+                
                 rewrite_fits(inpath, 
                              newfile, 
                              a.prefix,
+                             dprcinst,
                              workdir,
                              tap,
                              log)
             else:
-                newfile = os.path.join(a.newmajor, infile)
+                newfile = os.path.join(a.outdir, infile)
                 shutil.copyfile(inpath, newfile)
 
 if __name__ == '__main__':

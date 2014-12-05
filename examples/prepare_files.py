@@ -88,7 +88,8 @@ def rewrite_fits(infits, outfits, headerdict):
             newkeys = True
     
     # if so, add a comment to label the section containing new keys
-    hdu.add_comment('JSA Headers')
+    endcard = len(head)
+    head.update('', '', comment='JSA Headers', after=endcard)
     
     # update FITS headers with those supplied in headerdict
     for key in sorted(headerdict.keys()):
@@ -194,15 +195,11 @@ def run():
                      'INPCNT']
 
     ap = argparse.ArgumentParser('jcmt_prepare_files')
-    ap.add_argument('--major',
-                    help='existing major release directory')
-    ap.add_argument('--minor',
-                    help='existing minor release subdirectory within the '
-                         'major release; if omited, minor=major')
-    ap.add_argument('--newmajor',
-                    help='new major release directory to which files will be '
-                         'written, preserving the minor release directory '
-                         'structure')
+    ap.add_argument('--indir',
+                    help='existing release directory')
+    ap.add_argument('--outdir',
+                    help='new release directory to which files will be '
+                         'written')
     ap.add_argument('--prefix',
                     default='',
                     help='optional prefix for new file names')
@@ -251,48 +248,39 @@ def run():
                                 'being ignored',
                                 logging.WARN)
 
-        if not a.major and not a.csv:
-            log.console('specify either --major or --csv for input; '
+        if not a.indir and not a.csv:
+            log.console('specify either --indir or --csv for input; '
                         'if both are given the csv file will be output',
                         logging.ERROR)
 
-        if a.major:
-            if not a.minor:
-                a.minor = ''
-        
-            if not a.newmajor:
-                log.console('specify both --major and --newmajor, since it is '
+        if a.indir:
+            if not a.outdir:
+                log.console('specify both --indir and --outdir, since it is '
                             'forbidden to overwrite the original files',
                             logging.ERROR)
             
-            a.major = os.path.abspath(
+            a.indir = os.path.abspath(
                         os.path.expandvars(
-                            os.path.expanduser(a.major)))
+                            os.path.expanduser(a.indir)))
             
-            a.newmajor = os.path.abspath(
+            a.outdir = os.path.abspath(
                             os.path.expandvars(
-                                os.path.expanduser(a.newmajor)))
+                                os.path.expanduser(a.outdir)))
             
-            if not os.path.isdir(a.major):
-                log.console('major directory ' + a.major + 
+            if not os.path.isdir(a.indir):
+                log.console('indir = ' + a.indir + 
                             ' is not a directory',
                             logging.ERROR)
 
-            abs_minor = os.path.abspath(os.path.join(a.major, a.minor))
-            if not os.path.isdir(abs_minor):
-                log.console('minor directory ' + abs_minor + 
-                            ' is not a directory',
-                            logging.ERROR)
-            
-            if not os.path.isdir(a.newmajor):
-                log.console('output directory ' + a.newmajor + 
+            if not os.path.isdir(a.outdir):
+                log.console('output directory ' + a.outdir + 
                             ' is not a directory',
                             logging.ERROR)
             
             filelist = []
-            readfilelist(a.major, a.minor, fits_and_png, filelist, log)
-            infile = [os.path.join(a.major, f) for f in filelist]
-            outfile = [fix_name(a.newmajor, a.prefix, f) for f in filelist]
+            readfilelist(a.indir, '', fits_and_png, filelist, log)
+            infile = [os.path.join(a.indir, f) for f in filelist]
+            outfile = [fix_name(a.outdir, a.prefix, f) for f in filelist]
             
             # if a CSV filename is given, open it for output
             try:
