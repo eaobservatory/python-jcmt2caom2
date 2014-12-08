@@ -97,7 +97,6 @@ def run():
         with open(userconfigpath) as UC:
             userconfig.readfp(UC)
 
-    caom_db = userconfig.get('jcmt', 'caom_db') + '.dbo.'
     jcmt_db = userconfig.get('jcmt', 'jcmt_db') + '.dbo.'
     omp_db =  userconfig.get('jcmt', 'omp_db')  + '.dbo.'
 

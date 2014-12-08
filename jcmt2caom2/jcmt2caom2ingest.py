@@ -1,7 +1,7 @@
 #!/usr/bin/env python2.7
 """
-The stdpipe class immplements methods to collect metadata from a a set of FITS
-files and from the jcmtmd database that will be passed to fits2caom2 to
+The jcmt2caom2ingest class immplements methods to collect metadata from a set 
+of FITS files and from the jcmt database that will be passed to fits2caom2 to
 construct a caom2 observation.  Once completed, it is serialized to a temporary
 xml file in workdir and copied to the CAOM-2 repository.
 
@@ -84,7 +84,8 @@ class jcmt2caom2ingest(caom2ingest):
     products into the JSA.
     """
     speedOfLight = 2.99792485e8 # Speed of light in m/s
-    lambda_csotau = 225.0e9 # Frequency of CSO tau meter in Hz
+    freq_csotau = 225.0e9 # Frequency of CSO tau meter in Hz
+    lambda_csotau = '%12.9f' % (speedOfLight / freq_csotau)
     proc_acsis_regex = \
         r'jcmth(20[\d]{2})(0[1-9]|1[012])(0[1-9]|[12][0-9]|3[01])_' +\
         r'([\d]{5})_(0[0-4])_(cube[\d]{3}|reduced[\d]{3}|rimg|rsp|rvel|' + \
@@ -111,31 +112,15 @@ class jcmt2caom2ingest(caom2ingest):
         self.voscopy = None
         self.vosroot = 'vos:jsaops'
         
-        # These defaults are for CADC use, but can be overriden in userconfig.
-
         # Database credenials are set using cred_id, cred_key in the section 
         # [database] of the userconfig file.
         self.userconfigpath = '~/.tools4caom2/tools4caom2.config'
-        if self.sybase_defined:
-            if not self.userconfig.has_section('database'):
-                self.userconfig.add_section('database')
-            self.userconfig.set('database', 'server', 'SYBASE')
-            self.userconfig.set('database', 'cred_db', 'jcmt')
-            self.userconfig.set('database', 'read_db', 'jcmt')
-            self.userconfig.set('database', 'write_db', 'jcmt')
-
-            # Set the site-dependent databases containing necessary tables
-            if not self.userconfig.has_section('jcmt'):
-                self.userconfig.add_section('jcmt')
-            self.userconfig.set('jcmt', 'caom_db', 'jcmt')
-            self.userconfig.set('jcmt', 'jcmt_db', 'jcmtmd')
-            self.userconfig.set('jcmt', 'omp_db', 'jcmtmd')
         
         # This is needed for compatability with other uses of caom2ingest, but
         # should not be used for the JCMT.
         self.database = 'jcmt'
         self.collection_choices = ['JCMT', 'JCMTLS', 'JCMTUSER', 'SANDBOX']
-        self.collection_prefix = ['JCMTLS', 'JCMTUSER']
+        self.external_collections = ['JCMTLS', 'JCMTUSER']
 
         # set default locations for the fits2caom2 config files
         if not os.path.isdir(self.configpath):
@@ -467,6 +452,7 @@ class jcmt2caom2ingest(caom2ingest):
         date_obs = None
         date_end = None
         release_date = None
+        latest_release_date = None
         # obstimes records the (date_obs, date_end) for this file.
         # self.member_cache records these intervals for use with subsequent
         # files.
@@ -507,6 +493,10 @@ class jcmt2caom2ingest(caom2ingest):
                          date_obs, 
                          date_end, 
                          release_date) = self.member_cache[mbrn]
+                        if (latest_release_date is None or
+                            release_date > latest_release_date):
+                            
+                            latest_release_date = release_date
 
                         self.log.file('fetch from member_cache[' + mbrn +
                                       '] = [' + this_mbrn + ', ' +
@@ -560,6 +550,10 @@ class jcmt2caom2ingest(caom2ingest):
                                 if missing and re.match(r'raw.*', prodid):
                                     missing = False
                                     release_date = release
+                                    if (latest_release_date is None or
+                                        release_date > latest_release_date):
+                                        
+                                        latest_release_date = release_date
                                     # cache mbrn, start, end and release
                                     # caching mbrn is NOT needlessly repetitive
                                     # because with obsn headers it will be 
@@ -620,6 +614,11 @@ class jcmt2caom2ingest(caom2ingest):
                          date_obs, 
                          date_end, 
                          release_date) = self.member_cache[obsn]
+                        if (latest_release_date is None or
+                            release_date > latest_release_date):
+                            
+                            latest_release_date = release_date
+
                         self.log.file('fetch from member_cache[' + obsn +
                                       '] = [' + mbrn.uri + ', ' +
                                       str(date_obs) + ', ' +
@@ -684,6 +683,10 @@ class jcmt2caom2ingest(caom2ingest):
                                 if obsid_solitary is None:
                                     obsid_solitary = obsid
                                     release_date = release
+                                    if (latest_release_date is None or
+                                        release_date > latest_release_date):
+                                        
+                                        latest_release_date = release_date
                                 
                                 elif obsid != obsid_solitary:
                                     self.dew.error(obskey + ' = ' + obsn + 
@@ -737,7 +740,7 @@ class jcmt2caom2ingest(caom2ingest):
                                 earliest_obs = obsid
 
                         if mbrn not in obstimes:
-                            obstimes[mbrn] = (date_obs, date_end)                    
+                            obstimes[mbrn] = (date_obs, date_end)
                         self.memberset.add(mbrn)
 
         # Only record the environment from single-member observations
@@ -764,10 +767,8 @@ class jcmt2caom2ingest(caom2ingest):
             if is_defined('TAU225ST', header):
                 self.add_to_plane_dict('environment.tau',
                                        '%f' % (header['TAU225ST'],))
-                wave_tau = '%12.9f' % (jcmt2caom2ingest.speedOfLight /
-                                       jcmt2caom2ingest.lambda_csotau)
                 self.add_to_plane_dict('environment.wavelengthTau',
-                                       wave_tau)
+                                       jcmt2caom2ingest.lambda_csotau)
 
             if is_defined('ATSTART', header):
                 self.add_to_plane_dict('environment.ambientTemp',
@@ -778,14 +779,15 @@ class jcmt2caom2ingest(caom2ingest):
         raw_obs_type = None
         obs_type = None
         if is_defined('OBS_TYPE', header):
+            raw_obs_type = header['OBS_TYPE'].strip()
+
+            obs_type = raw_obs_type
             if obs_type in ('flatfield', 'noise', 'setup', 'skydip'):
                 self.dew.error(filename,
                                'observation types in (flatfield, noise, setup, '
                                'skydip) contain no astronomical data and cannot '
                                'be ingested')
 
-            raw_obs_type = header['OBS_TYPE'].strip()
-            obs_type = raw_obs_type
             if is_defined('SAM_MODE', header) and raw_obs_type == "science":
                 if header["SAM_MODE"] == "raster":
                     obs_type = 'scan'
@@ -914,7 +916,8 @@ class jcmt2caom2ingest(caom2ingest):
         self.add_to_plane_dict('STANDARD', standard_target)
         
         moving = 'FALSE'
-        if (is_blank('MOVING', header) or 
+        # MOVING header is boolean
+        if ((is_defined('MOVING', header) and header['MOVING']) or 
             # Distinguish moving targets
             is_blank('OBSRA', header) or
             is_blank('OBSDEC', header)):
@@ -964,9 +967,10 @@ class jcmt2caom2ingest(caom2ingest):
         restfreq = None
         subsysnr = None
         bwmode = None
-        self.productID = None
+        # Define productID as a string so it does not trigger later syntax 
+        # errors but will still test False.
+        self.productID = ''
         
-        # Try to compute self.productID using the standard rules
         if backend == 'SCUBA-2' and is_defined('FILTER', header):
             filter = str(header['FILTER'])
         else:
@@ -983,82 +987,74 @@ class jcmt2caom2ingest(caom2ingest):
             if self.dew.expect_keyword(filename, 'BWMODE', header):
                 bwmode = header['BWMODE']
             
-        if backend == 'SCUBA-2':
-            self.productID = product_id(backend, 
-                                        self.log,
-                                        product=product,
-                                        filter=filter)
-
-        elif (restfreq and bwmode and subsysnr):
-            if product in ['reduced', 'rimg', 'rsp']:
-                science_product = 'reduced'
-                self.productID = \
-                    product_id(backend, 
-                               self.log,
-                               product='reduced',
-                               restfreq=restfreq,
-                               bwmode=bwmode,
-                               subsysnr=subsysnr)
-            elif product in ['healpix', 'hpxrimg', 'hpxrsp']:
-                science_product = 'healpix'
-                self.productID = \
-                    product_id(backend, 
-                               self.log,
-                               product='healpix',
-                               restfreq=restfreq,
-                               bwmode=bwmode,
-                               subsysnr=subsysnr)
-            elif product and restfreq and bwmode and subsysnr:
-                # This should catch cube and catalog products
-                science_product = product
-                self.productID = \
-                    product_id(backend, 
-                               self.log,
-                               product=product,
-                               restfreq=restfreq,
-                               bwmode=bwmode,
-                               subsysnr=subsysnr)
-
-        if (self.collection == 'JCMT' or instream == 'JCMT'):
-            if (self.productID and 
-                is_defined('PRODID', header) and 
-                self.productID != header['PRODID']):
-                
-                # In the JCMT collection, PRODID == self.productID
-                self.dew.warning(filename,
-                                 'PRODID = ' + header['PRODID'] + 
-                                 ' does not match = ' + self.productID)
-        else:
-            # In other collections, PRODID overrides self.productID
-            if is_defined('PRODID', header):
+        # Try to compute self.productID using the standard rules
+        # First, determine the science_product
+        if instream in self.external_collections:
+            # Externally generated data products must define PRODID, which
+            # will be used to fill productID and to define science_product
+            # as the first dash-separated token in the string
+            if self.dew.expect_keyword(filename, 'PRODID', header,
+                                       mandatory=True):
                 self.productID = header['PRODID']
-
-        # By this point self.productID should be defined
-        if self.productID:
-            if not science_product:
                 if re.search(r'-', self.productID):
                     science_product = self.productID.split('-')[0]
                 else:
                     science_product = self.productID
+
         else:
-            self.dew.error(filename, 'productID could not be determined')
+            # Pipeline products must define the science_product as a function
+            # of product, which is mandatory.  
+            # BEWARE that the same dictionary is used for both heterodyne and 
+            # continuum products.  
+            science_product_dict = {'reduced': 'reduced',
+                                    'rsp': 'reduced',
+                                    'rimg': 'reduced',
+                                    'healpix': 'healpix',
+                                    'hpxrsp': 'healpix',
+                                    'hpxrimg': 'healpix',
+                                    'peak-cat': 'peak-cat',
+                                    'extent-cat': 'extent-cat',
+                                    'point-cat': 'point-cat'}
+            
+            science_product = None
+            if product in science_product_dict:
+                science_product = science_product_dict[product]
+            else:
+                self.dew.error(filename, 'product = "' + product +
+                               '" is not one of the pipeline products: ' +
+                               repr(sorted(science_product_dict.keys())))
         
+        if filter:
+            self.productID = product_id(backend, 
+                                        self.log,
+                                        product=science_product,
+                                        filter=filter)
+
+        elif (restfreq and bwmode and subsysnr):
+            if product in ['reduced', 'rimg', 'rsp']:
+                self.productID = \
+                    product_id(backend, 
+                               self.log,
+                               product=science_product,
+                               restfreq=restfreq,
+                               bwmode=bwmode,
+                               subsysnr=subsysnr)
+
         # Add this plane to the set of known file_id -> plane translations
         self.input_cache[file_id] = self.planeURI(self.collection,
                                                   self.observationID,
                                                   self.productID)
 
-        if (self.collection == 'JCMT' or
-            (self.collection == 'SANDBOX' and instream == 'JCMT')):
+        if instream == 'JCMT':
             if product in ['reduced', 'cube']:
                 # Do not set release dates for healpix products
-                if release_date:
+                if latest_release_date:
                     self.add_to_plane_dict('obs.metaRelease',
-                                           release_date)
+                                           latest_release_date)
                     self.add_to_plane_dict('plane.metaRelease',
-                                           release_date)
+                                           latest_release_date)
                     self.add_to_plane_dict('plane.dataRelease',
-                                           release_date)
+                                           latest_release_date)
                 else:
                     self.dew.error(filename,
                                    'Release date could not be '
@@ -1066,28 +1062,35 @@ class jcmt2caom2ingest(caom2ingest):
                                    self.observationID)
 
         calibrationLevel = None
-        if is_defined('CALLEVEL', header):
-            if header['CALLEVEL'] == 'calibrated':
-                calibrationLevel = str(CalibrationLevel.CALIBRATED.value)
-            elif header['CALLEVEL'] == 'product':
-                calibrationLevel = str(CalibrationLevel.PRODUCT.value)
+        # The calibration lelvel needs to be defined for all science products
+        if product == science_product:
+            if instream in self.external_collections:
+                callevel_dict = \
+                    {'calibrated': str(CalibrationLevel.CALIBRATED.value),
+                     'product':    str(CalibrationLevel.PRODUCT.value)}
+                if self.dew.restricted_value(filename, 
+                                             'CALLEVEL', 
+                                             header,
+                                             sorted(callevel_dict)):
+                    calibrationLevel = callevel_dict[header['CALLEVEL']]
             else:
-                self.dew(filename,
-                         'CALLEVEL = ' + header['CALLEVEL'] +
-                         ' must be one of (calibrated, product)')
-        elif product == 'cube':
-            calibrationLevel = str(CalibrationLevel.RAW_STANDARD.value)
-        elif product in ('reduced', 'rsp', 'rimg',
-                         'healpix', 'hpxrsp', 'hpxrimg'):
-            calibrationLevel = str(CalibrationLevel.CALIBRATED.value)
-        elif product in ('point-cat', 'extent-cat', 'peak-cat'):
-            calibrationLevel = str(CalibrationLevel.PRODUCT.value)
-        
-        if calibrationLevel:
-            self.add_to_plane_dict('plane.calibrationLevel', calibrationLevel)
-        else:
-            self.dew.error(filename,
-                           'Calibration Level could not be determined')
+                callevel_dict  = \
+                    {'cube':       str(CalibrationLevel.RAW_STANDARD.value),
+                     'reduced':    str(CalibrationLevel.CALIBRATED.value),
+                     'healpix':    str(CalibrationLevel.CALIBRATED.value),
+                     'point-cat':  str(CalibrationLevel.PRODUCT.value),
+                     'extent-cat': str(CalibrationLevel.PRODUCT.value),
+                     'peak-cat':   str(CalibrationLevel.PRODUCT.value)}
+                if science_product in callevel_dict:
+                    calibrationLevel = callevel_dict[science_product]
+                else:
+                    self.dew.error(filename, 
+                                   'science product "' + science_product +
+                                   '" is not in ' + repr(sorted(callevel_dict)))
+
+            if calibrationLevel:
+                self.add_to_plane_dict('plane.calibrationLevel', 
+                                       calibrationLevel)
 
         # Check for existence of provenance input headers, which are optional
         self.log.file('Reading provenance')
@@ -1182,7 +1185,8 @@ class jcmt2caom2ingest(caom2ingest):
             self.add_to_plane_dict('plane.dataProductType', dataProductType)
 
         # Provenance_name
-        if self.dew.expect_keyword(filename, 'RECIPE', header):
+        if self.dew.expect_keyword(filename, 'RECIPE', header,
+                                   mandatory=True):
             self.add_to_plane_dict('provenance.name', header['RECIPE'])
 
         # Provenance_project
@@ -1232,37 +1236,28 @@ class jcmt2caom2ingest(caom2ingest):
             self.add_to_plane_dict('provenance.producer',
                                    header['PRODUCER'])
 
-        dprcinst = None
-        if is_defined('VOSPATH', header):
-            # dprcinst is a vos URI; use as-is for runID; sanitize for names
-            dprcinst = header['VOSPATH']
-            if self.dprcinst is None:
-                self.dprcinst = re.sub(r'[^0-9a-zA-Z]', '-', dprcinst)
-        
-        elif self.dew.expect_keyword(filename, 'DPRCINST', header, 
+        self.dprcinst = None
+        if self.dew.expect_keyword(filename, 'DPRCINST', header, 
                                      mandatory=True):
             if isinstance(header['DPRCINST'], str):
                 m = re.match(r'jac-([1-9][0-9]*)', header['DPRCINST'])
                 if m:
                     # dprcinst is a JAC recipe instance
-                    dprcinst = 'jac-%09d' % (eval(m.group(1)),)
+                    self.dprcinst = 'jac-%09d' % (eval(m.group(1)),)
                     
                 elif re.match(r'^0x[0-9a-fA-F]+$', header['DPRCINST']):
                     # dprcinst is an old-style hex recipe_instance_id
-                    dprcinst = str(eval(header['DPRCINST']))
+                    self.dprcinst = str(eval(header['DPRCINST']))
                 else:
                     # dprcinst is an arbitrary string; use without modification
-                    dprcinst = header['DPRCINST']
+                    self.dprcinst = header['DPRCINST']
             else:
                 # dprcisnt is an identity_instance_id integer; convert to string
-                dprcinst = str(header['DPRCINST'])
-            
-            if dprcinst and not self.dprcinst:
-                self.dprcinst = dprcinst
+                self.dprcinst = str(header['DPRCINST'])
 
-        if dprcinst:
-            self.add_to_plane_dict('provenance.runID', dprcinst)
-            self.build_remove_dict(dprcinst)
+        if self.dprcinst:
+            self.add_to_plane_dict('provenance.runID', self.dprcinst)
+            self.build_remove_dict(self.dprcinst)
         else:
             self.dew.error(filename, 'could not calculate dprcinst')
 
