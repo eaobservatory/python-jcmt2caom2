@@ -16,7 +16,7 @@ else:
 configfiles = [os.path.join('config', f) for f in os.listdir('config')]
 
 setup(name="jcmt2caom2",
-      version='1.2.5',
+      version='1.2.6',
       description='Ingest JCMT data into CAOM-2',
       author='Russell Redman',
       author_email='russell.o.redman@gmail.com',
