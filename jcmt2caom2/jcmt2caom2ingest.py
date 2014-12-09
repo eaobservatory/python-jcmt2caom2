@@ -1162,7 +1162,7 @@ class jcmt2caom2ingest(caom2ingest):
         dataProductType = None
         if is_defined('DATAPROD', header):
             if not self.dew.restricted_value(filename, 'DATAPROD', header,
-                                    ("image", "spectrum", "cube", "catalog")):
+                                    ('image', 'spectrum', 'cube', 'catalog')):
                 dataProductType = None
         elif product == science_product:
             # Assume these are like standard pipeline products
@@ -1264,6 +1264,9 @@ class jcmt2caom2ingest(caom2ingest):
         # Report the earliest UTDATE
         if earliest_utdate and self.dprcinst:
             rcinstprefix = 'caom-' + self.collection + '-' + earliest_obs
+            # This comment is read by tovos.jcmt2caom2_ingestion and must have 
+            # exactly this format.  Do not change this log message without 
+            # making the corresponding change in tovos.py
             self.log.file('Earliest utdate: ' + 
                           Time(earliest_utdate, 
                                format='mjd',
