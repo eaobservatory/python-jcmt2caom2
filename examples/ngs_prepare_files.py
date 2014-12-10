@@ -29,7 +29,7 @@ for ingestion into the JSA.
 
 planeURI_cache = {}
  
-def rewrite_fits(insdf, outfits, project_name, dprcisnt, workdir, tap, log):
+def rewrite_fits(insdf, outfits, project_name, dprcinst, workdir, tap, log):
     """
     Rewrite a single sdf file into FITS, setting custom headers as needed.
     
@@ -180,7 +180,7 @@ def rewrite_fits(insdf, outfits, project_name, dprcisnt, workdir, tap, log):
                                 '', 
                                 head['MOLECULE'] + head['TRANSITI']).lower()
         # ASN_ID fills Observation.observationID
-        headerdict['ASN_ID'] = '-'.join(['jcmt-ngs',
+        headerdict['ASN_ID'] = '-'.join([project_name,
                                          re.sub(r'\s', '', 
                                                 head['OBJECT']).lower(),
                                          transition])
@@ -200,7 +200,7 @@ def rewrite_fits(insdf, outfits, project_name, dprcisnt, workdir, tap, log):
                                          restfreqstr,
                                          bwmode])
     elif instrument == 'SCUBA-2':
-        headerdict['ASN_ID'] = '-'.join(['jcmt-ngs',
+        headerdict['ASN_ID'] = '-'.join([project_name,
                                          re.sub(r'\s', '', 
                                                 head['OBJECT']).lower(),
                                          'continuum'])
@@ -252,8 +252,8 @@ def rewrite_fits(insdf, outfits, project_name, dprcisnt, workdir, tap, log):
     # headerdict['EQUINOX'] = <equinox of coordinates>
     # headerdict['FILTER'] = <characteristic wavelength>
     
-    if instrument == 'HARP':
-        headerdict['RESTFREQ'] = restfreq
+    # if instrument == 'HARP':
+    #     headerdict['RESTFREQ'] = restfreq
     
     # headerdict['BWMODE'] = already set correctly
     # headerdict['SUBSYSNR'] = ignored
@@ -446,7 +446,7 @@ def run():
                     help='new release directory to which files will be written')
     # default prefix is the same as the NGS project name
     ap.add_argument('--prefix',
-                    default='jcmt-ngs',
+                    default=project_name,
                     help='prefix for ingestible file names')
 
     ap.add_argument('--workdir',
