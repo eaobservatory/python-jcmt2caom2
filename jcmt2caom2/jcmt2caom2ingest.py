@@ -956,11 +956,15 @@ class jcmt2caom2ingest(caom2ingest):
         # The standard and legacy pipelines must have some standard keywords
         if (self.collection == 'JCMT' or instream == 'JCMT'):
             if backend == 'SCUBA-2':
-                self.dew.expect_keyword(filename, 'FILTER', header)
+                self.dew.expect_keyword(filename, 'FILTER', header,
+                                        mandatory=True)
             else:
-                self.dew.expect_keyword(filename, 'RESTFRQ', header)
-                self.dew.expect_keyword(filename, 'SUBSYSNR', header)
-                self.dew.expect_keyword(filename, 'BWMODE', header)
+                self.dew.expect_keyword(filename, 'RESTFRQ', header,
+                                        mandatory=True)
+                self.dew.expect_keyword(filename, 'SUBSYSNR', header,
+                                        mandatory=True)
+                self.dew.expect_keyword(filename, 'BWMODE', header,
+                                        mandatory=True)
         
         science_product = None
         filter = None
@@ -980,11 +984,11 @@ class jcmt2caom2ingest(caom2ingest):
             elif is_defined('RESTWAV', header):
                 restfreq = (jcmt2caom2ingest.speedOfLight / 
                             float(header['RESTWAV']))
-            elif self.dew.expect_keyword(filename, 'RESTFRQ', header):
+            elif is_defined('RESTFRQ', header):
                 restfreq = float(header['RESTFRQ'])
-            if self.dew.expect_keyword(filename, 'SUBSYSNR', header):
+            if is_defined('SUBSYSNR', header):
                 subsysnr = str(header['SUBSYSNR'])
-            if self.dew.expect_keyword(filename, 'BWMODE', header):
+            if is_defined('BWMODE', header):
                 bwmode = header['BWMODE']
             
         # Try to compute self.productID using the standard rules
@@ -1024,21 +1028,21 @@ class jcmt2caom2ingest(caom2ingest):
                                '" is not one of the pipeline products: ' +
                                repr(sorted(science_product_dict.keys())))
         
-        if filter:
-            self.productID = product_id(backend, 
-                                        self.log,
-                                        product=science_product,
-                                        filter=filter)
+            if filter:
+                self.productID = product_id(backend, 
+                                            self.log,
+                                            product=science_product,
+                                            filter=filter)
 
-        elif (restfreq and bwmode and subsysnr):
-            if product in ['reduced', 'rimg', 'rsp']:
-                self.productID = \
-                    product_id(backend, 
-                               self.log,
-                               product=science_product,
-                               restfreq=restfreq,
-                               bwmode=bwmode,
-                               subsysnr=subsysnr)
+            elif (restfreq and bwmode and subsysnr):
+                if product in ['reduced', 'rimg', 'rsp']:
+                    self.productID = \
+                        product_id(backend, 
+                                   self.log,
+                                   product=science_product,
+                                   restfreq=restfreq,
+                                   bwmode=bwmode,
+                                   subsysnr=subsysnr)
 
         # Add this plane to the set of known file_id -> plane translations
         self.input_cache[file_id] = self.planeURI(self.collection,

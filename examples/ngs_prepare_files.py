@@ -441,12 +441,14 @@ def run():
                     help='path to CADC proxy')
 
     ap.add_argument('--indir',
+                    required=True,
                     help='existing release directory')
     ap.add_argument('--outdir',
+                    required=True,
                     help='new release directory to which files will be written')
     # default prefix is the same as the NGS project name
     ap.add_argument('--prefix',
-                    default=project_name,
+                    required=True,
                     help='prefix for ingestible file names')
 
     ap.add_argument('--workdir',
@@ -532,7 +534,7 @@ def run():
                 # Data files are always in a dirctory called Data in the NGS.
                 # The galaxy class and object name are the preceding two
                 # directories.
-                dirparts = infile.split('/')
+                dirparts = inpath.split('/')
                 dprcinst = ''
                 i = -1
                 for part in dirparts:
@@ -540,9 +542,12 @@ def run():
                     if part == 'Data':
                         break
                 if i > 1:
-                    dprcinst = '/'.join([prefix, dirparts[i-2], dirparts[i-1]])
+                    dprcinst = '-'.join([a.prefix, 
+                                         dirparts[i-2], 
+                                         dirparts[i-1]])
                 if not dprcinst:
-                    log.console('could not form dprcinst from ' + repr(dirparts),
+                    log.console('could not form dprcinst from ' + 
+                                repr(dirparts),
                                 logging.ERROR) 
                                 
                 # Add the prefix to fits files generated from sdf files,
