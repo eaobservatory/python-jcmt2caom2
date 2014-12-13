@@ -272,7 +272,7 @@ class jcmt2caom2_ingestion(tovos):
         self.dateroot = vosroot + '/proc_ingestion_date'
         self.rawroot = vosroot + '/raw_ingestion'
         self.regex = re.compile(r'(?P<trunk>(?P<root>'
-                                r'jsaingest_'
+                                r'(jcmt2caom2|jsa)ingest_'
                                 r'(?P<rcinst>[^_]+)'
                                 r')_)' + 
                                 UTDATE_REGEX +
