@@ -406,14 +406,16 @@ class jcmt2caom2_ingestion(tovos):
                 m = self.regex.search(vfile_id)
                 if m:
                     (vroot, 
+                     vrcinst,
                      verrors, 
                      vstamp,
                      vstampdate) = m.group('root', 
+                                           'rcinst',
                                            'errors',
                                            'stamp',
                                            'stampdate')
 
-                    if vroot == root and vstamp < stamp:
+                    if vrcinst == rcinst and vstamp < stamp:
                         # If no errors, delete all earlier logs
                         # if errors, delete earlier logs with errors
                         self.log.file('jcmt2caom2_ingestion - cleanup ' + 
