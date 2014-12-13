@@ -485,13 +485,15 @@ class jcmt2caom2ingest(caom2ingest):
                     else:
                         continue
                     mbrn = self.observationURI('JCMT', obsid)
+                    mbr_date_obs = None
+                    mbr_date_end = None
                     
-                    # Only get here if obsn has a defined value
+                    # Only get here if mbrn has a defined value
                     if mbrn in self.member_cache:
                         # Skip the query if this member has been cached
                         (this_mbrn, 
-                         date_obs, 
-                         date_end, 
+                         mbr_date_obs, 
+                         mbr_date_end, 
                          release_date) = self.member_cache[mbrn]
                         if (latest_release_date is None or
                             release_date > latest_release_date):
@@ -568,6 +570,8 @@ class jcmt2caom2ingest(caom2ingest):
                                                                date_obs, 
                                                                date_end, 
                                                                release_date)
+                                    mbr_date_obs = date_obs
+                                    mbr_date_end = date_end
 
                                 # Cache provenance input candidates
                                 # Do NOT rewrite the file_id
@@ -579,25 +583,27 @@ class jcmt2caom2ingest(caom2ingest):
                                     self.input_cache[this_file_id] = inURI
                                     self.input_cache[inURI.uri] = inURI
 
-                    # At this point we have mbrn, date_obs, date_end and 
+                    # At this point we have mbrn, mbr_date_obs, mbr_date_end and 
                     # release_date either from the member_cache or from the query
-                    if date_obs:
+                    if mbr_date_obs:
                         if (earliest_utdate is None or 
-                            date_obs < earliest_utdate):
+                            mbr_date_obs < earliest_utdate):
 
-                            earliest_utdate = date_obs
+                            earliest_utdate = mbr_date_obs
                             earliest_obs = obsid
 
-                    if mbrn not in obstimes:
-                        obstimes[mbrn] = (date_obs, date_end)
-                    
-                    self.memberset.add(mbrn)
+                        if mbrn not in obstimes:
+                            obstimes[mbrn] = (mbr_date_obs, mbr_date_end)
+                        
+                        self.memberset.add(mbrn)
         
         elif is_defined('OBSCNT', header):
             obscnt = header['OBSCNT']
             if obscnt > 0:
                 for n in range(obscnt):
                     mbrn = None
+                    mbr_date_obs = None
+                    mbr_date_end = None
                     obskey = 'OBS' + str(n+1)
                     # verify that the expected membership headers are present
                     if self.dew.expect_keyword(filename, obskey, header):
@@ -611,8 +617,8 @@ class jcmt2caom2ingest(caom2ingest):
                         # Skip the query if this member has been cached
                         (obsid,
                          mbrn, 
-                         date_obs, 
-                         date_end, 
+                         mbr_date_obs, 
+                         mbr_date_end, 
                          release_date) = self.member_cache[obsn]
                         if (latest_release_date is None or
                             release_date > latest_release_date):
@@ -707,12 +713,15 @@ class jcmt2caom2ingest(caom2ingest):
                                                   str(date_end) + ', ' +
                                                   str(release_date) + ']',
                                                   logging.DEBUG)
-                                    self.member_cache[obsn] = \
-                                        (obsid, 
-                                         mbrn, 
-                                         date_obs, 
-                                         date_end, 
-                                         release_date)
+                                    if mbrn not in self.member_cache:
+                                        self.member_cache[obsn] = \
+                                            (obsid, 
+                                             mbrn, 
+                                             date_obs, 
+                                             date_end, 
+                                             release_date)
+                                        mbr_date_obs = date_obs
+                                        mbr_date_end = date_end
 
                                 # Cache provenance input candidates
                                 # Do NOT rewrite the file_id!
@@ -732,16 +741,16 @@ class jcmt2caom2ingest(caom2ingest):
                         # At this point we have mbrn, date_obs, date_end and 
                         # release_date either from the member_cache or from 
                         # the query
-                        if date_obs:
+                        if mbr_date_obs:
                             if (earliest_utdate is None or 
-                                date_obs < earliest_utdate):
+                                mbr_date_obs < earliest_utdate):
 
-                                earliest_utdate = date_obs
+                                earliest_utdate = mbr_date_obs
                                 earliest_obs = obsid
 
-                        if mbrn not in obstimes:
-                            obstimes[mbrn] = (date_obs, date_end)
-                        self.memberset.add(mbrn)
+                            if mbrn not in obstimes:
+                                obstimes[mbrn] = (mbr_date_obs, mbr_date_end)
+                            self.memberset.add(mbrn)
 
         # Only record the environment from single-member observations
         if algorithm == 'exposure' or (obscnt == 1 or mbrcnt == 1):
