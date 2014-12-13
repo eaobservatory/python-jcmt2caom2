@@ -1676,6 +1676,11 @@ class jcmt2caom2ingest(caom2ingest):
         <none>
         """
         if self.collection != 'SANDBOX' and self.ingest:
+            print("\n\n Full Log Follows:\n\n")
+            with open(self.logfile, 'r') as logtext:
+                for line in logtext:
+                    print(line.rstrip())
+
             self.voscopy = tovos.jcmt2caom2_ingestion(vos.Client(),
                                                       self.vosroot,
                                                       self.log)

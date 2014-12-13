@@ -78,7 +78,7 @@ class tovos(object):
         filesize = os.stat(path).st_size
         if self.vosclient.isfile(vospath):
             self.vosclient.delete(vospath)
-        for n in range(1000):
+        for n in range(2):
             if (filesize == self.vosclient.copy(path, vospath)):
                 success = True
                 if self.log:
