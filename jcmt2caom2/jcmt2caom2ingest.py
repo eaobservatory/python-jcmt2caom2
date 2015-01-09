@@ -754,7 +754,8 @@ class jcmt2caom2ingest(caom2ingest):
 
         # Only record the environment from single-member observations
         if algorithm == 'exposure' or (obscnt == 1 or mbrcnt == 1):
-            if is_defined('SEEINGST', header) and header['SEEINGST'] > 0.0:
+            # NB 'SEEINGST' is sometimes defined as an empty string which will pass the >0.0 test
+            if is_defined('SEEINGST', header) and header['SEEINGST'] > 0.0 and header['SEEINGST']:
                 self.add_to_plane_dict('environment.seeing',
                                        '%f' % (header['SEEINGST'],))
 
