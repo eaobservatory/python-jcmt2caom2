@@ -1023,6 +1023,7 @@ class jcmt2caom2ingest(caom2ingest):
             science_product_dict = {'reduced': 'reduced',
                                     'rsp': 'reduced',
                                     'rimg': 'reduced',
+                                    'cube': 'cube',
                                     'healpix': 'healpix',
                                     'hpxrsp': 'healpix',
                                     'hpxrimg': 'healpix',
@@ -1045,7 +1046,7 @@ class jcmt2caom2ingest(caom2ingest):
                                             filter=filter)
 
             elif (restfreq and bwmode and subsysnr):
-                if product in ['reduced', 'rimg', 'rsp']:
+                if product in ['reduced', 'rimg', 'rsp', 'cube']:
                     self.productID = \
                         product_id(backend, 
                                    self.log,
