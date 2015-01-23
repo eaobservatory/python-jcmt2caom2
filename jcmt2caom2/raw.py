@@ -1194,7 +1194,9 @@ class raw(object):
 
     def run(self):
         """
-        Fetch metadata, build a CAOM-2 object, and push it into the repository
+        Fetch metadata, build a CAOM-2 object, and push it into the repository.
+
+        Returns True on success, False otherwise.
         """
         self.parse_command_line()
         self.setup_logger()
@@ -1210,11 +1212,11 @@ class raw(object):
                     self.ingest()
                 self.log.console('DONE')
             except Exception as e:
+                self.errors = True
                 if not isinstance(e, logger.LoggerError):
                     # Be sure that every error message is logged
                     # Logg this error, but pass because we are exitting anyways
                     try:
-                        self.errors = True
                         self.log.console('ERROR: ' + traceback.format_exc(),
                                          logging.ERROR)
                     except Exception as p:
@@ -1243,3 +1245,5 @@ class raw(object):
 
             if logsuffix:
                 os.remove(logcopy)
+
+        return not self.errors

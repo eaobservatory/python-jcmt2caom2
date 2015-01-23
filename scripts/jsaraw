@@ -1,6 +1,9 @@
 #!/usr/bin/env python2.7
 
+import sys
+
 from jcmt2caom2.raw import raw
 
 myraw = raw()
-myraw.run()
+if not myraw.run():
+    sys.exit(1)
