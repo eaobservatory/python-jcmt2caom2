@@ -20,15 +20,15 @@ from tools4caom2.utdate_string import utdate_string
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
-        
+
 def run():
     """
     The run() method for jcmtprocwrap.
 
-    
-    A range of id's can be entered one at a time, or as a range first-last, 
-    where first defaults to 10894 and last defaults to the current maximum 
-    identity_instance_id. Thus, the default range if nothing is specified 
+
+    A range of id's can be entered one at a time, or as a range first-last,
+    where first defaults to 10894 and last defaults to the current maximum
+    identity_instance_id. Thus, the default range if nothing is specified
     is 10895-, implying all currently valid recipe instances.
 
     Examples:
@@ -51,10 +51,10 @@ def run():
     ap.add_argument('--sharelog',
                     action='store_true',
                     help='Pass --sharelog switch to jcmt2caom2proc')
-    
+
     ap.add_argument('--outdir',
                     help='(optional) output directory for working files')
-    
+
     ap.add_argument('--qsub',
                     action='store_true',
                     help='rsubmit ingestion jobs to gridengine')
@@ -75,38 +75,37 @@ def run():
     ap.add_argument('--collection',
                     choices=['JCMT', 'JCMTLS', 'JCMTUSER', 'SANDBOX'],
                     help='destination collection')
-    
+
     ap.add_argument('id',
                     nargs='*',
                     help='list of directories, rcinst files, or '
                     'identity_instance_id values')
     a = ap.parse_args()
-    
+
     cwd = os.getcwd()
 
     if a.outdir and os.path.isdir(a.outdir):
         outdir = os.path.abspath(
-                        os.path.expandvars(
-                            os.path.expanduser(a.outdir)))
+            os.path.expandvars(
+                os.path.expanduser(a.outdir)))
     else:
         outdir = cwd
-    
-    
+
     if a.logdir:
         logdir = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(a.logdir)))
+            os.path.expanduser(
+                os.path.expandvars(a.logdir)))
     else:
         logdir = cwd
-    
+
     loglevel = logging.INFO
     if a.debug:
         loglevel = logging.DEBUG
-    
+
     if os.path.dirname(a.log):
         logpath = os.path.abspath(
-                    os.path.expanduser(
-                        os.path.expandvars(a.log)))
+            os.path.expanduser(
+                os.path.expandvars(a.log)))
     else:
         logpath = os.path.join(logdir, a.log)
 
@@ -120,19 +119,19 @@ def run():
     log.console('id = ' + repr(a.id))
 
     if a.big:
-        mygridengine = gridengine(log, 
+        mygridengine = gridengine(log,
                                   queue=a.queue,
                                   options='-cwd -j yes -l cmem=32')
     else:
         mygridengine = gridengine(log, queue=a.queue)
-    
+
     # idset is the set of recipe instances to ingest
     idset = []
     # rcinstset is a set of abspaths to rcinst files
     rcinstset = set()
     if a.id:
         for id in a.id:
-            # if id is a directory, 
+            # if id is a directory,
             # add any rcinst files it contains to rcinstset
             if os.path.isdir(id):
                 idpath = os.path.abspath(id)
@@ -150,24 +149,25 @@ def run():
                 if id not in idset:
                     idset.append(id)
             else:
-                log.console(id + ' is not a directory, and rcinst file, nor an '
-                            'identity_instance_id value',
-                            logging.WARN)
+                log.console(
+                    id + ' is not a directory, and rcinst file, nor an '
+                    'identity_instance_id value',
+                    logging.WARN)
     else:
         # Try to read a list of recipe instances from stdin
         for line in sys.stdin:
-            # if the line starts with an identity_instance_id string, 
+            # if the line starts with an identity_instance_id string,
             # add it to idset
-            m = re.match(r'^\s*(\d+)\s.*$', line) 
+            m = re.match(r'^\s*(\d+)\s.*$', line)
             if m:
                 id = m.group(1)
                 if id not in idset:
                     log.file('Add to idset: ' + id)
                     idset.append(id)
-    
+
     log.file('idset = ' + repr(idset))
     log.file('rcinstset = ' + repr(rcinstset))
-    
+
     if a.qsub:
         proccmd = os.path.join(sys.path[0], 'jcmtprocwrap')
         proccmd += ' --outdir=${TMPDIR}'
@@ -179,22 +179,22 @@ def run():
             proccmd += ' --debug'
         if a.keeplog or a.sharelog:
             proccmd += ' --keeplog'
-            
+
         if idset:
-            # Write the contents of idset into a file and 
+            # Write the contents of idset into a file and
             # add the file to rcinstset
             log.console('Write idset to a file and add it to rcinstset',
                         logging.DEBUG)
-            
+
             nowstr = re.sub(r':', '', datetime.now().isoformat())
             idsetfile = os.path.join(
-                            logdir, 
-                            'idset_' + nowstr + '.rcinst')
+                logdir,
+                'idset_' + nowstr + '.rcinst')
             with open(idsetfile, 'w') as IDS:
                 for id in idset:
                     print >>IDS, id
             rcinstset.add(idsetfile)
-            
+
         # submit rcinst sets to gridengine
         # compose the jcmtprocwrap command
         for rcinstfile in sorted(list(rcinstset), reverse=True):
@@ -202,10 +202,10 @@ def run():
             rcinstbase = os.path.basename(rcinstfile)
             rcinstlog = os.path.join(logdir, rcinstbase + '.log')
             rcinstcsh = os.path.join(logdir, rcinstbase + '.csh')
-            
+
             if a.sharelog:
                 cmd += ' --sharelog'
-            
+
             rcinstlogs = os.path.join(logdir, rcinstbase + '.logs')
             if not os.path.isdir(rcinstlogs):
                 os.makedirs(rcinstlogs)
@@ -213,11 +213,11 @@ def run():
                 # make sure rcinstlogs is empty
                 for f in os.listdir(rcinstlogs):
                     os.remove(os.path.join(rcinstlogs, f))
-            
+
             cmd += ' --log=' + rcinstlog
             cmd += ' --logdir=' + rcinstlogs
             cmd += ' ' + rcinstfile
-            
+
             log.console('SUBMIT: ' + cmd)
             if not a.test:
                 mygridengine.submit(cmd, rcinstcsh, rcinstlog)
@@ -238,11 +238,11 @@ def run():
             proccmd += ' --log=' + logpath
         else:
             proccmd += ' --logdir=' + logdir
-        
+
         rcinstlist = []
         if idset:
             rcinstlist.append(sorted(idset))
-        
+
         # ingest the recipe instances in subprocesses
         for rcinstfile in sorted(list(rcinstset), reverse=True):
             # Handle one rcinst file at a time and adjust the logdir
@@ -258,25 +258,25 @@ def run():
                             newlist.append(thisid)
 
             rcinstlist.append(sorted(newlist))
-        
+
         for rcinsts in rcinstlist:
             for rcinst in rcinsts:
                 thisproccmd = proccmd
 
                 thisproccmd += (' dp:' + rcinst)
-            
+
                 log.console('PROGRESS: ' + thisproccmd)
-                
+
                 if not a.test:
                     try:
                         output = subprocess.check_output(
-                                                    thisproccmd,
-                                                    shell=True,
-                                                    stderr=subprocess.STDOUT)
+                            thisproccmd,
+                            shell=True,
+                            stderr=subprocess.STDOUT)
                     except subprocess.CalledProcessError as e:
                         log.console('FAILED: ' + rcinst,
                                     logging.WARN)
-                        log.file('status = ' + str(e.returncode) + 
+                        log.file('status = ' + str(e.returncode) +
                                  ' output = \n' + e.output)
-                    
+
     log.console('DONE')

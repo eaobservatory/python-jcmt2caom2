@@ -6,7 +6,8 @@ import unittest
 from tools4caom2.logger import logger
 from jcmt2caom2.jsa.obs_type import obs_type
 
-class testTargetName( unittest.TestCase):
+
+class testTargetName(unittest.TestCase):
     """
     Test cases for the function target_name(object)
     """
@@ -22,12 +23,12 @@ class testTargetName( unittest.TestCase):
                      ['flatfield', 'anything', 'flatfield'],
                      ['setup', 'anything', 'setup'],
                      ['noise', 'anything', 'noise']]
-        
+
         for jcmt_obs_type, sam_mode, retval in test_data:
             caom2_obs_type = obs_type(jcmt_obs_type, sam_mode)
             self.assertEqual(caom2_obs_type, retval,
-                             'The value returned from obs_type("' + 
+                             'The value returned from obs_type("' +
                              jcmt_obs_type + '", "' +
-                             sam_mode + '") was "' + 
-                             caom2_obs_type + '" but should have been "' + 
-                             retval + '"')                              
+                             sam_mode + '") was "' +
+                             caom2_obs_type + '" but should have been "' +
+                             retval + '"')

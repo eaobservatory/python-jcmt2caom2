@@ -21,21 +21,22 @@ from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 
 __doc__ = """
-The integration Test Set is a selection of observations that illustrate some 
+The integration Test Set is a selection of observations that illustrate some
 aspect of the JCMT ingestion process.  It is important to be able to ingest
 without error every memeber on the integration test set to demonstrate the
-correct behaviour on the ingestion software. 
+correct behaviour on the ingestion software.
 
 The members of the test set are documented at:
 https://wiki.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/caom2/index.php/IntegrationTestSet
 """
+
 
 class integrationtestset(object):
     """
     Use jsaraw and jsaingest to ingest the integration test set
     into the SANDBOX collection and/or caom2repo.py to remove the the test
     set observations from the SANDBOX.
-    
+
     Optionally, use pyCAOM2 to modify productID values in place.
     """
 
@@ -57,9 +58,9 @@ class integrationtestset(object):
         self.keeplog = False
         self.debug = False
         self.args = None
-        
+
         self.testset = {}
-    
+
     def parse_command_line(self):
         """
         Define and pardse command line switches
@@ -69,14 +70,16 @@ class integrationtestset(object):
         ap.add_argument('--log',
                         default='integrationtestset.log',
                         help='log file for integrationtestset')
-        ap.add_argument('--keeplog',
+        ap.add_argument(
+            '--keeplog',
             action='store_true',
             help='(optional) keep log if successful (default is to delete)')
-        ap.add_argument('--debug',
+        ap.add_argument(
+            '--debug',
             action='store_true',
             help='(optional) show all messages, pass --debug to fits2caom2,'
             ' and retain all xml and override files')
-        
+
         ap.add_argument('--outdir',
                         default='.',
                         help='directory to be used for working files')
@@ -98,14 +101,15 @@ class integrationtestset(object):
         ap.add_argument('--clean',
                         action='store_true',
                         help='remove observations from SANDBOX when done')
-        
-        ap.add_argument('input',
+
+        ap.add_argument(
+            'input',
             nargs='*',
             help='file(s) or container(s) to ingest')
         self.args = ap.parse_args()
 
         self.logfile = os.path.expanduser(
-                        os.path.expandvars(self.args.log))
+            os.path.expandvars(self.args.log))
         if self.args.keeplog:
             self.keeplog = self.args.keeplog
         if self.args.debug:
@@ -113,7 +117,7 @@ class integrationtestset(object):
             self.loglevel = logging.DEBUG
 
         self.outdir = os.path.abspath(self.args.outdir)
-        
+
     def read_integrationtestset(self):
         """
         Read the integration test set from the wiki page
@@ -123,7 +127,7 @@ class integrationtestset(object):
             'IntegrationTestSet')
         title = ''
         criterion = 0
-        
+
         for line in ITS:
             mt = re.match(r'^<h3>\s*<span[^>]*>([^<]+)(<.*)?$', line)
             if mt:
@@ -132,17 +136,17 @@ class integrationtestset(object):
                 self.testset[title] = {}
                 self.log.console('TITLE = ' + title)
                 criterion = 0
-            
+
             mc = re.match(r'^[^#]*# CRITERIA:\s+(.*)$', line)
             if mc:
                 criterion += 1
-                self.log.console('CRITERION: %d: %s' % (criterion, 
+                self.log.console('CRITERION: %d: %s' % (criterion,
                                                         mc.group(1)))
                 self.testset[title][criterion] = {}
                 self.testset[title][criterion]['raw'] = []
                 self.testset[title][criterion]['proc'] = []
                 self.testset[title][criterion]['clean'] = []
-            
+
             mr = re.match(r'^.*jsaraw.*--key=(\S+)\s*$', line)
             if mr:
                 self.testset[title][criterion]['raw'].append(mr.group(1))
@@ -161,10 +165,9 @@ class integrationtestset(object):
                 self.log.file('clean: ' + md.group(1),
                               logging.DEBUG)
 
-        
     def log_command_line(self):
         """
-        write startup configuration into the log 
+        write startup configuration into the log
         """
         self.log.file(sys.argv[0])
         self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
@@ -175,7 +178,7 @@ class integrationtestset(object):
         self.log.file('debug = ' + str(self.args.debug))
         self.log.file('skip = ' + str(self.args.skip))
         self.log.file('clean = ' + str(self.args.clean))
-        self.read_integrationtestset()        
+        self.read_integrationtestset()
         for item in self.args.input:
             title, criterionstr = re.split(r':', item)
             criterion = int(criterionstr)
@@ -195,7 +198,6 @@ class integrationtestset(object):
         else:
             self.repository = Repository(self.outdir, self.log, debug=False)
 
-           
     def ingest_raw(self):
         """
         Ingest the set of raw observations into SANDBOX using jsaraw
@@ -215,20 +217,20 @@ class integrationtestset(object):
                 except subprocess.CalledProcessError as e:
                     self.log.console('FAILED: ' + cmd)
                     self.log.file('FAILED: ' + e.output)
-                
+
     def ingest_proc(self):
         """
         ingest the set of recipe instances into SANDBOX using jsaingest
         """
         if self.args.proc:
             proccmd = os.path.join(sys.path[0], 'jsaingest')
-            proccmd += ' --outdir=' + self.outdir 
+            proccmd += ' --outdir=' + self.outdir
             proccmd += ' --collection=SANDBOX'
             if self.args.debug:
                 proccmd += ' --debug'
             elif self.args.keeplog:
                 proccmd += ' --keeplog'
-                
+
             for proc in self.proclist:
                 cmd = proccmd + ' dp:' + proc
                 self.log.console(cmd)
@@ -240,7 +242,7 @@ class integrationtestset(object):
                 except subprocess.CalledProcessError as e:
                     self.log.console('FAILED: ' + cmd)
                     self.log.file('FAILED: ' + e.output)
-    
+
     def decorate(self):
         """
         Modify the observations in SANDBOX as requested
@@ -257,16 +259,16 @@ class integrationtestset(object):
                 for productID in observation.planes.keys():
                     plane = observation.planes[productID]
                     del observation.planes[productID]
-                    
+
                     new_productID = productID + '-new'
-                    self.log.file('DECORATE: ' + productID + ' -> ' + 
+                    self.log.file('DECORATE: ' + productID + ' -> ' +
                                   new_productID)
                     plane.product_id = new_productID
                     observation.planes.add(plane)
-                
+
                 with open(xmlfile, 'w') as XMLFILE:
                     self.writer.write(observation, XMLFILE)
-    
+
     def cleanup(self):
         """
         Remove from the SANDBOX all the observations in the requested set
@@ -283,14 +285,14 @@ class integrationtestset(object):
             except subprocess.CalledProcessError as e:
                 self.log.console('FAILED: ' + cmd)
                 self.log.file('FAILED: ' + e.output)
-    
+
     def run(self):
         """
         Fetch metadata, build a CAOM-2 object, and push it into the repository
         """
         self.parse_command_line()
-        with logger(self.logfile, 
-                    loglevel = self.loglevel).record() as self.log:
+        with logger(self.logfile,
+                    loglevel=self.loglevel).record() as self.log:
             self.log_command_line()
             if not self.args.skip:
                 self.ingest_raw()

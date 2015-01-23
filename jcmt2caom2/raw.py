@@ -70,7 +70,7 @@ from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.twod import TwoD
 from jcmt2caom2.jsa.threed import ThreeD
 
-from jcmt2caom2 import tovos 
+from jcmt2caom2 import tovos
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
@@ -85,6 +85,7 @@ This routine requires read access to the database, but does only reads.
 It therefore always reads the metadata from SYBASE.
 """
 
+
 class INGESTIBILITY(object):
     """
     Defines ingestion constants
@@ -92,18 +93,19 @@ class INGESTIBILITY(object):
     GOOD = 0
     BAD = 1
     JUNK = 2
-    
+
+
 class raw(object):
     """
     Use pyCAOM2 to ingest raw JCMT raw data for a single observation using
     metadata from the COMMON, ACSIS, SCUBA2 and FILES tables from the jcmt
-    database and from the ompproj, ompuser, and ompobslog tables from the 
-    omp database.  This class requires direct access to a database server 
+    database and from the ompproj, ompuser, and ompobslog tables from the
+    omp database.  This class requires direct access to a database server
     hosting copies of these tables.  The module tools4caom2.database is used
     to query the tables.
-    
+
     Only read access is required inside this routine to gather the metadata and
-    create the CAOM-2 xml file for the observation.  
+    create the CAOM-2 xml file for the observation.
 
     The resulting xml file will be pushed back to the CAOM-2 repository to
     complete the put/update, and this must be separately configured.
@@ -185,7 +187,7 @@ class raw(object):
                  'sam_mode',
                  'sw_mode')
 
-    SpeedOfLight = 299792458.0 # m/s
+    SpeedOfLight = 299792458.0  # m/s
 
     def __init__(self,
                  outdir='./'):
@@ -204,16 +206,16 @@ class raw(object):
         self.userconfig = SafeConfigParser()
 
         self.outdir = None
-        
+
         # Database attributes
         self.conn = None
         self.schema = 'dbo'
         self.jcmt_db = None
         self.omp_db = None
-        
+
         self.collection = None
         self.obsid = None
-        
+
         self.checkmode = None
 
         self.logdir = ''
@@ -223,10 +225,10 @@ class raw(object):
         self.errors = False
         self.warnings = False
         self.junk = False
-        
+
         self.voscopy = None
         self.vosroot = 'vos:jsaops'
-        
+
         self.reader = ObservationReader(True)
         self.writer = ObservationWriter()
         self.conn = None
@@ -243,27 +245,34 @@ class raw(object):
                         default=self.userconfigpath,
                         help='Optional user configuration file '
                         '(default=' + self.userconfigpath + ')')
-        ap.add_argument('--key',
+        ap.add_argument(
+            '--key',
             required=True,
             help='obsid, primary key in COMMON table')
-        ap.add_argument('--outdir',
+        ap.add_argument(
+            '--outdir',
             help='working directory for output files')
 
-        ap.add_argument('--collection',
+        ap.add_argument(
+            '--collection',
             choices=('JCMT', 'SANDBOX'),
             default='JCMT',
             help='collection to use for ingestion')
 
-        ap.add_argument('--check',
+        ap.add_argument(
+            '--check',
             action='store_true',
             dest='checkmode',
             help='Check the validity of metadata for this'
                  ' observation and file, then exit')
-        ap.add_argument('--logdir',
+        ap.add_argument(
+            '--logdir',
             help='path to log file directory')
-        ap.add_argument('--log',
+        ap.add_argument(
+            '--log',
             help='path to log file')
-        ap.add_argument('--debug',
+        ap.add_argument(
+            '--debug',
             dest='loglevel',
             action='store_const',
             const=logging.DEBUG)
@@ -272,30 +281,30 @@ class raw(object):
         if args.userconfig:
             self.userconfigpath = args.userconfig
         self.userconfigpath = os.path.abspath(
-                                os.path.expandvars(
-                                    os.path.expanduser(
-                                        self.userconfigpath)))
-        
+            os.path.expandvars(
+                os.path.expanduser(
+                    self.userconfigpath)))
+
         if os.path.isfile(self.userconfigpath):
             with open(self.userconfigpath) as UC:
                 self.userconfig.readfp(UC)
         else:
             raise RuntimeError('userconfig is not a file: ' +
                                self.userconfigpath)
-        
+
         # OPTIONAL: configure schema (defaults to dbo)
         if self.userconfig.has_option('database', 'schema'):
             self.schema = self.userconfig.get('database', 'schema')
-        
+
         # REQUIRED: Configure database prefixes for the jcmt and omp databases
         if self.userconfig.has_option('jcmt', 'jcmt_db'):
-            self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' + 
+            self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' +
                             self.schema + '.')
         else:
             raise RuntimeError('userconfig does not define jcmt_db')
 
         if self.userconfig.has_option('jcmt', 'omp_db'):
-            self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' + 
+            self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' +
                            self.schema + '.')
         else:
             raise RuntimeError('userconfig does not define omp_db')
@@ -304,21 +313,21 @@ class raw(object):
             self.collection = args.collection
 
         self.obsid = args.key
-                
+
         if args.outdir:
             self.outdir = os.path.abspath(
-                              os.path.expanduser(
-                                  os.path.expandvars(args.outdir)))
+                os.path.expanduser(
+                    os.path.expandvars(args.outdir)))
         else:
             self.outdir = os.getcwd()
 
         if args.logdir:
             self.logdir = os.path.abspath(
-                               os.path.expanduser(
-                                   os.path.expandvars(args.logdir)))
+                os.path.expanduser(
+                    os.path.expandvars(args.logdir)))
         else:
             self.logdir = os.getcwd()
-        
+
         if args.log:
             self.logfile = args.log
 
@@ -337,12 +346,12 @@ class raw(object):
         """
         if self.logfile:
             self.logfile = os.path.abspath(
-                               os.path.expanduser(
-                                   os.path.expandvars(self.logfile)))
+                os.path.expanduser(
+                    os.path.expandvars(self.logfile)))
         else:
             defaultlogname = ('-'.join(['caom',
                                         self.collection,
-                                        self.obsid]) + 
+                                        self.obsid]) +
                               '_' + utdate_string() + '.log')
             if self.logdir:
                 if not os.path.isdir(self.logdir):
@@ -352,8 +361,8 @@ class raw(object):
             else:
                 defaultlogname = os.path.join(self.outdir, defaultlogname)
             self.logfile = os.path.abspath(
-                               os.path.expanduser(
-                                   os.path.expandvars(defaultlogname)))
+                os.path.expanduser(
+                    os.path.expandvars(defaultlogname)))
 
     def logCommandLineSwitches(self):
         """
@@ -381,7 +390,7 @@ class raw(object):
 
         Arguments:
         <None>
-        
+
         Returns:
         1 if the observation exists in COMMON else 0
         """
@@ -441,8 +450,10 @@ class raw(object):
             '    ou.uname,',
             '    op.title',
             'FROM ' + self.jcmt_db + 'COMMON c',
-            '    left join ' + self.omp_db + 'ompproj op on c.project=op.projectid',
-            '    left join ' + self.omp_db + 'ompuser ou on op.pi=ou.userid',
+            '    left join ' + self.omp_db +
+            'ompproj op on c.project=op.projectid',
+            '    left join ' + self.omp_db +
+            'ompuser ou on op.pi=ou.userid',
             'WHERE c.obsid="%s"' % (obsid,)])
         answer = self.conn.read(sqlcmd)
         self.log.file('query complete', logging.DEBUG)
@@ -460,7 +471,7 @@ class raw(object):
 
         Arguments:
         obsid: the observation identifier in COMMON for the observation
-        
+
         Returns:
         a one-entry dictionary with the key 'quality' and a JSA quality
              as the value
@@ -525,19 +536,19 @@ class raw(object):
         Arguments:
         common      dictionary containing fields common to the observation
         subsystem   dictionary containing fields from ACSIS or SCUBA2
-        
+
         Returns:
          0 if observation is OK
          1 if observation is JUNK
         -1 if observation should be skipped
         """
-        #-----------------------------------------------------------------
-        # Validity checking for raw ACSIS and SCUBA-2 data
-        #-----------------------------------------------------------------
+        # -----------------------------------------------------------------
+        #  Validity checking for raw ACSIS and SCUBA-2 data
+        # -----------------------------------------------------------------
         # Check that mandatory fields do not have NULL values
         nullvalues = []
         ingestibility = INGESTIBILITY.GOOD
-        
+
         for field in raw.MANDATORY:
             if common[field] is None:
                 nullvalues.append(field)
@@ -547,7 +558,7 @@ class raw(object):
                              '\n'.join(sorted(nullvalues)),
                              logging.WARN)
             ingestibility = INGESTIBILITY.BAD
-            
+
         if common['obs_type'] in ('phase', 'RAMP'):
             # do not ingest observations with bogus obs_type
             # this is not an error, but log a warning
@@ -557,7 +568,7 @@ class raw(object):
                              common['obs_type'],
                              logging.WARN)
             ingestibility = INGESTIBILITY.BAD
-        
+
         # JUNK status trumps BAD, because a JUNK observation must be removed
         # from CAOM-2 if present, whereas a bad observation just cannot be
         # ingested.
@@ -567,7 +578,7 @@ class raw(object):
                              ' prevents it from being ingested in CAOM-2',
                              logging.WARN)
             ingestibility = INGESTIBILITY.JUNK
-        
+
         # Check observation-level mandatory headers with restricted values
         # by creating the instrument keyword list
         keyword_dict = {}
@@ -582,16 +593,16 @@ class raw(object):
             subsysnr = subsystem.keys()[0]
             keyword_dict['sideband'] = subsystem[subsysnr]['obs_sb']
             keyword_dict['sideband_filter'] = subsystem[subsysnr]['sb_mode']
-        someBad, keyword_list = instrument_keywords('raw', 
+        someBad, keyword_list = instrument_keywords('raw',
                                                     common['instrume'],
                                                     common['backend'],
-                                                    keyword_dict, 
+                                                    keyword_dict,
                                                     self.log)
         if someBad:
             ingestibility = INGESTIBILITY.JUNK
             self.instrument_keywords = []
         else:
-            self.instrument_keywords = keyword_list            
+            self.instrument_keywords = keyword_list
 
         return ingestibility
 
@@ -609,11 +620,11 @@ class raw(object):
         subsystem   dictionary containing fields from ACSIS or SCUBA2
         files       dictionary containing the lists of artifact filenames
         """
-        #------------------------------------------------------------
+        # ------------------------------------------------------------
         # Build (or rebuild) a simple observation
         # Since we are dealing with raw data, the algorithm = "exposure"
         # by default, a change in notation for the JCMT.
-        #------------------------------------------------------------
+        # ------------------------------------------------------------
         collection = self.collection
         observationID = self.obsid
         self.log.console('PROGRESS: build observationID = ' + self.obsid,
@@ -678,8 +689,8 @@ class raw(object):
             inbeam = common['inbeam'].upper()
         else:
             inbeam = ''
-        instrument = Instrument(instrument_name(frontend, 
-                                                backend, 
+        instrument = Instrument(instrument_name(frontend,
+                                                backend,
                                                 inbeam,
                                                 self.log))
         instrument.keywords.extend(self.instrument_keywords)
@@ -733,31 +744,31 @@ class raw(object):
                     this_hybrid['freq_img_upper'] = \
                         subsystem[key]['freq_img_upper']
 
-                this_hybrid['meanfreq'] = (this_hybrid['freq_sig_lower'] + 
+                this_hybrid['meanfreq'] = (this_hybrid['freq_sig_lower'] +
                                            this_hybrid['freq_sig_upper'])/2.0
 
-                # Compute maximum beam size for this observation in degrees  
+                # Compute maximum beam size for this observation in degrees
                 # frequencies are in GHz
                 # The scale factor is:
-                # 206264.8 ["/r] * sqrt(pi/2) * c [m GHz]/ 15 [m] 
+                # 206264.8 ["/r] * sqrt(pi/2) * c [m GHz]/ 15 [m]
                 beamsize = max(beamsize, 1.435 / this_hybrid['meanfreq'])
         else:
             # Compute beam size in degrees for 850 micron array
             # filter is in microns
             # The scale factor is:
-            # pi/180 * sqrt(pi/2) * 1e-6 * lambda [um]/ 15 [m] 
+            # pi/180 * sqrt(pi/2) * 1e-6 * lambda [um]/ 15 [m]
             beamsize = 4.787e-6 * 850.0
         observation.instrument = instrument
 
         if (observation.obs_type not in (
                 'flatfield', 'noise', 'setup', 'skydip')
-            and common['object']):
-            # The target is not significant for the excluded kinds of 
+                and common['object']):
+            # The target is not significant for the excluded kinds of
             # observation, even if supplied in COMMON
             if common['object']:
                 targetname = target_name(common['object'])
             target = Target(targetname)
-            
+
             if common['obsra'] is None or common['obsdec'] is None:
                 target.moving = True
                 target_position = None
@@ -768,15 +779,15 @@ class raw(object):
                                                  'ICRS',
                                                  2000.0)
             observation.target_position = target_position
-            
+
             if common['standard'] is not None:
                 target.standard = True if common['standard'] else False
-                
+
             if backend != 'SCUBA-2':
                 subsysnr = min(subsystem.keys())
                 if subsystem[subsysnr]['zsource'] is not None:
                     target.redshift = subsystem[subsysnr]['zsource']
-            
+
             observation.target = target
 
         telescope = Telescope('JCMT')
@@ -843,16 +854,17 @@ class raw(object):
 # Finally, check for a bowtie polygon, where the corners were recorded
 # in the wrong order.
                 if (common['obs_type'] in ('science', 'pointing', 'focus')
-                    and common['obsrabl'] is not None):
-                    # Sky position makes no sense for other kinds of 
+                        and common['obsrabl'] is not None):
+                    # Sky position makes no sense for other kinds of
                     # observations, even if supplied in COMMON
-                    
+
                     # Position axis bounds are in ICRS
                     # Check for various pathologies due to different
                     # observing strategies
-                    # position accuracy is about 0.1 arcsec (in decimal degrees)
+                    # position accuracy is about 0.1 arcsec (in decimal
+                    # degrees)
                     eps = 0.1 / 3600.0
-                     
+
                     bl = TwoD(common['obsrabl'], common['obsdecbl'])
                     br = TwoD(common['obsrabr'], common['obsdecbr'])
                     tl = TwoD(common['obsratl'], common['obsdectl'])
@@ -861,56 +873,57 @@ class raw(object):
                     self.log.file('initial bounds br = ' + str(br))
                     self.log.file('initial bounds tr = ' + str(tr))
                     self.log.file('initial bounds tl = ' + str(tl))
-                    halfbeam = beamsize /2.0
+                    halfbeam = beamsize / 2.0
 
-                    # The precomputed bounding box can be represented as a polgon
+                    # The precomputed bounding box can be represented as a
+                    # polgon
                     if ((bl - br).abs() < eps
-                        and (bl - tl).abs() < eps 
-                        and (tl - tr).abs() < eps):
-                        # bounding "box" is a point, so expand to a box 
-                        self.log.console('For observation ' + 
-                                         common['obsid'] + 
+                            and (bl - tl).abs() < eps
+                            and (tl - tr).abs() < eps):
+                        # bounding "box" is a point, so expand to a box
+                        self.log.console('For observation ' +
+                                         common['obsid'] +
                                          ' the bounds are a point')
-                        
+
                         cosdec = math.cos(br.y * math.pi / 180.0)
                         offsetX = 0.5 * beamsize / cosdec
                         offsetY = 0.5 * beamsize
                         bl = bl + TwoD(-offsetX, -offsetY)
-                        br = br + TwoD( offsetX, -offsetY)
-                        tr = tr + TwoD( offsetX,  offsetY)
-                        tl = tl + TwoD(-offsetX,  offsetY)
+                        br = br + TwoD(offsetX, -offsetY)
+                        tr = tr + TwoD(offsetX, offsetY)
+                        tl = tl + TwoD(-offsetX, offsetY)
 
                     elif ((bl - br).abs() < eps
                           and (tl - tr).abs() < eps
                           and (bl - tl).abs() >= eps):
                         # bounding box is a line in y, so diff points to + Y
                         # and the perpendicular points along - X
-                        self.log.console('For observation ' + 
-                                         common['obsid'] + 
+                        self.log.console('For observation ' +
+                                         common['obsid'] +
                                          ' the bounds are in a line in Y')
                         diff = tl - bl
                         mean = (tl + bl)/2.0
                         cosdec = math.cos(mean.y * math.pi / 180.0)
-                        
+
                         unitX = TwoD(diff.y, -diff.x * cosdec)
                         unitX = unitX / unitX.abs()
                         offsetX = -halfbeam * TwoD(unitX.x / cosdec, unitX.y)
-                        
+
                         unitY = TwoD(diff.x * cosdec, diff.y)
                         unitY = unitY / unitY.abs()
                         offsetY = halfbeam * TwoD(unitY.x / cosdec, unitY.y)
-                        
+
                         bl = bl - offsetX - offsetY
-                        tl = tl - offsetX + offsetY 
-                        br = br + offsetX - offsetY 
+                        tl = tl - offsetX + offsetY
+                        br = br + offsetX - offsetY
                         tr = tr + offsetX + offsetY
-                        
-                    elif ((bl - tl).abs() < eps 
-                          and (br - tr).abs() < eps 
+
+                    elif ((bl - tl).abs() < eps
+                          and (br - tr).abs() < eps
                           and (bl - br).abs() >= eps):
                         # bounding box is a line in x
-                        self.log.console('For observation ' + 
-                                         common['obsid'] + 
+                        self.log.console('For observation ' +
+                                         common['obsid'] +
                                          ' the bounds are in a line in X')
                         diff = br - bl
                         mean = (br + bl)/2.0
@@ -919,45 +932,47 @@ class raw(object):
                         unitX = TwoD(diff.x * cosdec, diff.y)
                         unitX = unitX / unitX.abs()
                         offsetX = halfbeam * TwoD(unitX.x / cosdec, unitX.y)
-                        
+
                         unitY = TwoD(diff.y, -diff.x * cosdec)
                         unitY = unitY / unitY.abs()
                         offsetY = halfbeam * TwoD(unitY.x / cosdec, unitY.y)
 
                         bl = bl - offsetX - offsetY
-                        tl = tl - offsetX + offsetY 
-                        br = br + offsetX - offsetY 
+                        tl = tl - offsetX + offsetY
+                        br = br + offsetX - offsetY
                         tr = tr + offsetX + offsetY
-                        
+
                     else:
                         # Get here only if the box is not degenerate
                         bl3d = ThreeD(bl)
                         br3d = ThreeD(br)
                         tr3d = ThreeD(tr)
                         tl3d = ThreeD(tl)
-                        
+
                         try:
-                            sign1 = math.copysign(1,
-                                ThreeD.included_angle(br3d, bl3d, tl3d))
-                            sign2 = math.copysign(1, 
-                                ThreeD.included_angle(tr3d, br3d, bl3d))
-                            sign3 = math.copysign(1, 
-                                ThreeD.included_angle(tl3d, tr3d, br3d))
-                            sign4 = math.copysign(1,
-                                ThreeD.included_angle(bl3d, tl3d, tr3d))
+                            sign1 = math.copysign(
+                                1, ThreeD.included_angle(br3d, bl3d, tl3d))
+                            sign2 = math.copysign(
+                                1, ThreeD.included_angle(tr3d, br3d, bl3d))
+                            sign3 = math.copysign(
+                                1, ThreeD.included_angle(tl3d, tr3d, br3d))
+                            sign4 = math.copysign(
+                                1, ThreeD.included_angle(bl3d, tl3d, tr3d))
                         except ValueError as e:
                             self.errors = True
                             self.log.console('The bounding box for obsid = ' +
                                              self.obsid + ' is degenerate',
                                              logging.ERROR)
-                        
+
                         # If the signs are not all the same, the vertices
                         # were recorded in a bowtie order.  Swap any two.
-                        if (sign1 != sign2 or sign2 != sign3 or sign3 != sign4):
+                        if (sign1 != sign2 or sign2 != sign3 or
+                                sign3 != sign4):
                             self.warnings = True
-                            self.log.console('For observation ' + 
-                                             common['obsid'] + 
-                                             ' the bounds are in a bowtie order',
+                            self.log.console('For observation ' +
+                                             common['obsid'] +
+                                             ' the bounds are in a' +
+                                             ' bowtie order',
                                              logging.WARN)
                             bl.swap(br)
 
@@ -997,15 +1012,15 @@ class raw(object):
 
                 else:
                     this_hybrid = hybrid[productID]
-                        
+
                     energy_axis = CoordAxis1D(Axis('FREQ', 'GHz'))
                     if subsystem[key]['sb_mode'] == 'DSB':
                         # These all correspond to "pixel" 1, so the pixel
                         # coordinate runs from [0.5, 1.5]
                         # Note that each artifact already records the frequency
                         # bounds correctly for that data in that file.  The
-                        # aggregation to the plane will take care of overlapping
-                        # energy bounds.
+                        # aggregation to the plane will take care of
+                        # overlapping energy bounds.
                         freq_bounds = CoordBounds1D()
                         freq_bounds.samples.append(CoordRange1D(
                             RefCoord(0.5, subsystem[key]['freq_sig_lower']),
@@ -1024,13 +1039,13 @@ class raw(object):
                     spectral_axis.ssyssrc = subsystem[key]['ssyssrc']
                     spectral_axis.zsource = subsystem[key]['zsource']
 
-                    # Recall that restfreq has been converted to Hz in 
+                    # Recall that restfreq has been converted to Hz in
                     # thishybrid so do not use the unconverted value from
                     # subsystem[key][['restfreq']
                     spectral_axis.restfrq = this_hybrid['restfreq']
                     meanfreq = float(this_hybrid['meanfreq'])
                     ifchansp = float(this_hybrid['ifchansp'])
-                    spectral_axis.resolving_power = abs(1.0e9 * meanfreq / 
+                    spectral_axis.resolving_power = abs(1.0e9 * meanfreq /
                                                         ifchansp)
 
                     spectral_axis.transition = EnergyTransition(
@@ -1066,7 +1081,7 @@ class raw(object):
         First do all the checks,
         then build the caom2 structure,
         and persist to an xml file that is sent to the repository.
-        
+
         Arguments:
         <none>
         """
@@ -1115,10 +1130,11 @@ class raw(object):
 
         else:
             self.warnings = True
-            self.log.console('backend = "' + backend + '" is not one of '
-                           '["ACSIS",  "DAS",  "AOSC",  "SCUBA",  '
-                           '"SCUBA-2"]',
-                           logging.WARN)
+            self.log.console(
+                'backend = "' + backend + '" is not one of '
+                '["ACSIS",  "DAS",  "AOSC",  "SCUBA",  '
+                '"SCUBA-2"]',
+                logging.WARN)
 
         # somewhat repetitive, but custom SQL is useful
         # get dictionary of productID's for each subsystem
@@ -1129,7 +1145,7 @@ class raw(object):
                                              self.conn,
                                              self.log)
         self.log.file('query complete', logging.DEBUG)
-        
+
         ingestibility = self.check_observation(common, subsystem)
         if ingestibility == INGESTIBILITY.BAD:
             self.errors = True
@@ -1137,13 +1153,12 @@ class raw(object):
                              logging.ERROR)
         if self.checkmode:
             if ingestibility == INGESTIBILITY.GOOD:
-                self.log.console('SUCCESS: Observation ' + self.obsid + 
+                self.log.console('SUCCESS: Observation ' + self.obsid +
                                  ' is ready for ingestion')
-            # running in checkmode will NOT remove JUNK observations, 
+            # running in checkmode will NOT remove JUNK observations,
             # and does NOT check whether they are currently in CAOM-2,
             # but will report that they are junk.
             return
-        
 
         if self.loglevel == logging.DEBUG:
             repository = Repository(self.outdir, self.log)
@@ -1152,7 +1167,7 @@ class raw(object):
 
         uri = 'caom:' + self.collection + '/' + common['obsid']
         if ingestibility == INGESTIBILITY.JUNK:
-            self.log.console('     Remove non-ingestible observation ' + 
+            self.log.console('     Remove non-ingestible observation ' +
                              self.obsid)
             repository.remove(uri)
         else:
@@ -1173,9 +1188,9 @@ class raw(object):
                 with open(xmlfile, 'w') as XMLFILE:
                     self.writer.write(observation, XMLFILE)
 
-            self.log.console('SUCCESS: Observation ' + self.obsid + 
-                 ' has been ingested')
-
+            self.log.console(
+                'SUCCESS: Observation ' + self.obsid +
+                ' has been ingested')
 
     def run(self):
         """
@@ -1183,11 +1198,11 @@ class raw(object):
         """
         self.parse_command_line()
         self.setup_logger()
-        
+
         prefix = ''
-        
-        with logger(self.logfile, 
-                    loglevel = self.loglevel).record() as self.log:
+
+        with logger(self.logfile,
+                    loglevel=self.loglevel).record() as self.log:
             try:
                 self.logCommandLineSwitches()
                 with connection(self.userconfig,
@@ -1204,7 +1219,7 @@ class raw(object):
                                          logging.ERROR)
                     except Exception as p:
                         pass
-        
+
         # beware that errors after this are not logged
         if self.collection == 'JCMT' and not self.checkmode:
             self.voscopy = tovos.raw_ingestion(vos.Client(),
@@ -1216,7 +1231,7 @@ class raw(object):
                 logsuffix += '_JUNK'
             elif self.warnings:
                 logsuffix += '_WARNINGS'
-                
+
             logcopy = self.logfile
             if logsuffix:
                 logid, ext = os.path.splitext(self.logfile)
@@ -1228,4 +1243,3 @@ class raw(object):
 
             if logsuffix:
                 os.remove(logcopy)
-                

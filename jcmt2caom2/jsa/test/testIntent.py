@@ -8,7 +8,8 @@ import unittest
 from jcmt2caom2.jsa.intent import intent
 from caom2.caom2_enums import ObservationIntentType as OIT
 
-class testIntent( unittest.TestCase):
+
+class testIntent(unittest.TestCase):
     """
     Test cases for the function intent(obs_type, backend, sam_mode)
     """
@@ -26,7 +27,7 @@ class testIntent( unittest.TestCase):
                      ['focus',    'SCUBA-2', OIT.CALIBRATION],
                      ['pointing', 'SCUBA-2', OIT.SCIENCE],
                      ['science',  'SCUBA-2', OIT.SCIENCE]]
-        
+
         for obs_type, backend, retval in test_data:
             intentval = intent(obs_type, backend)
             self.assertEqual(intentval, retval,

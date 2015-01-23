@@ -38,7 +38,7 @@ from caom2.wcs.caom2_coord_range1d import CoordRange1D
 from caom2.wcs.caom2_ref_coord import RefCoord
 from caom2.wcs.caom2_temporal_wcs import TemporalWCS
 from caom2.caom2_enums import ProductType
-from caom2.caom2_simple_observation import SimpleObservation as SimpleObservation
+from caom2.caom2_simple_observation import SimpleObservation
 
 from tools4caom2.database import database
 from tools4caom2.ingest2caom2 import ingest2caom2
@@ -54,12 +54,13 @@ from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.target_name import target_name
 
-from jcmt2caom2 import tovos 
+from jcmt2caom2 import tovos
 
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 # from caom2.caom2_enums import CalibrationLevel
 # from caom2.caom2_enums import DataProductType
+
 
 def jcmtcmp(f1, f2):
     # This comparison should order files so that
@@ -76,13 +77,13 @@ def jcmtcmp(f1, f2):
                  'hpxrimg': 6,
                  'hpxrsp': 7
                  }
-    
-    # Associations will be ingested in "reverse" order for heteroyne data, 
+
+    # Associations will be ingested in "reverse" order for heteroyne data,
     # i.e. all nit, pro and pub products will be ingested before obs products,
     # because masks used for obs products are derived from composite products
-    
-    # Associations will be ingested in the "normal" order for SCUBA-2, 
-    # i.e. obs before nit, pro and pub, because composites can be built 
+
+    # Associations will be ingested in the "normal" order for SCUBA-2,
+    # i.e. obs before nit, pro and pub, because composites can be built
     # from obs products
     orderasn = {'jcmth': {'obs': '4',
                           'nit': '3',
@@ -97,7 +98,7 @@ def jcmtcmp(f1, f2):
             re.split(r'_', os.path.splitext(os.path.basename(f1))[0])
     except:
         raise RuntimeError('stdpipe.jcmtcmp: cannot extract parts from ' + f1)
-    
+
     m1 = re.match(r'([a-z]+)(\d*)', prod1)
     prod1, tile1 = m1.groups()
     text1 = orderasn[date1[0:5]][asntype1] + date1 + obs1 + subsys1 + tile1
@@ -117,24 +118,26 @@ def jcmtcmp(f1, f2):
         val = cmp(text1, text2)
     return val
 
+
 def isdefined(key, header):
     """
     Test whether a key is present and has a defined value in a FITS header
-    
+
     Arguments:
     key:  a FITS keyword
     header: a FITS header or other dictiaonary-like structure
     """
     return (key in header and header[key] != pyfits.card.UNDEFINED)
 
+
 # define the jcmt2caom class to manage the ingestions
 class stdpipe(ingest2caom2):
     """
-    A derived class of ingest2caom2 specialized to ingest JCMT standard pipeline
-    products.
+    A derived class of ingest2caom2 specialized to ingest JCMT standard
+    pipeline products.
     """
-    speedOfLight = 2.9979250e8 # Speed of light in m/s
-    lambda_csotau = 225.0e9 # Frequency of CSO tau meter in Hz
+    speedOfLight = 2.9979250e8  # Speed of light in m/s
+    lambda_csotau = 225.0e9  # Frequency of CSO tau meter in Hz
     raw_acsis_regex = \
         r'^([ah])(20[\d]{2})(0[1-9]|1[012])(0[1-9]|[12][0-9]|3[01])_' +\
         r'([\d]{5})_([\d]{2})_([\d]{4})$'
@@ -153,15 +156,15 @@ class stdpipe(ingest2caom2):
         ingest2caom2.__init__(self)
         self.archive = 'JCMT'
         self.stream = 'product'
-        
+
         self.voscopy = None
         self.vosroot = 'vos:jsaops'
-        
+
         # These defaults are for CADC use, but can be overriden in userconfig.
 
-        # The server and cred_db are used to get database credentials at the CADC.
-        # Other sites should supply cadc_id, cadc_key in the section [cadc] of
-        # the userconfig file.
+        # The server and cred_db are used to get database credentials at the
+        # CADC.  Other sites should supply cadc_id, cadc_key in the section
+        # [cadc] of the userconfig file.
         self.userconfigpath = '~/.tools4caom2/tools4caom2.config'
         if not self.userconfig.has_section('database'):
             self.userconfig.add_section('database')
@@ -176,7 +179,7 @@ class stdpipe(ingest2caom2):
         self.userconfig.set('jcmt', 'caom_db', 'jcmt')
         self.userconfig.set('jcmt', 'jcmt_db', 'jcmtmd')
         self.userconfig.set('jcmt', 'omp_db', 'jcmtmd')
-        
+
         # This is needed for compatability with other uses of ingest2caom2, but
         # should not be used for the JCMT.
         self.database = 'jcmt'
@@ -215,16 +218,16 @@ class stdpipe(ingest2caom2):
         # time structures for chunks with WCS
         self.reader = ObservationReader(True)
         self.writer = ObservationWriter()
-        
+
         self.member_cache = {}
         self.provenance_cache = {}
         self.remove_dict = {}
         self.remove_id = []
         self.repository = None
 
-    #************************************************************************
+    # ************************************************************************
     # Add the custom command line switchs
-    #************************************************************************
+    # ************************************************************************
     def defineCommandLineSwitches(self):
         """
         Add some JSA-specific switches
@@ -242,9 +245,9 @@ class stdpipe(ingest2caom2):
                              default='JCMT',
                              help='collection to use for ingestion')
 
-    #************************************************************************
+    # ************************************************************************
     # Process the custom command line switchs
-    #************************************************************************
+    # ************************************************************************
     def processCommandLineSwitches(self):
         """
         Process some JSA-specific switches
@@ -257,17 +260,17 @@ class stdpipe(ingest2caom2):
             self.validitylevel = logging.WARN
 
         self.collection = self.switches.collection
-        
-        self.caom_db = (self.userconfig.get('jcmt', 'caom_db') + '.' + 
+
+        self.caom_db = (self.userconfig.get('jcmt', 'caom_db') + '.' +
                         self.schema + '.')
-        self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' + 
+        self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' +
                         self.schema + '.')
-        self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' + 
+        self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' +
                        self.schema + '.')
 
-    #************************************************************************
+    # ************************************************************************
     # Include the custom command line switch in the log
-    #************************************************************************
+    # ************************************************************************
     def logCommandLineSwitches(self):
         """
         Log the values of the command line switches.
@@ -293,7 +296,7 @@ class stdpipe(ingest2caom2):
         True if the key is missing or undefined, False otherwise
         """
         if self.debug:
-            self.log.console('enter check_missing: ' + 
+            self.log.console('enter check_missing: ' +
                              key,
                              loglevel=logging.DEBUG)
         bad = False
@@ -308,7 +311,7 @@ class stdpipe(ingest2caom2):
     # Utility for checking missing headers
     def check_values(self, key, head, acceptable):
         """
-        Check whether a the value of a keyword is in the list of acceptable 
+        Check whether a the value of a keyword is in the list of acceptable
         values. If not, log the keyword, value and list of acceptable values.
 
         Arguments:
@@ -317,10 +320,11 @@ class stdpipe(ingest2caom2):
         acceptable: list of acceptable values
 
         Return:
-        True if the key is missing or not in the acceptable list, False otherwise
+        True if the key is missing or not in the acceptable list,
+        False otherwise
         """
         if self.debug:
-            self.log.console('enter check_values: ' + 
+            self.log.console('enter check_values: ' +
                              key + ': ' +
                              datetime.datetime.now().isoformat(),
                              loglevel=logging.DEBUG)
@@ -336,7 +340,7 @@ class stdpipe(ingest2caom2):
             value = head[key]
             if isinstance(value, str):
                 value = value.strip()
-            
+
             if value not in acceptable:
                 acceptable_list = \
                     ['UNDEFINED' if v == pyfits.card.UNDEFINED else v
@@ -344,7 +348,7 @@ class stdpipe(ingest2caom2):
                 acceptable_str = '[' + ', '.join(acceptable_list) + ']'
                 self.warnings = True
                 self.errors = True
-                self.log.console('Mandatory header ' + key + 
+                self.log.console('Mandatory header ' + key +
                                  ' has the value "' +
                                  value + '" but should be in ' +
                                  acceptable_str,
@@ -356,12 +360,12 @@ class stdpipe(ingest2caom2):
     def build_remove_dict(self, run_id):
         """
         If identity_instance_id has not already been checked, read back a
-        complete list of existing collections, observations and planes, 
-        which will be deleted if they are not replaced or updated by the 
+        complete list of existing collections, observations and planes,
+        which will be deleted if they are not replaced or updated by the
         current recipe instance.
-        
+
         Arguments:
-        run_id: an identity_instance_id as a decimal string to be compared 
+        run_id: an identity_instance_id as a decimal string to be compared
                 with Plane.provenance_runID
         """
         if run_id not in self.remove_id:
@@ -382,18 +386,18 @@ class stdpipe(ingest2caom2):
                 '        FROM (',
                 '            SELECT ',
                 '                obsID,',
-                '                CASE WHEN charindex("x", provenance_runID) = 2', 
+                '                CASE WHEN charindex("x", provenance_runID) = 2',
                 '                     THEN hextobigint(provenance_runID)',
                 '                     ELSE convert(bigint, provenance_runID)',
                 '                     END as identity_instance_id',
-                '            FROM ' + self.caom_db +'caom2_Plane',
+                '            FROM ' + self.caom_db + 'caom2_Plane',
                 '            ) s',
                 '        WHERE s.identity_instance_id = ' + run_id + ')',
                 'ORDER BY o.collection, o.observationID, p.productID'])
             result = self.conn.read(sqlcmd)
             if result:
                 for coll, obsid, prodid, run in result:
-                    this_runID = str(eval(run) if isinstance(run, str) 
+                    this_runID = str(eval(run) if isinstance(run, str)
                                      else run)
                     eq = (1 if this_runID == run_id else 0)
                     # Ignore entries in other collections
@@ -405,9 +409,9 @@ class stdpipe(ingest2caom2):
                         if prodid not in self.remove_dict[coll][obsid]:
                             self.remove_dict[coll][obsid][prodid] = eq
 
-    #************************************************************************
+    # ************************************************************************
     # archive-specific structures to write override files
-    #************************************************************************
+    # ************************************************************************
     def build_dict(self, header):
         '''Archive-specific code to read the common dictionary from the
                file header.
@@ -417,14 +421,14 @@ class stdpipe(ingest2caom2):
                productID
         '''
         if self.debug:
-            self.log.console('enter build_dict: ' + 
+            self.log.console('enter build_dict: ' +
                              datetime.datetime.now().isoformat(),
                              loglevel=logging.DEBUG)
         if self.repository is None:
-            # note that this is similar to the repository in ingest2caom2, but 
-            # that is not made a part of the structure - probably should be 
-            self.repository = Repository(self.outdir, 
-                                         self.log, 
+            # note that this is similar to the repository in ingest2caom2, but
+            # that is not made a part of the structure - probably should be
+            self.repository = Repository(self.outdir,
+                                         self.log,
                                          debug=self.debug,
                                          backoff=[10.0, 20.0, 40.0, 80.0])
 
@@ -448,8 +452,8 @@ class stdpipe(ingest2caom2):
 
         # Check that the mandatory file headers exist
         # it is not necessary to check here for keywords that have restricted
-        # sets of acceptable values, since they will be subject to more detailed
-        # testing below.
+        # sets of acceptable values, since they will be subject to more
+        # detailed testing below.
         mandatory = ('ASN_TYPE',
                      'BITPIX',
                      'CHECKSUM',
@@ -526,29 +530,36 @@ class stdpipe(ingest2caom2):
             # Only do these tests if the backend is OK
             backend = header['BACKEND'].upper().strip()
             if backend in ('ACSIS', 'DAS', 'AOS-C'):
-                someBAD |= self.check_values('INBEAM', header,
+                someBAD |= self.check_values(
+                    'INBEAM', header,
                     [pyfits.card.UNDEFINED,
                      'POL'])
 
-                someBAD |= self.check_values('OBS_TYPE', header,
+                someBAD |= self.check_values(
+                    'OBS_TYPE', header,
                     ['pointing', 'science', 'focus', 'skydip'])
 
-                someBAD |= self.check_values('SAM_MODE', header,
+                someBAD |= self.check_values(
+                    'SAM_MODE', header,
                     ['jiggle', 'grid', 'raster', 'scan'])
 
-                someBAD |= self.check_values('SURVEY', header,
+                someBAD |= self.check_values(
+                    'SURVEY', header,
                     [pyfits.card.UNDEFINED,
                      'GBS', 'NGS', 'SLS'])
 
             elif backend == 'SCUBA-2':
-                someBAD |= self.check_values('OBS_TYPE', header,
+                someBAD |= self.check_values(
+                    'OBS_TYPE', header,
                     ['pointing', 'science', 'focus', 'skydip',
                      'flatfield', 'setup', 'noise'])
 
-                someBAD |= self.check_values('SAM_MODE', header,
+                someBAD |= self.check_values(
+                    'SAM_MODE', header,
                     ['scan', 'stare'])
 
-                someBAD |= self.check_values('SURVEY', header,
+                someBAD |= self.check_values(
+                    'SURVEY', header,
                     [pyfits.card.UNDEFINED,
                      'CLS', 'DDS', 'GBS', 'JPS', 'NGS', 'SASSY'])
 
@@ -556,7 +567,7 @@ class stdpipe(ingest2caom2):
                 frontend = header['INSTRUME']
             else:
                 frontend = 'UNKNOWN'
-            
+
             # Check some more detailed values by building instrument_keywords
             keyword_dict = {}
             if isdefined('SW_MODE', header):
@@ -564,24 +575,24 @@ class stdpipe(ingest2caom2):
 
             if isdefined('INBEAM', header):
                 keyword_dict['inbeam'] = header['INBEAM']
-            
+
             if isdefined('SCAN_PAT', header):
                 keyword_dict['x_scan_pat'] = header['SCAN_PAT']
-            
+
             if backend in ('ACSIS', 'DAS', 'AOS-C'):
                 if isdefined('OBS_SB', header):
                     keyword_dict['sideband'] = header['OBS_SB']
-                
+
                 if isdefined('SB_MODE', header):
                     keyword_dict['sideband_filter'] = header['SB_MODE']
-            
+
             thisBad, keyword_list = instrument_keywords('stdpipe',
                                                         frontend,
                                                         backend,
                                                         keyword_dict,
                                                         self.log)
             self.instrument_keywords = ' '.join(keyword_list)
-            
+
             # verify membership headers are real observations
             max_release_date = None
             earliest_utdate = None
@@ -594,16 +605,16 @@ class stdpipe(ingest2caom2):
                 for i in range(obscnt):
                     # Starlink records the obsid-subsysnr in OBSn to
                     # identify the input observation.  There is no ICD
-                    # to parse the obsid_subsysnr; the FILES and ACSIS 
-                    # tables provide the only valid translation from 
-                    # obsid_subsysnr to obsid.  The COMMON table provides 
+                    # to parse the obsid_subsysnr; the FILES and ACSIS
+                    # tables provide the only valid translation from
+                    # obsid_subsysnr to obsid.  The COMMON table provides
                     # the definitive source for raw data release dates,
-                    # from which pipeline product release dates are 
+                    # from which pipeline product release dates are
                     # computed.
                     obskey = 'OBS' + str(i + 1)
                     obsn = header[obskey]
                     obsid = None
-                    
+
                     if obsn in self.member_cache:
                         obsid, release_date, date_obs, date_end = \
                             self.member_cache[obsn]
@@ -624,21 +635,21 @@ class stdpipe(ingest2caom2):
                         if len(result):
                             obsid, release_date, date_obs, date_end = \
                                 result[0]
-                            
+
                             if date_obs:
-                                if (earliest_utdate is None or 
-                                    date_obs < earliest_utdate):
+                                if (earliest_utdate is None or
+                                        date_obs < earliest_utdate):
 
                                     earliest_utdate = date_obs
                                     earliest_obs = obsid
-                                    
+
                             # cache the membership metadata
                             self.member_cache[obsn] = \
                                 (obsid, release_date, date_obs, date_end)
                             self.log.file('cache member metadata '
                                           'for ' + obsn,
                                           logging.DEBUG)
-                                
+
                             # Also cache the productID's for each file
                             fdict = raw_product_id(backend,
                                                    'prod',
@@ -657,20 +668,20 @@ class stdpipe(ingest2caom2):
                                              'not in jcmtmd.dbo.FILES',
                                              logging.WARN)
                             someBAD = True
-                        
+
                     if obsid:
                         # record the time interval
                         if ((algorithm != 'exposure'
-                             or obsid == self.observationID)
-                            and obsid not in obstimes):
-                                obstimes[obsid] = (date_obs, date_end)
+                                or obsid == self.observationID)
+                                and obsid not in obstimes):
+                            obstimes[obsid] = (date_obs, date_end)
 
                         if max_release_date:
                             if max_release_date < release_date:
                                 max_release_date = release_date
                         else:
                             max_release_date = release_date
-                        
+
             if algorithm != 'exposure' and not obstimes:
                 # It is an error if a composite has no members
                 self.warnings = True
@@ -686,14 +697,14 @@ class stdpipe(ingest2caom2):
                                  self.observationID,
                                  logging.WARN)
                 someBAD = True
-            
+
             # Translate the PRV1..PRV<PRVCNT> headers into plane URIs
             product = header['PRODUCT']
             self.log.file('Reading provenance')
             prvprocset = set()
             prvrawset = set()
             self.log.file('provenance_cache: ' + repr(self.provenance_cache),
-                                                      logging.DEBUG)
+                          logging.DEBUG)
 
             if product not in ('rimg', 'rsp', 'hpxrimg', 'hpxrsp'):
 
@@ -705,9 +716,9 @@ class stdpipe(ingest2caom2):
                     prvn = header[prvkey]
                     self.log.file(prvkey + ' = ' + prvn)
                     if (re.match(stdpipe.proc_acsis_regex, prvn) or
-                        re.match(stdpipe.proc_scuba2_regex, prvn)):
+                            re.match(stdpipe.proc_scuba2_regex, prvn)):
                         # Does this look like a processed file?
-                        # An existing problem is that some files include 
+                        # An existing problem is that some files include
                         # themselves in their provenance, but are otherwise
                         # OK.
                         if prvn == file_id:
@@ -734,14 +745,15 @@ class stdpipe(ingest2caom2):
                                     continue
                             else:
                                 self.errors = True
-                                self.log.console('provenance and membership '
-                                                 'headers list inconsistent '
-                                                 'raw data:' +
-                                                 prvn + ' is not in ' +
-                                                 'provenance_cache constructed '
-                                                 'from membership',
-                                                 logging.ERROR)
-                            
+                                self.log.console(
+                                    'provenance and membership '
+                                    'headers list inconsistent '
+                                    'raw data:' +
+                                    prvn + ' is not in ' +
+                                    'provenance_cache constructed '
+                                    'from membership',
+                                    logging.ERROR)
+
                         # Add the file if this is NOT an exposure,
                         # or if it is and the file is part of the same exposure
                         prvrawset.add(prvn)
@@ -756,7 +768,7 @@ class stdpipe(ingest2caom2):
                                          prvkey + ' = ' + prvn + ' is '
                                          'neither processed nor raw',
                                          logging.WARN)
-                        # Remove the comment character to make this 
+                        # Remove the comment character to make this
                         # conditiuon an error.
                         # someBAD = True
 
@@ -765,14 +777,14 @@ class stdpipe(ingest2caom2):
             dprcinst = str(eval(header['DPRCINST']))
         else:
             dprcinst = str(header['DPRCINST'])
-        
+
         if earliest_utdate:
             rcinstprefix = 'caom-' + self.collection + '-' + earliest_obs
-            self.log.file('Earliest utdate: ' + 
+            self.log.file('Earliest utdate: ' +
                           earliest_utdate.date().isoformat() +
                           ' for ' + rcinstprefix +
                           '_vlink-' + dprcinst)
-        
+
         # Report any problems that have been encountered, including
         # the file name
         if someBAD:
@@ -783,14 +795,15 @@ class stdpipe(ingest2caom2):
             if self.switches.check:
                 self.log.console('SUCCESS: header check passes for ' + file_id)
             else:
-                self.log.console('PROGRESS: header check passes for ' + file_id)
+                self.log.console(
+                    'PROGRESS: header check passes for ' + file_id)
         if self.switches.check:
             return
-                
-        #----------------------------------------------------------------------
+
+        # ---------------------------------------------------------------------
         # Only get here if NOT in check mode
         # Begin real ingestion
-        #----------------------------------------------------------------------
+        # ---------------------------------------------------------------------
         # Determine whether this is a simple or composite observation
         self.add_to_plane_dict('algorithm.name', algorithm)
         if algorithm != 'exposure':
@@ -819,7 +832,7 @@ class stdpipe(ingest2caom2):
                                        answer[0][0])
                 self.add_to_plane_dict('proposal.title',
                                        answer[0][1])
-        
+
         # Instrument
         if isdefined('BACKEND', header):
             inbeam = ''
@@ -864,7 +877,6 @@ class stdpipe(ingest2caom2):
             self.add_to_plane_dict('environment.ambientTemp',
                                    '%f' % (header['ATSTART'],))
 
-
         # if they are unambiguous, calculate the observation type
         # from OBS_TYPE and SAM_MODE.
         obs_type = None
@@ -892,7 +904,7 @@ class stdpipe(ingest2caom2):
             if isdefined('OBJECT', header):
                 self.add_to_plane_dict('target.name',
                                        header['OBJECT'])
-            
+
             if isdefined('STANDARD', header):
                     if header['STANDARD']:
                         self.add_to_plane_dict('STANDARD', 'TRUE')
@@ -914,16 +926,15 @@ class stdpipe(ingest2caom2):
 
                 # fits2caom2 has trouble with some moving coordinate systems
                 if (header['CTYPE1'][0:4] == 'OFLN'
-                    and 'CTYPE1A' in header):
+                        and 'CTYPE1A' in header):
                     # Use the first alternate coordinate system
-                    self.config = os.path.join(self.configpath, 
+                    self.config = os.path.join(self.configpath,
                                                'jcmt_stdpipe_a.config')
-                    self.default = os.path.join(self.configpath, 
-                                               'jcmt_stdpipe_a.default')
-                    
-                    
+                    self.default = os.path.join(self.configpath,
+                                                'jcmt_stdpipe_a.default')
+
             if backend != 'SCUBA-2' and isdefined('ZSOURCE', header):
-                
+
                 self.add_to_plane_dict('target.redshift',
                                        str(header['ZSOURCE']))
 
@@ -934,16 +945,17 @@ class stdpipe(ingest2caom2):
             self.log.console('productID = ' + self.productID,
                              logging.DEBUG)
             if product == 'cube':
-                self.add_to_plane_dict('plane.calibrationLevel',
-                                       str(CalibrationLevel.RAW_STANDARD.value))
+                self.add_to_plane_dict(
+                    'plane.calibrationLevel',
+                    str(CalibrationLevel.RAW_STANDARD.value))
             elif product in['reduced', 'rsp', 'rimg',
-                            'healpix', 'hpxrsp', 'hpxrimg']: 
+                            'healpix', 'hpxrsp', 'hpxrimg']:
                 self.add_to_plane_dict('plane.calibrationLevel',
                                        str(CalibrationLevel.CALIBRATED.value))
             elif product in ['pointcat', 'extendcat', 'peakcat', 'clumpcat']:
                 self.add_to_plane_dict('plane.calibrationLevel',
                                        str(CalibrationLevel.PRODUCT.value))
-            
+
         elif header['INSTRUME'] == 'SCUBA-2':
             self.productID = product_id('SCUBA-2', self.log,
                                         product=product,
@@ -1010,37 +1022,39 @@ class stdpipe(ingest2caom2):
                                subsysnr=str(header['SUBSYSNR']))
 
             if product == 'cube':
-                self.add_to_plane_dict('plane.calibrationLevel',
-                                       str(CalibrationLevel.RAW_STANDARD.value))
+                self.add_to_plane_dict(
+                    'plane.calibrationLevel',
+                    str(CalibrationLevel.RAW_STANDARD.value))
             else:
                 self.add_to_plane_dict('plane.calibrationLevel',
                                        str(CalibrationLevel.CALIBRATED.value))
 
         # Define the productID, dataProductType and calibrationLevel
         # Axes are always in the order X, Y, Freq, Pol
-        # but may be degenerate with length 1.  Only compute the 
+        # but may be degenerate with length 1.  Only compute the
         # dataProductType for science data.
         if product in ['reduced', 'cube', 'healpix']:
             if (header['NAXIS'] == 3 or
-                (header['NAXIS'] == 4 and header['NAXIS4'] == 1)):
-                if (header['NAXIS1'] == 1 and 
-                    header['NAXIS2'] == 1):
+                    (header['NAXIS'] == 4 and header['NAXIS4'] == 1)):
+                if (header['NAXIS1'] == 1 and
+                        header['NAXIS2'] == 1):
                     dataProductType = 'spectrum'
                 elif header['NAXIS3'] == 1:
                     dataProductType = 'image'
                 else:
                     dataProductType = 'cube'
             else:
-                # getting here is normally an error in data engineering, 
+                # getting here is normally an error in data engineering,
                 # not a problem with the file
                 self.errors = True
-                self.log.console('unrecognized data array structure' +
+                self.log.console(
+                    'unrecognized data array structure' +
                     ': NAXIS=' + str(header['NAXIS']) + ' ' +
-                    ' '.join([na + '=' + str(header[na]) 
-                              for na in ['NAXIS' + str(n + 1) 
+                    ' '.join([na + '=' + str(header[na])
+                              for na in ['NAXIS' + str(n + 1)
                                          for n in range(header['NAXIS'])]]),
-                                logging.ERROR)
-                                                    
+                    logging.ERROR)
+
             self.add_to_plane_dict('plane.dataProductType',
                                    dataProductType)
         # Provenance
@@ -1051,7 +1065,7 @@ class stdpipe(ingest2caom2):
                 # This is the complete list of standard pipeline FITS products
                 self.add_to_plane_dict('provenance.project',
                                        'JCMT_STANDARD_PIPELINE')
-            elif product in ['healpix', 'hpxrsp', 'hpxrimg', 
+            elif product in ['healpix', 'hpxrsp', 'hpxrimg',
                              'peak-cat', 'extent-cat']:
                 # healpix and catalogs are from the legacy project
                 self.add_to_plane_dict('provenance.project',
@@ -1059,15 +1073,15 @@ class stdpipe(ingest2caom2):
             else:
                 self.log.console('UNKNOWN PRODUCT: ' + product,
                                  logging.WARN)
-            
+
             if isdefined('REFERENC', header):
                 self.add_to_plane_dict('provenance.reference',
                                        header['REFERENC'])
 
             # ENGVERS and PIPEVERS are mandatory
             self.add_to_plane_dict('provenance.version',
-                                    'ENG:' + header['ENGVERS'][:25] + 
-                                    ' PIPE:' + header['PIPEVERS'][:25])
+                                   'ENG:' + header['ENGVERS'][:25] +
+                                   ' PIPE:' + header['PIPEVERS'][:25])
 
             if isdefined('PRODUCER', header):
                 self.add_to_plane_dict('provenance.producer',
@@ -1100,23 +1114,24 @@ class stdpipe(ingest2caom2):
                         self.planeURI(c, o, p)
                     else:
                         self.warnings = True
-                        self.log.console('for file_id = ' + file_id + 
-                                         ' processed file in provenance has not '
-                                         'yet been ingested:' + prvn,
-                                         logging.WARN)
+                        self.log.console(
+                            'for file_id = ' + file_id +
+                            ' processed file in provenance has not '
+                            'yet been ingested:' + prvn,
+                            logging.WARN)
 
             if prvrawset:
                 for prvn in list(prvrawset):
                     # prvn only added to prvrawset if it is in provenance_cache
                     prv_obsID, prv_prodID = self.provenance_cache[prvn]
                     self.log.console('collection='+repr(self.collection) +
-                                     '  prv_obsID=' + repr(prv_obsID) +  #####
+                                     '  prv_obsID=' + repr(prv_obsID) +
                                      '  prv_prodID=' + repr(prv_prodID),
-                                     logging.DEBUG)  
+                                     logging.DEBUG)
                     self.planeURI(self.collection,
                                   prv_obsID,
                                   prv_prodID)
-                             
+
         if product in ['reduced', 'cube']:
             # Do not set release dates for healpix products
             max_release_date_str = max_release_date.isoformat()
@@ -1126,15 +1141,16 @@ class stdpipe(ingest2caom2):
                                    max_release_date_str)
             self.add_to_plane_dict('plane.dataRelease',
                                    max_release_date_str)
-        
+
         # Chunk
         if header['BACKEND'] in ('SCUBA-2',):
             if isdefined('FILTER', header):
-                self.add_to_plane_dict('bandpassName', 
-                                'SCUBA-2-' + str(header['FILTER']) + 'um')
+                self.add_to_plane_dict(
+                    'bandpassName',
+                    'SCUBA-2-' + str(header['FILTER']) + 'um')
         elif header['BACKEND'] in ('ACSIS', 'DAS'):
             if (isdefined('MOLECULE', header) and isdefined('TRANSITI', header)
-                and header['MOLECULE'] != 'No Line'):
+                    and header['MOLECULE'] != 'No Line'):
                 self.add_to_plane_dict('energy.transition.species',
                                        header['MOLECULE'])
                 self.add_to_plane_dict('energy.transition.transition',
@@ -1146,16 +1162,16 @@ class stdpipe(ingest2caom2):
                                                [0])
             if intent_val == 'science':
                 self.add_to_fitsuri_dict(primaryURI,
-                                         'part.productType', 
+                                         'part.productType',
                                          ProductType.SCIENCE.value)
             else:
                 self.add_to_fitsuri_dict(primaryURI,
-                                         'part.productType', 
+                                         'part.productType',
                                          ProductType.CALIBRATION.value)
 
             varianceURI = self.fitsextensionURI(self.archive,
-                                               file_id,
-                                               [1])
+                                                file_id,
+                                                [1])
             self.add_to_fitsuri_dict(varianceURI,
                                      'part.productType',
                                      ProductType.NOISE.value)
@@ -1166,7 +1182,7 @@ class stdpipe(ingest2caom2):
 #            self.add_to_fitsuri_dict(ignore_wcs_URI,
 #                                     'BITPIX',
 #                                     '0')
-            
+
             fileURI = self.fitsfileURI(self.archive,
                                        file_id)
             self.add_to_fitsuri_dict(fileURI,
@@ -1199,7 +1215,6 @@ class stdpipe(ingest2caom2):
 #                                     'BITPIX',
 #                                     '0')
 
-
     def build_fitsuri_custom(self,
                              xmlfile,
                              collection,
@@ -1211,13 +1226,13 @@ class stdpipe(ingest2caom2):
         jcmt2caom2proc, this comprises the time structure constructed from the
         OBSID for simple observations or list of OBSn values for composite
         observations.
-        
-        It has been found that fits2caom2 is generating false WCS structures 
+
+        It has been found that fits2caom2 is generating false WCS structures
         for JCMT files and that these fluff up the xml file to the point that
         fits2caom2 runs out of memory and crashes.  This is exacerbated by the
-        large number of files that can be present in a JCMT observation, 
-        especially multi-tiled obs products.  The kludge to work around this 
-        problem is to check whether each part has product_type == 
+        large number of files that can be present in a JCMT observation,
+        especially multi-tiled obs products.  The kludge to work around this
+        problem is to check whether each part has product_type ==
         ProductType.SCIENCE, if so add the time to each chunk and if not
         to DELETE ALL CHUNKS IN TH PART!!!
         """
@@ -1227,18 +1242,18 @@ class stdpipe(ingest2caom2):
             # if this dictionary is empty,skip processing
             self.log.console('custom processing for ' + fitsuri,
                              logging.DEBUG)
-            
+
             observation = self.reader.read(xmlfile)
-            # Check whether this is a part-specific uri.  We are only interested
-            # in artifact-specific uri's.
-            if not fitsuri in observation.planes[planeID].artifacts:
+            # Check whether this is a part-specific uri.  We are only
+            # interested in artifact-specific uri's.
+            if fitsuri not in observation.planes[planeID].artifacts:
                 self.log.console('skip custom processing because fitsuri does '
                                  'not point to an artifact',
                                  logging.DEBUG)
                 return
             if (observation.algorithm != SimpleObservation._ALGORITHM and
-                len(observation.members) > 1):
-                # single exposure products have DATE-OBS and DATE-END, 
+                    len(observation.members) > 1):
+                # single exposure products have DATE-OBS and DATE-END,
                 # and are handled correctly by fits2caom2
                 caomArtifact = observation.planes[planeID].artifacts[fitsuri]
 
@@ -1288,7 +1303,7 @@ class stdpipe(ingest2caom2):
                                     self.log.console('no time ranges defined '
                                                      ' for ' + fitsuri.uri,
                                                      logging.WARN)
-                                
+
                                 # if a temporalWCS already exists, use it but
                                 # replace the CoordAxis1D
                                 if chunk.time:
@@ -1297,10 +1312,10 @@ class stdpipe(ingest2caom2):
                                 else:
                                     chunk.time = TemporalWCS(time_axis)
                                     chunk.time.timesys = 'UTC'
-                                self.log.console('temporal axis = ' + 
+                                self.log.console('temporal axis = ' +
                                                  repr(chunk.time.axis.axis),
                                                  logging.DEBUG)
-                                self.log.console('temporal WCS = ' + 
+                                self.log.console('temporal WCS = ' +
                                                  str(chunk.time),
                                                  logging.DEBUG)
     #                else:
@@ -1312,18 +1327,17 @@ class stdpipe(ingest2caom2):
                 with open(xmlfile, 'w') as XMLFILE:
                     self.writer.write(observation, XMLFILE)
 
-
     def build_plane_custom(self,
                            xmlfile,
                            collection,
                            observationID,
                            productID):
         """
-        Implement the cleanup of planes that are no longer generated by this 
-        recipe instance from observations that are.  It is only necessary to 
-        remove planes from the current observation that are not already being 
+        Implement the cleanup of planes that are no longer generated by this
+        recipe instance from observations that are.  It is only necessary to
+        remove planes from the current observation that are not already being
         replaced by the new set of products.
-        
+
         Arguments:
         xmlfile: current xmlfile
         collection: current collection
@@ -1337,21 +1351,21 @@ class stdpipe(ingest2caom2):
                     # logic is, this collection/observation/plane used to be
                     # genrated by this recipe instance, but is not part of the
                     # current ingestion and so is obsolete.
-                    if prod in self.remove_dict[collection][observationID] and\
-                        self.remove_dict[collection][observationID][prod] and\
-                        prod not in self.metadict[collection][observationID]:
-                        
-                        uri = self.planeURI(collection, 
-                                            observationID, 
+                    if prod in self.remove_dict[collection][observationID] and \
+                            self.remove_dict[collection][observationID][prod] and \
+                            prod not in self.metadict[collection][observationID]:
+
+                        uri = self.planeURI(collection,
+                                            observationID,
                                             prod,
                                             input=False)
                         self.warnings = True
-                        self.log.console('CLEANUP: remove obsolete plane:' + 
+                        self.log.console('CLEANUP: remove obsolete plane:' +
                                          uri.uri,
                                          logging.WARN)
                         del obs.planes[prod]
                         del self.remove_dict[collection][observationID][prod]
-                        
+
                 if not self.test:
                     with open(xmlfile, 'w') as XMLFILE:
                         self.writer.write(obs, XMLFILE)
@@ -1361,12 +1375,13 @@ class stdpipe(ingest2caom2):
                                  collection,
                                  observationID):
         """
-        Implement the cleanup of collections, observations, and planes that are 
-        no longer generated by this recipe instance.  It is only necessary to 
-        remove items that are not already being replaced by the new set of 
-        products.  At this level, remove all collection, observations and planes
-        from observations that are not generated by the current recipe instance. 
-        
+        Implement the cleanup of collections, observations, and planes that are
+        no longer generated by this recipe instance.  It is only necessary to
+        remove items that are not already being replaced by the new set of
+        products.  At this level, remove all collection, observations and
+        planes from observations that are not generated by the current recipe
+        instance.
+
         Arguments:
         xmlfile: current xmlfile NOT USED in this routine
         collection: current collection NOT USED in this routine
@@ -1377,9 +1392,9 @@ class stdpipe(ingest2caom2):
             for obsid in self.remove_dict[coll].keys():
                 for prodid in self.remove_dict[coll][obsid].keys():
                     self.log.file('remove_dict ' + coll + ': ' + obsid +
-                                  ': ' + prodid + '= ' + 
+                                  ': ' + prodid + '= ' +
                                   str(self.remove_dict[coll][obsid][prodid]))
-        
+
         for coll in self.remove_dict:
             if coll not in self.metadict:
                 # Nothing in the existing collection still exists
@@ -1390,7 +1405,7 @@ class stdpipe(ingest2caom2):
                         self.repository.remove(uri.uri)
                     del self.remove_dict[coll][obsid]
                 del self.remove_dict[coll]
-            
+
             else:
                 for obsid in self.remove_dict[coll].keys():
                     uri = self.observationURI(coll, obsid, member=False)
@@ -1414,45 +1429,46 @@ class stdpipe(ingest2caom2):
                                 if os.path.exists(badxmlfile):
                                     obs = self.reader.read(badxmlfile)
                                     for prod in self.remove_dict[coll][obsid].keys():
-                                        if self.remove_dict[coll][obsid][prod]\
-                                            and prod in obs.planes:
-                                            uri = self.planeURI(coll, 
-                                                                obsid, 
+                                        if (self.remove_dict[coll][obsid][prod]
+                                                and prod in obs.planes):
+                                            uri = self.planeURI(coll,
+                                                                obsid,
                                                                 prod,
                                                                 input=False)
                                             self.warnings = True
-                                            self.log.console('CLEANUP: remove '
+                                            self.log.console(
+                                                'CLEANUP: remove '
                                                 'plane: ' + uri.uri,
                                                 logging.WARN)
-                                            
+
                                             del obs.planes[prod]
                                             del self.remove_dict[coll][obsid][prod]
                                 if not self.test:
                                     with open(badxmlfile, 'w') as XMLFILE:
                                         self.writer.write(observation, XMLFILE)
 
-    #************************************************************************
+    # ************************************************************************
     # JSA cleanup
-    #************************************************************************
+    # ************************************************************************
     def cleanup(self):
         """
         Save the log file to the jsaops VOspace, then delete the log file from
         the logdir unless in debug mode or --keeplog was requested.
-        
+
         Arguements:
         <none>
         """
         if self.collection == 'JCMT' and self.mode == 'ingest':
             self.voscopy = tovos.stdpipe_ingestion(vos.Client(),
                                                    self.vosroot)
-            
+
             logcopy = self.logfile
             logsuffix = ''
             if self.errors:
                 logsuffix = '_ERRORS'
             if self.warnings:
                 logsuffix += '_WARNINGS'
-                
+
             if logsuffix:
                 logid, ext = os.path.splitext(self.logfile)
                 logcopy = logid + logsuffix + ext
@@ -1463,7 +1479,7 @@ class stdpipe(ingest2caom2):
 
             if logsuffix:
                 os.remove(logcopy)
-        
+
         ingest2caom2.cleanup(self)
 
     def check_acceptable_headers(self, head):
@@ -1473,381 +1489,382 @@ class stdpipe(ingest2caom2):
         keywords are present, only that the existing keywords are acceptable.
         """
         if self.debug:
-            self.log.console('enter check_acceptable_headers: ' + 
+            self.log.console('enter check_acceptable_headers: ' +
                              datetime.datetime.now().isoformat(),
                              loglevel=logging.DEBUG)
         acceptable = [
-                      '',
-                    'AGENTID',
-                    'ALIGN_DX',
-                    'ALIGN_DY',
-                    'ALT-OBS',
-                    'AMEND',
-                    'AMSTART',
-                    'ARRAYID',
-                    'ASN_CADC',
-                    'ASN_ID',
-                    'ASN_PROJ',
-                    'ASN_TYPE',
-                    'ASN_UT',
-                    'ATEND',
-                    'ATSTART',
-                    'AZEND',
-                    'AZSTART',
-                    'BACKEND',
-                    'BANDWID',
-                    'BASEC1',
-                    'BASEC2',
-                    'BASETEMP',
-                    'BBHEAT',
-                    'BEDEGFAC',
-                    'BITPIX',
-                    'BKLEGTEN',
-                    'BKLEGTST',
-                    'BLANK',
-                    'BMAJ',
-                    'BMIN',
-                    'BOLODIST',
-                    'BPA',
-                    'BPEND',
-                    'BPSTART',
-                    'BSCALE',
-                    'BUNIT',
-                    'BWMODE',
-                    'BZERO',
-                    'CD1_1',
-                    'CD1_1A',
-                    'CD1_2',
-                    'CD1_2A',
-                    'CD2_1',
-                    'CD2_1A',
-                    'CD2_2',
-                    'CD2_2A',
-                    'CD3_3',
-                    'CD3_3A',
-                    'CD4_4',
-                    'CDELT3',
-                    'CHECKSUM',
-                    'CHOP_CRD',
-                    'CHOP_FRQ',
-                    'CHOP_PA',
-                    'CHOP_THR',
-                    'COMMENT',
-                    'CRPIX1',
-                    'CRPIX1A',
-                    'CRPIX2',
-                    'CRPIX2A',
-                    'CRPIX3',
-                    'CRPIX3A',
-                    'CRPIX4',
-                    'CRVAL1',
-                    'CRVAL1A',
-                    'CRVAL2',
-                    'CRVAL2A',
-                    'CRVAL3',
-                    'CRVAL3A',
-                    'CRVAL4',
-                    'CTYPE1',
-                    'CTYPE1A',
-                    'CTYPE2',
-                    'CTYPE2A',
-                    'CTYPE3',
-                    'CTYPE3A',
-                    'CUNIT1',
-                    'CUNIT1A',
-                    'CUNIT2',
-                    'CUNIT2A',
-                    'CUNIT3',
-                    'CUNIT3A',
-                    'DARKHEAT',
-                    'DATAMODE',
-                    'DATASUM',
-                    'DATE',
-                    'DATE-END',
-                    'DATE-OBS',
-                    'DAZ',
-                    'DEL',
-                    'DETBIAS',
-                    'DHSVER',
-                    'DOPPLER',
-                    'DPDATE',
-                    'DPRCINST',
-                    'DRGROUP',
-                    'DRMWGHTS',
-                    'DRRECIPE',
-                    'DUT1',
-                    'EFF_TIME',
-                    'ELEND',
-                    'ELSTART',
-                    'ENGVERS',
-                    'EQUINOX',
-                    'EQUINOXA',
-                    'ETAL',
-                    'EXP_TIME',
-                    'EXTEND',
-                    'EXTLEVEL',
-                    'EXTNAME',
-                    'EXTNAMEF',
-                    'EXTSHAPE',
-                    'EXTTYPE',
-                    'EXTVER',
-                    'FCF',
-                    'FFT_WIN',
-                    'FILE_ID',
-                    'FILEID',
-                    'FILEPATH',
-                    'FILTER',
-                    'FLAT',
-                    'FOCAXIS',
-                    'FOCPOSN',
-                    'FOCSTEP',
-                    'FOCUS_DZ',
-                    'FREQ',
-                    'FREQ_THR',
-                    'FRLEGTEN',
-                    'FRLEGTST',
-                    'FRQIMGHI',
-                    'FRQIMGLO',
-                    'FRQSIGHI',
-                    'FRQSIGLO',
-                    'FTS_IN',
-                    'FTS_MODE',
-                    'FTS_SH8C',
-                    'FTS_SH8D',
-                    'FTS_CNTR',
-                    'GCOUNT',
-                    'HDSNAME',
-                    'HDSTYPE',
-                    'HDUCLAS1',
-                    'HDUCLAS2',
-                    'HISTORY',
-                    'HSTEND',
-                    'HSTSTART',
-                    'HUMEND',
-                    'HUMSTART',
-                    'IFCHANSP',
-                    'IFFREQ',
-                    'IMAGFREQ',
-                    'INBEAM',
-                    'INSTAP',
-                    'INSTAP_X',
-                    'INSTAP_Y',
-                    'INSTREAM',
-                    'INSTRUME',
-                    'INT_TIME',
-                    'JIGL_CNT',
-                    'JIGL_NAM',
-                    'JIG_CRD',
-                    'JIG_PA',
-                    'JIG_SCAL',
-                    'JOS_MIN',
-                    'JOS_MULT',
-                    'LABEL',
-                    'LAT',
-                    'LAT-OBS',
-                    'LBOUND1',
-                    'LBOUND2',
-                    'LBOUND3',
-                    'LOCL_CRD',
-                    'LOFREQE',
-                    'LOFREQS',
-                    'LONG',
-                    'LONG-OBS',
-                    'LONGSTRN',
-                    'LONPOLE',
-                    'LSTEND',
-                    'LSTSTART',
-                    'MAP_HGHT',
-                    'MAP_PA',
-                    'MAP_WDTH',
-                    'MAP_X',
-                    'MAP_Y',
-                    'MEDTSYS',
-                    'MIRPOS',
-                    'MIXSETP',
-                    'MJD-AVG',
-                    'MJD-END',
-                    'MJD-OBS',
-                    'MOLECULE',
-                    'MSBID',
-                    'MSBTID',
-                    'MSROOT',
-                    'MUXTEMP',
-                    'NAXIS',
-                    'NAXIS1',
-                    'NAXIS1A',
-                    'NAXIS2',
-                    'NAXIS2A',
-                    'NAXIS3',
-                    'NAXIS3A',
-                    'NAXIS4',
-                    'NBOLOEFF',
-                    'NCALSTEP',
-                    'NCHNSUBS',
-                    'NDRKSTEP',
-                    'NFOCSTEP',
-                    'NFREQSW',
-                    'NREFSTEP',
-                    'NSUBBAND',
-                    'NSUBSCAN',
-                    'NUMTILES',
-                    'NUM_CYC',
-                    'NUM_NODS',
-                    'N_MIX',
-                    'OBJECT',
-                    'OBSCNT',
-                    'OBSDEC',
-                    'OBSDECBL',
-                    'OBSDECBR',
-                    'OBSDECTL',
-                    'OBSDECTR',
-                    'OBSEND',
-                    'OBSGEO-X',
-                    'OBSGEO-Y',
-                    'OBSGEO-Z',
-                    'OBSID',
-                    'OBSIDSS',
-                    'OBSNUM',
-                    'OBSRA',
-                    'OBSRABL',
-                    'OBSRABR',
-                    'OBSRATL',
-                    'OBSRATR',
-                    'OBS_SB',
-                    'OBS_TYPE',
-                    'OCSCFG',
-                    'ORIGIN',
-                    'PCOUNT',
-                    'PIPEVERS',
-                    'PIXHEAT',
-                    'POLANLIN',
-                    'POLCALIN',
-                    'POLWAVIN',
-                    'POL_CONN',
-                    'POL_CRD',
-                    'POL_FAXS',
-                    'POL_MODE',
-                    'PROCVERS',
-                    'PRODID',
-                    'PRODUCER',
-                    'PRODUCT',
-                    'PROJECT',
-                    'PROJ_ID',
-                    'PRVCNT',
-                    'PV1_3',
-                    'PV2_3',
-                    'RADESYS',
-                    'RADESYSA',
-                    'RECIPE',
-                    'RECPTORS',
-                    'REFCHAN',
-                    'REFERENC',
-                    'REFRECEP',
-                    'RESTFRQ',
-                    'RESTFRQA',
-                    'RMTAGENT',
-                    'ROTAFREQ',
-                    'ROT_CRD',
-                    'ROT_PA',
-                    'SAM_MODE',
-                    'SB_MODE',
-                    'SCANDIR',
-                    'SCANVEL',
-                    'SCAN_CRD',
-                    'SCAN_DY',
-                    'SCAN_PA',
-                    'SCAN_PAT',
-                    'SCAN_VEL',
-                    'SCUPIXSZ',
-                    'SCUPROJ',
-                    'SEEDATEN',
-                    'SEEDATST',
-                    'SEEINGEN',
-                    'SEEINGST',
-                    'SEQCOUNT',
-                    'SEQEND',
-                    'SEQSTART',
-                    'SEQ_TYPE',
-                    'SHUTTER',
-                    'SIMPLE',
-                    'SIMULATE',
-                    'SIM_CORR',
-                    'SIM_FTS',
-                    'SIM_IF',
-                    'SIM_POL',
-                    'SIM_RTS',
-                    'SIM_SMU',
-                    'SIM_TCS',
-                    'SKYANG',
-                    'SKYREFX',
-                    'SKYREFY',
-                    'SPECSYS',
-                    'SPECSYSA',
-                    'SREFISA',
-                    'SREF1A',
-                    'SREF2A',
-                    'SSYSOBS',
-                    'SSYSSRC',
-                    'SSYSSRCA',
-                    'STANDARD',
-                    'STARTIDX',
-                    'STATUS',
-                    'STBETCAL',
-                    'STBETDRK',
-                    'STBETREF',
-                    'STEPDIST',
-                    'STEPTIME',
-                    'SUBARRAY',
-                    'SUBBANDS',
-                    'SUBREFP1',
-                    'SUBREFP2',
-                    'SUBSYSNR',
-                    'SURVEY',
-                    'SW_MODE',
-                    'SYSTEM',
-                    'TAU225EN',
-                    'TAU225ST',
-                    'TAUDATEN',
-                    'TAUDATST',
-                    'TAUSRC',
-                    'TELESCOP',
-                    'TEMPSCAL',
-                    'TFIELDS',
-                    'TILENUM',
-                    'TRACKSYS',
-                    'TRANSITI',
-                    'TSPEND',
-                    'TSPSTART',
-                    'UAZ',
-                    'UEL',
-                    'UTDATE',
-                    'VELOSYS',
-                    'VELOSYSA',
-                    'VERSION',
-                    'WAVELEN',
-                    'WCSNAME',
-                    'WCSNAMEA',
-                    'WNDDIREN',
-                    'WNDDIRST',
-                    'WNDSPDEN',
-                    'WNDSPDST',
-                    'WVMDATEN',
-                    'WVMDATST',
-                    'WVMTAUEN',
-                    'WVMTAUST',
-                    'XTENSION',
-                    'ZSOURCE',
-                    'ZSOURCEA']
-        headercount = {'PRV': 'PRVCNT',
-                       'OBS': 'OBSCNT',
-                        'FILE_': 'OBSCNT', # Arbitrary number, but seems OK
-                        'TCOMM': 'TFIELDS',
-                        'TDIM': 'TFIELDS',
-                        'TDISP': 'TFIELDS',
-                        'TFORM': 'TFIELDS',
-                        'TNULL': 'TFIELDS',
-                        'TTYPE': 'TFIELDS'
-                        }
+            '',
+            'AGENTID',
+            'ALIGN_DX',
+            'ALIGN_DY',
+            'ALT-OBS',
+            'AMEND',
+            'AMSTART',
+            'ARRAYID',
+            'ASN_CADC',
+            'ASN_ID',
+            'ASN_PROJ',
+            'ASN_TYPE',
+            'ASN_UT',
+            'ATEND',
+            'ATSTART',
+            'AZEND',
+            'AZSTART',
+            'BACKEND',
+            'BANDWID',
+            'BASEC1',
+            'BASEC2',
+            'BASETEMP',
+            'BBHEAT',
+            'BEDEGFAC',
+            'BITPIX',
+            'BKLEGTEN',
+            'BKLEGTST',
+            'BLANK',
+            'BMAJ',
+            'BMIN',
+            'BOLODIST',
+            'BPA',
+            'BPEND',
+            'BPSTART',
+            'BSCALE',
+            'BUNIT',
+            'BWMODE',
+            'BZERO',
+            'CD1_1',
+            'CD1_1A',
+            'CD1_2',
+            'CD1_2A',
+            'CD2_1',
+            'CD2_1A',
+            'CD2_2',
+            'CD2_2A',
+            'CD3_3',
+            'CD3_3A',
+            'CD4_4',
+            'CDELT3',
+            'CHECKSUM',
+            'CHOP_CRD',
+            'CHOP_FRQ',
+            'CHOP_PA',
+            'CHOP_THR',
+            'COMMENT',
+            'CRPIX1',
+            'CRPIX1A',
+            'CRPIX2',
+            'CRPIX2A',
+            'CRPIX3',
+            'CRPIX3A',
+            'CRPIX4',
+            'CRVAL1',
+            'CRVAL1A',
+            'CRVAL2',
+            'CRVAL2A',
+            'CRVAL3',
+            'CRVAL3A',
+            'CRVAL4',
+            'CTYPE1',
+            'CTYPE1A',
+            'CTYPE2',
+            'CTYPE2A',
+            'CTYPE3',
+            'CTYPE3A',
+            'CUNIT1',
+            'CUNIT1A',
+            'CUNIT2',
+            'CUNIT2A',
+            'CUNIT3',
+            'CUNIT3A',
+            'DARKHEAT',
+            'DATAMODE',
+            'DATASUM',
+            'DATE',
+            'DATE-END',
+            'DATE-OBS',
+            'DAZ',
+            'DEL',
+            'DETBIAS',
+            'DHSVER',
+            'DOPPLER',
+            'DPDATE',
+            'DPRCINST',
+            'DRGROUP',
+            'DRMWGHTS',
+            'DRRECIPE',
+            'DUT1',
+            'EFF_TIME',
+            'ELEND',
+            'ELSTART',
+            'ENGVERS',
+            'EQUINOX',
+            'EQUINOXA',
+            'ETAL',
+            'EXP_TIME',
+            'EXTEND',
+            'EXTLEVEL',
+            'EXTNAME',
+            'EXTNAMEF',
+            'EXTSHAPE',
+            'EXTTYPE',
+            'EXTVER',
+            'FCF',
+            'FFT_WIN',
+            'FILE_ID',
+            'FILEID',
+            'FILEPATH',
+            'FILTER',
+            'FLAT',
+            'FOCAXIS',
+            'FOCPOSN',
+            'FOCSTEP',
+            'FOCUS_DZ',
+            'FREQ',
+            'FREQ_THR',
+            'FRLEGTEN',
+            'FRLEGTST',
+            'FRQIMGHI',
+            'FRQIMGLO',
+            'FRQSIGHI',
+            'FRQSIGLO',
+            'FTS_IN',
+            'FTS_MODE',
+            'FTS_SH8C',
+            'FTS_SH8D',
+            'FTS_CNTR',
+            'GCOUNT',
+            'HDSNAME',
+            'HDSTYPE',
+            'HDUCLAS1',
+            'HDUCLAS2',
+            'HISTORY',
+            'HSTEND',
+            'HSTSTART',
+            'HUMEND',
+            'HUMSTART',
+            'IFCHANSP',
+            'IFFREQ',
+            'IMAGFREQ',
+            'INBEAM',
+            'INSTAP',
+            'INSTAP_X',
+            'INSTAP_Y',
+            'INSTREAM',
+            'INSTRUME',
+            'INT_TIME',
+            'JIGL_CNT',
+            'JIGL_NAM',
+            'JIG_CRD',
+            'JIG_PA',
+            'JIG_SCAL',
+            'JOS_MIN',
+            'JOS_MULT',
+            'LABEL',
+            'LAT',
+            'LAT-OBS',
+            'LBOUND1',
+            'LBOUND2',
+            'LBOUND3',
+            'LOCL_CRD',
+            'LOFREQE',
+            'LOFREQS',
+            'LONG',
+            'LONG-OBS',
+            'LONGSTRN',
+            'LONPOLE',
+            'LSTEND',
+            'LSTSTART',
+            'MAP_HGHT',
+            'MAP_PA',
+            'MAP_WDTH',
+            'MAP_X',
+            'MAP_Y',
+            'MEDTSYS',
+            'MIRPOS',
+            'MIXSETP',
+            'MJD-AVG',
+            'MJD-END',
+            'MJD-OBS',
+            'MOLECULE',
+            'MSBID',
+            'MSBTID',
+            'MSROOT',
+            'MUXTEMP',
+            'NAXIS',
+            'NAXIS1',
+            'NAXIS1A',
+            'NAXIS2',
+            'NAXIS2A',
+            'NAXIS3',
+            'NAXIS3A',
+            'NAXIS4',
+            'NBOLOEFF',
+            'NCALSTEP',
+            'NCHNSUBS',
+            'NDRKSTEP',
+            'NFOCSTEP',
+            'NFREQSW',
+            'NREFSTEP',
+            'NSUBBAND',
+            'NSUBSCAN',
+            'NUMTILES',
+            'NUM_CYC',
+            'NUM_NODS',
+            'N_MIX',
+            'OBJECT',
+            'OBSCNT',
+            'OBSDEC',
+            'OBSDECBL',
+            'OBSDECBR',
+            'OBSDECTL',
+            'OBSDECTR',
+            'OBSEND',
+            'OBSGEO-X',
+            'OBSGEO-Y',
+            'OBSGEO-Z',
+            'OBSID',
+            'OBSIDSS',
+            'OBSNUM',
+            'OBSRA',
+            'OBSRABL',
+            'OBSRABR',
+            'OBSRATL',
+            'OBSRATR',
+            'OBS_SB',
+            'OBS_TYPE',
+            'OCSCFG',
+            'ORIGIN',
+            'PCOUNT',
+            'PIPEVERS',
+            'PIXHEAT',
+            'POLANLIN',
+            'POLCALIN',
+            'POLWAVIN',
+            'POL_CONN',
+            'POL_CRD',
+            'POL_FAXS',
+            'POL_MODE',
+            'PROCVERS',
+            'PRODID',
+            'PRODUCER',
+            'PRODUCT',
+            'PROJECT',
+            'PROJ_ID',
+            'PRVCNT',
+            'PV1_3',
+            'PV2_3',
+            'RADESYS',
+            'RADESYSA',
+            'RECIPE',
+            'RECPTORS',
+            'REFCHAN',
+            'REFERENC',
+            'REFRECEP',
+            'RESTFRQ',
+            'RESTFRQA',
+            'RMTAGENT',
+            'ROTAFREQ',
+            'ROT_CRD',
+            'ROT_PA',
+            'SAM_MODE',
+            'SB_MODE',
+            'SCANDIR',
+            'SCANVEL',
+            'SCAN_CRD',
+            'SCAN_DY',
+            'SCAN_PA',
+            'SCAN_PAT',
+            'SCAN_VEL',
+            'SCUPIXSZ',
+            'SCUPROJ',
+            'SEEDATEN',
+            'SEEDATST',
+            'SEEINGEN',
+            'SEEINGST',
+            'SEQCOUNT',
+            'SEQEND',
+            'SEQSTART',
+            'SEQ_TYPE',
+            'SHUTTER',
+            'SIMPLE',
+            'SIMULATE',
+            'SIM_CORR',
+            'SIM_FTS',
+            'SIM_IF',
+            'SIM_POL',
+            'SIM_RTS',
+            'SIM_SMU',
+            'SIM_TCS',
+            'SKYANG',
+            'SKYREFX',
+            'SKYREFY',
+            'SPECSYS',
+            'SPECSYSA',
+            'SREFISA',
+            'SREF1A',
+            'SREF2A',
+            'SSYSOBS',
+            'SSYSSRC',
+            'SSYSSRCA',
+            'STANDARD',
+            'STARTIDX',
+            'STATUS',
+            'STBETCAL',
+            'STBETDRK',
+            'STBETREF',
+            'STEPDIST',
+            'STEPTIME',
+            'SUBARRAY',
+            'SUBBANDS',
+            'SUBREFP1',
+            'SUBREFP2',
+            'SUBSYSNR',
+            'SURVEY',
+            'SW_MODE',
+            'SYSTEM',
+            'TAU225EN',
+            'TAU225ST',
+            'TAUDATEN',
+            'TAUDATST',
+            'TAUSRC',
+            'TELESCOP',
+            'TEMPSCAL',
+            'TFIELDS',
+            'TILENUM',
+            'TRACKSYS',
+            'TRANSITI',
+            'TSPEND',
+            'TSPSTART',
+            'UAZ',
+            'UEL',
+            'UTDATE',
+            'VELOSYS',
+            'VELOSYSA',
+            'VERSION',
+            'WAVELEN',
+            'WCSNAME',
+            'WCSNAMEA',
+            'WNDDIREN',
+            'WNDDIRST',
+            'WNDSPDEN',
+            'WNDSPDST',
+            'WVMDATEN',
+            'WVMDATST',
+            'WVMTAUEN',
+            'WVMTAUST',
+            'XTENSION',
+            'ZSOURCE',
+            'ZSOURCEA']
+        headercount = {
+            'PRV': 'PRVCNT',
+            'OBS': 'OBSCNT',
+            'FILE_': 'OBSCNT',  # Arbitrary number, but seems OK
+            'TCOMM': 'TFIELDS',
+            'TDIM': 'TFIELDS',
+            'TDISP': 'TFIELDS',
+            'TFORM': 'TFIELDS',
+            'TNULL': 'TFIELDS',
+            'TTYPE': 'TFIELDS'
+        }
 
         someBAD = False
         for key in head:
@@ -1856,14 +1873,14 @@ class stdpipe(ingest2caom2):
                 keywordBAD = False
             else:
                 # check if the key is a numbered header
-                 m = re.match(r'^(?P<prefix>[A-Z]+)(?P<number>[1-9][0-9]*)$',
-                              key)
-                 if m:
-                     pn = m.groupdict()
-                     if pn["prefix"] in headercount:
-                         n = int(pn["number"])
-                         if 0 < n and n <= head[headercount[pn["prefix"]]]:
-                             keywordBAD = False
+                m = re.match(r'^(?P<prefix>[A-Z]+)(?P<number>[1-9][0-9]*)$',
+                             key)
+                if m:
+                    pn = m.groupdict()
+                    if pn["prefix"] in headercount:
+                        n = int(pn["number"])
+                        if 0 < n and n <= head[headercount[pn["prefix"]]]:
+                            keywordBAD = False
             if keywordBAD:
                 someBAD = True
                 self.warnings = True
@@ -1872,9 +1889,9 @@ class stdpipe(ingest2caom2):
 
         return someBAD
 
-#************************************************************************
+# ************************************************************************
 # if run as a main program, create an instance and exit
-#************************************************************************
+# ************************************************************************
 if __name__ == '__main__':
     myjcmt2caom2 = jcmt2caom2.stdpipe()
     myjcmt2caom2.run()

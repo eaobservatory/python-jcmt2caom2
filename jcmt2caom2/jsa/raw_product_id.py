@@ -8,19 +8,20 @@ import logging
 from jcmt2caom2.__version__ import version
 from jcmt2caom2.jsa.product_id import product_id
 
+
 def raw_product_id(backend, context, jcmt_db, obsid, conn, log):
     """
     Generates raw (observationID, productID) values for an observation.
-    
+
     Arguments:
     backend: one of ACSIS, DAS, AOS-C, SCUBA-2
     context: one of "raw", "prod"
     jcmt_db: prefix fot the database and schem where ACSIS, FILES are located
     obsid: observation identifier, primary key in COMMON table
     conn: connection to database
-    
+
     Returns:
-    if usage == "raw" return a dictionary of productID keyed on 
+    if usage == "raw" return a dictionary of productID keyed on
                       subsysnr (filter for SCUBA-2)
     elif usage == "prod" return a dictionary of productID keyed on
                          file_id (minus .sdf extension)
@@ -37,18 +38,18 @@ def raw_product_id(backend, context, jcmt_db, obsid, conn, log):
                      '        ON f.obsid_subsysnr=s.obsid_subsysnr',
                      'WHERE f.obsid = "%s"' % (obsid,)])
             result = conn.read(sqlcmd)
-            
+
             fileid_dict = {}
             if result:
                 for file_id, filter in result:
-                    fileid_dict[file_id] = (obsid, 
+                    fileid_dict[file_id] = (obsid,
                                             product_id(backend, log,
                                                        product='raw',
                                                        filter=str(filter)))
             else:
                 log.console('no rows returned from FILES for obsid = ' + obsid,
                             logging.ERROR)
-            
+
     else:
         subsysnr_dict = {}
         if backend == 'ACSIS':
@@ -86,7 +87,7 @@ def raw_product_id(backend, context, jcmt_db, obsid, conn, log):
         result = conn.read(sqlcmd)
         if result:
             for subsysnr, restfreq, bwmode, specid, hybrid in result:
-                restfreqhz = 1.0e9 *float(restfreq)
+                restfreqhz = 1.0e9 * float(restfreq)
                 prefix = 'raw'
                 if int(hybrid) > 1:
                     prefix = 'raw-hybrid'
@@ -108,11 +109,12 @@ def raw_product_id(backend, context, jcmt_db, obsid, conn, log):
                      '        ON f.obsid_subsysnr=a.obsid_subsysnr',
                      'WHERE f.obsid = "%s"' % (obsid,)])
             result = conn.read(sqlcmd)
-            
+
             fileid_dict = {}
             if result:
                 for file_id, subsysnr in result:
-                    fileid_dict[file_id] = (obsid, subsysnr_dict[str(subsysnr)])
+                    fileid_dict[file_id] = (obsid,
+                                            subsysnr_dict[str(subsysnr)])
                     log.file('file_id metadata: ' + file_id +
                              ', ' + obsid +
                              ', ' + subsysnr_dict[str(subsysnr)],
@@ -120,9 +122,8 @@ def raw_product_id(backend, context, jcmt_db, obsid, conn, log):
             else:
                 log.console('no rows returned from FILES for obsid = ' + obsid,
                             logging.ERROR)
-    
+
     if context == 'raw':
         return subsysnr_dict
     elif context == 'prod':
         return fileid_dict
-    

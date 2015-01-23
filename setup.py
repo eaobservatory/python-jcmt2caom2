@@ -15,21 +15,21 @@ else:
     configdir = os.path.join(sys.prefix, 'config')
 configfiles = [os.path.join('config', f) for f in os.listdir('config')]
 
-setup(name="jcmt2caom2",
-      version='1.2.6',
-      description='Ingest JCMT data into CAOM-2',
-      author='Russell Redman',
-      author_email='russell.o.redman@gmail.com',
-      packages=find_packages(exclude=['*.test']),
-      scripts=['scripts/jsaingest',
-               'scripts/jsaraw',
-               'scripts/jsarawlist',
-               'scripts/jsasetfield'],
-      # config files are not package data and must be located
-      # in ../config relative to the executables in scripts
-      data_files=[(configdir, configfiles)],
-      provides=['jcmt2caom2'],
-      install_requires=['distribute'],
-      zip_safe=False
+setup(
+    name="jcmt2caom2",
+    version='1.2.6',
+    description='Ingest JCMT data into CAOM-2',
+    author='Russell Redman',
+    author_email='russell.o.redman@gmail.com',
+    packages=find_packages(exclude=['*.test']),
+    scripts=['scripts/jsaingest',
+             'scripts/jsaraw',
+             'scripts/jsarawlist',
+             'scripts/jsasetfield'],
+    # config files are not package data and must be located
+    # in ../config relative to the executables in scripts
+    data_files=[(configdir, configfiles)],
+    provides=['jcmt2caom2'],
+    install_requires=['distribute'],
+    zip_safe=False
 )
-

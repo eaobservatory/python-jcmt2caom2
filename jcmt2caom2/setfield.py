@@ -30,15 +30,16 @@ from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 __doc__ = """
-The setfield class is used to update specific fields in a set of existing caom2 
+The setfield class is used to update specific fields in a set of existing caom2
 observations identified by the value of provenance_runID in at least one
 of their planes.  Each observation will be read from the CAOM-2 repository,
 the specified fields will be updated in the planes with the matching values of
-provenance_runID, and the observations written back to the repository.  Only a 
+provenance_runID, and the observations written back to the repository.  Only a
 few fields can be set with this routine, selected by command line arguments,
 and the same value will be assigned to the specified field in every matching
 plane.
 """
+
 
 class setfield(object):
     def __init__(self):
@@ -50,28 +51,28 @@ class setfield(object):
             self.progname = os.path.basename(sys.argv[0])
         else:
             self.progname = 'setfield'
-        
+
         if sys.path[0]:
             self.exedir = os.path.abspath(os.path.dirname(sys.path[0]))
         else:
             self.exedir = os.getcwd()
-        
+
         self.configpath = os.path.abspath(self.exedir + '/../config')
 
         self.outdir = None
-        
+
         self.collection = None
         self.collections = ('JCMT', 'JCMTLS', 'JCMRUSER', 'SANDBOX')
-        
+
         self.runid = None
         self.releasedate = None
         self.reference = None
-        
+
         self.logdir = ''
         self.logfile = ''
         self.loglevel = logging.INFO
         self.log = None
-        
+
         self.reader = ObservationReader(True)
         self.writer = ObservationWriter()
 
@@ -81,50 +82,60 @@ class setfield(object):
 
         Arguments:
         <None>
-        
+
         Sets the release date and/or reference URL for a set of planes
         identified by their provenance_runID.  One or both of --releasedate
         and --reference must be specified.
         """
         ap = argparse.ArgumentParser()
-        ap.add_argument('--proxy',
+        ap.add_argument(
+            '--proxy',
             default='~/.ssl/cadcproxy.pem',
             help='path to CADC proxy')
-        
-        ap.add_argument('--outdir',
+
+        ap.add_argument(
+            '--outdir',
             default='.',
             help='working directory for output files')
 
-        ap.add_argument('--collection',
+        ap.add_argument(
+            '--collection',
             choices=self.collections,
             default='ALL',
             help='collection to use for ingestion')
-        ap.add_argument('--runid',
+        ap.add_argument(
+            '--runid',
             required=True,
             help='provenance_runID for the planes to be updated')
-        ap.add_argument('--releasedate',
+        ap.add_argument(
+            '--releasedate',
             help='release date to set for the planes and observations')
-        ap.add_argument('--reference',
+        ap.add_argument(
+            '--reference',
             help='reference URl to set for the planes and observations')
-        
-        ap.add_argument('--logdir',
+
+        ap.add_argument(
+            '--logdir',
             default='.',
             help='path to log file directory')
-        ap.add_argument('--log',
+        ap.add_argument(
+            '--log',
             help='path to log file')
 
-        ap.add_argument('--test',
+        ap.add_argument(
+            '--test',
             action='store_true',
             help='report observations and planes but do not execute commands')
-        ap.add_argument('--debug',
+        ap.add_argument(
+            '--debug',
             dest='loglevel',
             action='store_const',
             const=logging.DEBUG)
         self.args = ap.parse_args()
 
         self.proxy = os.path.abspath(
-                        os.path.expandvars(
-                            os.path.expanduser(self.args.proxy)))
+            os.path.expandvars(
+                os.path.expanduser(self.args.proxy)))
 
         if self.args.collection == 'ALL':
             self.collection = self.collections
@@ -132,19 +143,19 @@ class setfield(object):
             self.collection = (self.args.collection,)
         self.runid = self.args.runid
         if self.args.releasedate:
-            dt_string =  self.args.releasedate
+            dt_string = self.args.releasedate
             if re.match(r'^\d{8}$',
                         self.args.releasedate):
-                dt = ('-'.join([dt_string[0:4], 
-                                dt_string[4:6], 
+                dt = ('-'.join([dt_string[0:4],
+                                dt_string[4:6],
                                 dt_string[6:8]]) + 'T00:00:00')
             elif re.match(r'^[^\d]*(\d{1,4}-\d{2}-\d{2})$', dt_string):
                 dt = dt_string + 'T00:00:00'
             else:
                 raise ValueError('the string "%s" does not match a utdate '
-                                 'YYYYMMDD or ISO YYYY-MM-DD format:' 
+                                 'YYYYMMDD or ISO YYYY-MM-DD format:'
                                  % (dt_string))
-            self.releasedate = datetime.strptime(dt, 
+            self.releasedate = datetime.strptime(dt,
                                                  '%Y-%m-%dT%H:%M:%S')
         elif self.args.reference:
             self.reference = self.args.reference
@@ -153,12 +164,13 @@ class setfield(object):
                                'must be given')
 
         self.outdir = os.path.abspath(
-                          os.path.expanduser(
-                              os.path.expandvars(self.args.outdir)))
+            os.path.expanduser(
+                os.path.expandvars(self.args.outdir)))
 
         self.logdir = os.path.abspath(
-                           os.path.expanduser(
-                               os.path.expandvars(self.args.logdir)))        
+            os.path.expanduser(
+                os.path.expandvars(self.args.logdir)))
+
         if self.args.log:
             self.logfile = self.args.log
         if self.args.loglevel:
@@ -176,8 +188,8 @@ class setfield(object):
         """
         if self.logfile:
             self.logfile = os.path.abspath(
-                               os.path.expanduser(
-                                   os.path.expandvars(self.logfile)))
+                os.path.expanduser(
+                    os.path.expandvars(self.logfile)))
         else:
             defaultlogname = 'jcmt2caom2setfield_' + utdate_string() + '.log'
             if self.logdir:
@@ -188,8 +200,8 @@ class setfield(object):
             else:
                 defaultlogname = os.path.join(self.outdir, defaultlogname)
             self.logfile = os.path.abspath(
-                               os.path.expanduser(
-                                   os.path.expandvars(defaultlogname)))
+                os.path.expanduser(
+                    os.path.expandvars(defaultlogname)))
 
     def logCommandLineSwitches(self):
         """
@@ -204,17 +216,17 @@ class setfield(object):
         self.log.file('tools4caom2version   = ' + tools4caom2version)
         for attr in dir(self.args):
             if attr != 'id' and attr[0] != '_':
-                self.log.file('%-15s= %s' % 
-                                 (attr, str(getattr(self.args, attr))))
+                self.log.file('%-15s= %s' %
+                              (attr, str(getattr(self.args, attr))))
         self.log.file('exedir = ' + self.exedir)
         self.log.file('outdir = ' + self.outdir)
         self.log.file('logdir = ' + self.logdir)
 
     def update(self):
         """
-        Find all observations that match the provenance_runID, then 
+        Find all observations that match the provenance_runID, then
         update the requested fields in each observation.
-        
+
         Arguments:
         <none>
         """
@@ -239,7 +251,7 @@ class setfield(object):
             '         Plane.productID'])
         result = self.tap.query(tapcmd)
         result_dict = OrderedDict()
-        
+
         if result:
             for coll, obsid, prodid in result:
                 if coll not in result_dict:
@@ -278,9 +290,8 @@ class setfield(object):
                                          traceback.format_exc(),
                                          logging.ERROR)
 
-            self.log.console('SUCCESS: Observation ' + obsid + 
-                 ' has been ingested')
-
+            self.log.console('SUCCESS: Observation ' + obsid +
+                             ' has been ingested')
 
     def run(self):
         """
@@ -288,11 +299,11 @@ class setfield(object):
         """
         self.parse_command_line()
         self.setup_logger()
-        
+
         prefix = ''
-        
-        with logger(self.logfile, 
-                    loglevel = self.loglevel).record() as self.log:
+
+        with logger(self.logfile,
+                    loglevel=self.loglevel).record() as self.log:
             try:
                 self.logCommandLineSwitches()
                 self.tap = tapclient(self.log, self.proxy)

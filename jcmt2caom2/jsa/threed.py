@@ -7,12 +7,13 @@ import math
 
 from jcmt2caom2.jsa.twod import TwoD
 
+
 class ThreeD(object):
     """
     Simple three-tuple vector
     """
     radiansPerDegree = math.pi / 180.0
-    
+
     def __init__(self, x=None, y=None, z=None):
         """
         Create a three-tuple with coordinates (x, y, z)
@@ -23,11 +24,11 @@ class ThreeD(object):
             self.y = x.y
             self.z = x.z
         elif isinstance(x, TwoD):
-            self.x = (math.cos(ThreeD.radiansPerDegree * x.x) * 
+            self.x = (math.cos(ThreeD.radiansPerDegree * x.x) *
                       math.cos(ThreeD.radiansPerDegree * x.y))
-            self.y = (math.sin(ThreeD.radiansPerDegree * x.x) * 
+            self.y = (math.sin(ThreeD.radiansPerDegree * x.x) *
                       math.cos(ThreeD.radiansPerDegree * x.y))
-            self.z =  math.sin(ThreeD.radiansPerDegree * x.y)
+            self.z = math.sin(ThreeD.radiansPerDegree * x.y)
         elif isinstance(x, tuple) and len(x) == 2:
             self.x = float(x[0])
             self.y = float(x[1])
@@ -44,91 +45,90 @@ class ThreeD(object):
             self.x = None
             self.y = None
             self.z = None
-        
-    
+
     def __str__(self):
         """
         string representation
         """
         return '(%f, %f, %f)' % (self.x, self.y, self.z)
-        
+
     def __eq__(self, t):
         """
         test equality between self and t
-        
+
         Arguments:
         t: another twod
         """
         return (self.x == t.x and self.y == t.y and self.z == t.z)
-    
+
     def __ne__(self, t):
         """
         test non-equality between self and t
-        
+
         Arguments:
         t: another twod
         """
         return (self.x != t.x or self.y != t.y or self.z != t.z)
-    
+
     def __add__(self, t):
         """
         add self and t
-        
+
         Arguments:
         t: another twod
         """
-        return ThreeD(self.x + t.x, 
-                      self.y + t.y, 
+        return ThreeD(self.x + t.x,
+                      self.y + t.y,
                       self.z + t.z)
-        
+
     def __sub__(self, t):
         """
         subtract T from self
-        
+
         Arguments:
         t: another twod
         """
-        return ThreeD(self.x - t.x, 
-                      self.y - t.y, 
+        return ThreeD(self.x - t.x,
+                      self.y - t.y,
                       self.z - t.z)
-        
+
     def __mul__(self, f):
         """
-        multiply self by f 
-        
+        multiply self by f
+
         Arguments:
         t: another twod
         """
-        return ThreeD(f*self.x, 
-                      f*self.y, 
+        return ThreeD(f*self.x,
+                      f*self.y,
                       f*self.z)
-            
+
     def __rmul__(self, f):
         """
-        multiply self by f 
-        
+        multiply self by f
+
         Arguments:
         t: another twod
         """
-        return ThreeD(f*self.x, 
-                      f*self.y, 
+        return ThreeD(f*self.x,
+                      f*self.y,
                       f*self.z)
-            
+
     def __div__(self, f):
         """
-        divide self by f 
-        
+        divide self by f
+
         Arguments:
         t: another twod
         """
-        return ThreeD(self.x / f, 
-                      self.y / f, 
+        return ThreeD(self.x / f,
+                      self.y / f,
                       self.z / f)
-    
+
     def abs(self):
         """
-        length of self 
-        
+        length of self
+
         Arguments:
         <none>
         """
@@ -143,7 +143,7 @@ class ThreeD(object):
     @staticmethod
     def dot(a, b):
         return (a.x * b.x + a.y * b.y + a.z * b.z)
-    
+
     @staticmethod
     def included_angle(a, b, c):
         """
@@ -162,14 +162,14 @@ class ThreeD(object):
             raise ValueError('The origin, a = ' + str(a) + ', and '
                              'b = ' + str(b) + ' are colinear')
         amb = amb / norm
-        
+
         cmb = ThreeD.cross(c - b, b)
         norm = cmb.abs()
         if 0.0 == norm:
             raise ValueError('The origin, b = ' + str(b) + ', and '
                              'c = ' + str(c) + ' are colinear')
         cmb = cmb / norm
-        
+
         cosval = ThreeD.dot(amb, cmb)
         if cosval > 1.0:
             cosval = 1.0

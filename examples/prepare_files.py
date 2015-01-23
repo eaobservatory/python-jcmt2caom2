@@ -23,14 +23,14 @@ from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 def rewrite_fits(infits, outfits, headerdict):
     """
-    Customize this routine to suit the needs of your data.  
+    Customize this routine to suit the needs of your data.
     """
     hdulist = pyfits.open(infits)
     hdu = hdulist[0].header
 
     # Uncomment lines below as required and supply an algorithmic
     # value for the specified header
-    
+
     # headerdict['INSTREAM'] = 'JCMTLS' # or 'JCMTUSER'
     # headerdict['ASN_ID'] = <observationID for observation>
     # headerdict['ASN_TYPE'] = 'custom'
@@ -86,11 +86,11 @@ def rewrite_fits(infits, outfits, headerdict):
     for key in headerdict:
         if key not in hdu:
             newkeys = True
-    
+
     # if so, add a comment to label the section containing new keys
     endcard = len(head)
     head.update('', '', comment='JSA Headers', after=endcard)
-    
+
     # update FITS headers with those supplied in headerdict
     for key in sorted(headerdict.keys()):
         hdu.update(key, headerdict[key])
@@ -98,7 +98,7 @@ def rewrite_fits(infits, outfits, headerdict):
     dirpath = os.path.dirname(outfits)
     if not os.path.isdir(dirpath):
         os.makedirs(dirpath)
-    
+
     hdulist.writeto(outfits)
 
 
@@ -109,18 +109,19 @@ def fix_name(outdir, prefix, filename):
     dirpath, basename = os.path.split(filename)
     return os.path.join(outdir, dirpath, prefix + '_' + basename.lower())
 
+
 def readfilelist(rootdir, indir, filter, filelist, log):
     """
     Construct a list of file names rooted at indir by reading names from indir
     and calling readfilelist recursively for each directory.  Include only
     filenames for which filter returns True.
-    """  
+    """
     dirlist = []
     if indir:
         readdir = os.path.join(rootdir, indir)
     else:
         readdir = rootdir
-    
+
     for f in os.listdir(readdir):
         log.file('examine: ' + f)
         filename = os.path.join(rootdir, indir, f)
@@ -131,68 +132,70 @@ def readfilelist(rootdir, indir, filter, filelist, log):
     for d in dirlist:
         readfilelist(rootdir, d, filter, filelist, log)
 
+
 def fits_and_png(filename):
     """
     Return True if the extension is nor a FITS or PNg file, False otherwise
     """
     return (os.path.splitext(filename)[1].lower() in ('.fits', '.fit', '.png'))
 
+
 def run():
     """
     The run() method for jcmt_prepare_files.  This is intended to be a template
-    for a custom program to prepare externally generated data files for ingestion
-    into the JSA by changing the name and decorating the file with a standard set 
-    of FITS headers.
+    for a custom program to prepare externally generated data files for
+    ingestion into the JSA by changing the name and decorating the file with a
+    standard set of FITS headers.
     """
     progname = os.path.basename(os.path.splitext(sys.path[0])[0])
     # Comment out header names that should not be in the csv file
-    header_order =  ['inputfile',
-                     'outputfile',
-                     'INSTREAM',
-                     'ASN_ID',
-                     'ASN_TYPE',
-                     'MBRCNT',
-                     'OBS-TYPE',
-                     'PROJECT',
-                     'PI',
-                     'TITLE',
-                     'SURVEY',
-                     'DPPROJ',
-                     'INSTRUME',
-                     'INBEAM',
-                     'BACKEND',
-                     'SW_MODE',
-                     'SCAN_PAT',
-                     'OBS_SB',
-                     'SB_MODE',
-                     'TELESCOP',
-                     'OBSGEO_X',
-                     'OBSGEO_Y',
-                     'OBSGEO_Z',
-                     'OBJECT',
-                     'TARGTYPE',
-                     'ZSOURCE',
-                     'TARGKEYW'
-                     'MOVING',
-                     'OBSRA',
-                     'OBSDEC',
-                     'RADESYS',
-                     'EQUINOX',
-                     'PRODID',
-                     'PRODUCT',
-                     'DATAPROD',
-                     'PRODTYPE',
-                     'CALLEVEL',
-                     'FILTER',
-                     'RESTFREQ',
-                     'BWMODE',
-                     'SUBSYSNR',
-                     'RECIPE',
-                     'PROCVERS',
-                     'ENGVERS',
-                     'PRODUCER',
-                     'DPDATE',
-                     'INPCNT']
+    header_order = ['inputfile',
+                    'outputfile',
+                    'INSTREAM',
+                    'ASN_ID',
+                    'ASN_TYPE',
+                    'MBRCNT',
+                    'OBS-TYPE',
+                    'PROJECT',
+                    'PI',
+                    'TITLE',
+                    'SURVEY',
+                    'DPPROJ',
+                    'INSTRUME',
+                    'INBEAM',
+                    'BACKEND',
+                    'SW_MODE',
+                    'SCAN_PAT',
+                    'OBS_SB',
+                    'SB_MODE',
+                    'TELESCOP',
+                    'OBSGEO_X',
+                    'OBSGEO_Y',
+                    'OBSGEO_Z',
+                    'OBJECT',
+                    'TARGTYPE',
+                    'ZSOURCE',
+                    'TARGKEYW'
+                    'MOVING',
+                    'OBSRA',
+                    'OBSDEC',
+                    'RADESYS',
+                    'EQUINOX',
+                    'PRODID',
+                    'PRODUCT',
+                    'DATAPROD',
+                    'PRODTYPE',
+                    'CALLEVEL',
+                    'FILTER',
+                    'RESTFREQ',
+                    'BWMODE',
+                    'SUBSYSNR',
+                    'RECIPE',
+                    'PROCVERS',
+                    'ENGVERS',
+                    'PRODUCER',
+                    'DPDATE',
+                    'INPCNT']
 
     ap = argparse.ArgumentParser('jcmt_prepare_files')
     ap.add_argument('--indir',
@@ -205,9 +208,9 @@ def run():
                     help='optional prefix for new file names')
 
     ap.add_argument('-c', '--csv',
-                    help='comma-separated value file listing files to edit and '
-                         'headers to change')
-    
+                    help='comma-separated value file listing files to edit '
+                         'and headers to change')
+
     ap.add_argument('--log',
                     default='jcmt_prepare_files_' + utdate_string() + '.log',
                     help='(optional) name of log file')
@@ -232,8 +235,7 @@ def run():
         log.file(progname)
         for attr in dir(a):
             if attr != 'id' and attr[0] != '_':
-                log.file('%-15s= %s' % 
-                                 (attr, str(getattr(a, attr))))
+                log.file('%-15s= %s' % (attr, str(getattr(a, attr))))
         log.console('log = ' + a.log)
 
         # if any keyvalue arguments were supplied save them in a dictionary
@@ -258,30 +260,30 @@ def run():
                 log.console('specify both --indir and --outdir, since it is '
                             'forbidden to overwrite the original files',
                             logging.ERROR)
-            
+
             a.indir = os.path.abspath(
-                        os.path.expandvars(
-                            os.path.expanduser(a.indir)))
-            
+                os.path.expandvars(
+                    os.path.expanduser(a.indir)))
+
             a.outdir = os.path.abspath(
-                            os.path.expandvars(
-                                os.path.expanduser(a.outdir)))
-            
+                os.path.expandvars(
+                    os.path.expanduser(a.outdir)))
+
             if not os.path.isdir(a.indir):
-                log.console('indir = ' + a.indir + 
+                log.console('indir = ' + a.indir +
                             ' is not a directory',
                             logging.ERROR)
 
             if not os.path.isdir(a.outdir):
-                log.console('output directory ' + a.outdir + 
+                log.console('output directory ' + a.outdir +
                             ' is not a directory',
                             logging.ERROR)
-            
+
             filelist = []
             readfilelist(a.indir, '', fits_and_png, filelist, log)
             infile = [os.path.join(a.indir, f) for f in filelist]
             outfile = [fix_name(a.outdir, a.prefix, f) for f in filelist]
-            
+
             # if a CSV filename is given, open it for output
             try:
                 CSV = None
@@ -290,7 +292,7 @@ def run():
                     CSV = open(a.csv, 'wb')
                     csvwriter = csv.DictWriter(CSV, header_order)
                     csvwriter.writeheader()
-                
+
                 # Open each FITS file and update it as required
                 for i in range(len(filelist)):
                     if a.debug:
@@ -301,13 +303,13 @@ def run():
                         log.file('    outfile = ' + outfile[i])
 
                     if CSV and csvwriter:
-                        # If a CSV file is open, write a row in the CSV file for
-                        # each input file
+                        # If a CSV file is open, write a row in the CSV file
+                        # for each input file
                         rowdict = {}
                         rowdict.update(keydict)
                         rowdict['inputfile'] = infile[i]
                         rowdict['outputfile'] = outfile[i]
-                        
+
                         csvwriter.writerow(rowdict)
                     else:
                         # If the file is a FITS file, copy the file and update
@@ -333,12 +335,13 @@ def run():
                     else:
                         log.console('"inputfile" must be a column in ' + a.csv,
                                     logging.ERROR)
-                    
+
                     if 'outputfile' in csvdict:
                         outfile = csvdict.pop('outputfile')
                     else:
-                        log.console('"outputfile" must be a column in ' + a.csv,
-                                    logging.ERROR)
+                        log.console(
+                            '"outputfile" must be a column in ' + a.csv,
+                            logging.ERROR)
 
                     if not os.path.isfile(csvdict['inputfile']):
                         log.console('The FITS file ' + csvdict['inputfile'] +
@@ -348,7 +351,7 @@ def run():
                     headerdict = {}
                     headerdict.update(keydict)
                     headerdict.update(csvdict)
-                    
+
                     rewrite_fits(infile, outfile, headerdict)
 
 if __name__ == __main__:

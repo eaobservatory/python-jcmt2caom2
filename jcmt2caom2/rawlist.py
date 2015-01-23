@@ -25,7 +25,7 @@ def run():
     """
     Ingest raw JCMT observations from one or more obsid lists.
     This is just a mid-level script to run jsaraw many times.
-    
+
     Examples:
     jsarawlist scuba2_00021_20141116T072609 scuba2_00020_20141116T072123
     jsarawlist reingest_list.obsid
@@ -54,7 +54,7 @@ def run():
     ap.add_argument('--outdir',
                     default='.',
                     help='(optional) output directory for working files')
-    
+
     ap.add_argument('--debug', '-d',
                     action='store_true',
                     help='run ingestion commands in debug mode')
@@ -73,31 +73,31 @@ def run():
                     'OBSID values')
     a = ap.parse_args()
 
-        # Open log and record switches
+    # Open log and record switches
     cwd = os.getcwd()
-    
+
     logdir = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(a.logdir)))
-    
+        os.path.expanduser(
+            os.path.expandvars(a.logdir)))
+
     outdir = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(a.outdir)))
-    
+        os.path.expanduser(
+            os.path.expandvars(a.outdir)))
+
     loglevel = logging.INFO
-    
+
     # Not used inside jsarawlist, but passed to jsaraw
     userconfigpath = os.path.abspath(
-                        os.path.expanduser(
-                            os.path.expandvars(a.userconfig)))
-    
+        os.path.expanduser(
+            os.path.expandvars(a.userconfig)))
+
     if a.debug:
         loglevel = logging.DEBUG
-    
+
     if os.path.dirname(a.log):
         logpath = os.path.abspath(
-                    os.path.expanduser(
-                        os.path.expandvars(a.log)))
+            os.path.expanduser(
+                os.path.expandvars(a.log)))
     else:
         logpath = os.path.join(logdir, a.log)
 
@@ -110,7 +110,7 @@ def run():
             if attr != 'id' and attr[0] != '_':
                 log.console('%-15s= %s' % (attr, getattr(a, attr)),
                             logging.DEBUG)
-        
+
         # obsid_set is the set of obsid's to ingest
         obsid_set = set()
         # obsid_file_set is a set of abspaths to obsid files
@@ -124,14 +124,14 @@ def run():
                     for filename in os.listdir(idpath):
                         filepath = os.path.join(idpath, filename)
                         if (os.path.isfile(filepath) and
-                            os.path.splitext(filename)[1] == '.obsid'):
-                        
+                                os.path.splitext(filename)[1] == '.obsid'):
+
                             obsid_file_set.add(filepath)
                 elif os.path.isfile(id):
                     # if id is an obsid file add it to obsid_file_set
                     if os.path.splitext(id)[1] == '.obsid':
                         obsid_file_set.add(os.path.abspath(id))
-                
+
                 elif obsid_regex.search(id):
                     # if id is an observationID string, add it to obsid_set
                     m = obsid_regex.search(id)
@@ -147,7 +147,7 @@ def run():
         else:
             # Try to read a list of obsids from stdin
             for line in sys.stdin:
-                # if the line starts with an obsid string, 
+                # if the line starts with an obsid string,
                 # add it to obsid_set
                 m = obsid_regex.match(line)
                 if m:
@@ -155,7 +155,7 @@ def run():
                     log.file('Add to obsid_set: ' + obsid,
                              logging.DEBUG)
                     obsid_set.add(obsid)
-        
+
         # Read any obsid files and add the contents to obsid_set
         for obsidfile in sorted(list(obsid_file_set)):
             with open(obsidfile) as OF:
@@ -165,7 +165,7 @@ def run():
                         obsid = m.group(1)
                         log.file('from ' + obsidfile + ' add ' + obsid)
                         obsid_set.add(obsid)
-        
+
         if obsid_set:
             obsid_list = sorted(obsid_set,
                                 key=lambda t: obsid_regex.match(t).group(3),
@@ -173,7 +173,7 @@ def run():
         else:
             log.console('no obsid values have been input',
                         logging.ERROR)
-        
+
         retvals = None
         # ingest the recipe instances in subprocesses
         rawcmd = [os.path.join(sys.path[0], 'jsaraw'),
@@ -189,16 +189,16 @@ def run():
             thisrawcmd.append('--key=' + obsid)
             log.console('PROGRESS: ' + obsid)
             log.file(' '.join(thisrawcmd))
-            
+
             if not a.test:
                 try:
                     output = subprocess.check_output(
-                                            thisrawcmd,
-                                            stderr=subprocess.STDOUT)
+                        thisrawcmd,
+                        stderr=subprocess.STDOUT)
                 except KeyboardInterrupt:
                     # Exit immediately if there is a keyboard interrupt
                     sys.exit(1)
-                    
+
                 except subprocess.CalledProcessError as e:
                     # Log ingestion errors, but continue
                     try:
@@ -206,12 +206,12 @@ def run():
                                     logging.ERROR)
                     except logger.LoggerError:
                         pass
-                
+
                 except:
                     # other errors will be logged, but with an error
                     log.console(traceback.format_exec(),
                                 logging.ERROR)
-                        
+
         log.console('DONE')
 
         # clean up outdir
@@ -220,7 +220,6 @@ def run():
                 filepath = os.path.join(outdir, filename)
                 basename, ext = os.path.splitext(filename)
                 if (ext == '.xml'):
-                    log.console('remove ' + filepath, 
+                    log.console('remove ' + filepath,
                                 logging.DEBUG)
                     os.remove(filepath)
-

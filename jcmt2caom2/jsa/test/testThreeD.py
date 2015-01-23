@@ -8,7 +8,7 @@ from jcmt2caom2.jsa.threed import ThreeD
 from jcmt2caom2.jsa.twod import TwoD
 
 
-class testThreeD( unittest.TestCase):
+class testThreeD(unittest.TestCase):
     def testThreeDArithmetic(self):
         """
         Test basic properties
@@ -17,7 +17,7 @@ class testThreeD( unittest.TestCase):
         xunit = ThreeD(1.0, 0.0, 0.0)
         yunit = ThreeD(0.0, 1.0, 0.0)
         zunit = ThreeD(0.0, 0.0, 1.0)
-        
+
         self.assertFalse(xunit == yunit)
         self.assertFalse(yunit == zunit)
         self.assertTrue(xunit != zunit)
@@ -38,28 +38,28 @@ class testThreeD( unittest.TestCase):
         self.assertEqual(ThreeD(1.0, 1.0, 1.0) - xunit, yunit + zunit)
 
         self.assertEqual(ThreeD(1.0, 1.0, 1.0) - xunit - yunit - zunit, origin)
-        
+
         self.assertEqual(2.0 * xunit, ThreeD(2.0, 0.0, 0.0))
         self.assertEqual(2.0 * yunit, ThreeD(0.0, 2.0, 0.0))
         self.assertEqual(2.0 * zunit, ThreeD(0.0, 0.0, 2.0))
-        
+
         self.assertEqual((xunit + yunit).abs(), math.sqrt(2.0))
         self.assertEqual((yunit + zunit).abs(), math.sqrt(2.0))
         self.assertEqual((zunit + xunit).abs(), math.sqrt(2.0))
         self.assertEqual((xunit + yunit + zunit).abs(), math.sqrt(3.0))
-                
+
         self.assertEqual(zunit, ThreeD.cross(xunit, yunit))
         self.assertEqual(xunit, ThreeD.cross(yunit, zunit))
         self.assertEqual(yunit, ThreeD.cross(zunit, xunit))
-        
+
         self.assertEqual(-1 * zunit, ThreeD.cross(yunit, xunit))
         self.assertEqual(-1 * xunit, ThreeD.cross(zunit, yunit))
         self.assertEqual(-1 * yunit, ThreeD.cross(xunit, zunit))
-        
+
         self.assertEqual(0.0, ThreeD.dot(xunit, yunit))
         self.assertEqual(0.0, ThreeD.dot(yunit, zunit))
         self.assertEqual(0.0, ThreeD.dot(zunit, xunit))
-        
+
         self.assertEqual(1.0, ThreeD.dot(xunit, xunit))
         self.assertEqual(1.0, ThreeD.dot(yunit, yunit))
         self.assertEqual(1.0, ThreeD.dot(zunit, zunit))
@@ -67,39 +67,38 @@ class testThreeD( unittest.TestCase):
         self.assertEqual(1.0, xunit.abs())
         self.assertEqual(1.0, yunit.abs())
         self.assertEqual(1.0, zunit.abs())
-        
-        self.assertEquals(180.0, 
+
+        self.assertEquals(180.0,
                           ThreeD.included_angle(
-                            ThreeD(1.0, 0.0, 1.0),
-                            ThreeD(2.0, 0.0, 1.0),
-                            ThreeD(3.0, 0.0, 1.0)))
-        self.assertEquals(0.0, 
+                              ThreeD(1.0, 0.0, 1.0),
+                              ThreeD(2.0, 0.0, 1.0),
+                              ThreeD(3.0, 0.0, 1.0)))
+        self.assertEquals(0.0,
                           ThreeD.included_angle(
-                            ThreeD(1.0, 0.0, 1.0),
-                            ThreeD(2.0, 0.0, 1.0),
-                            ThreeD(-3.0, 0.0, 1.0)))
-        self.assertEquals(180.0, 
+                              ThreeD(1.0, 0.0, 1.0),
+                              ThreeD(2.0, 0.0, 1.0),
+                              ThreeD(-3.0, 0.0, 1.0)))
+        self.assertEquals(180.0,
                           ThreeD.included_angle(
-                            ThreeD( 1.0, 0.0, 0.0),
-                            ThreeD( 0.0, 1.0, 0.0),
-                            ThreeD(-1.0, 0.0, 0.0)))
-        self.assertEquals(90.0, 
+                              ThreeD(1.0, 0.0, 0.0),
+                              ThreeD(0.0, 1.0, 0.0),
+                              ThreeD(-1.0, 0.0, 0.0)))
+        self.assertEquals(90.0,
                           ThreeD.included_angle(
-                            ThreeD(0.0, 0.0, 1.0),
-                            ThreeD(0.0, 1.0, 0.0),
-                            ThreeD(1.0, 0.0, 0.0)))
+                              ThreeD(0.0, 0.0, 1.0),
+                              ThreeD(0.0, 1.0, 0.0),
+                              ThreeD(1.0, 0.0, 0.0)))
         for ang in range(0, 90, 3):
             for iscale in range(0, 4):
                 scale = 0.1 ** iscale
                 angle = ang * math.pi / 180.0
-                
+
                 a = ThreeD(TwoD(ang,        90.0 - scale))
                 b = ThreeD(TwoD(ang,        90.0))
                 c = ThreeD(TwoD(ang + 90.0, 90.0 - scale))
-                
-                self.assertTrue(abs(90.0 - ThreeD.included_angle(a, b, c)) < 
+
+                self.assertTrue(abs(90.0 - ThreeD.included_angle(a, b, c)) <
                                 1.0e-9)
-        
+
 if __name__ == '__main__':
     unittest.main()
-    

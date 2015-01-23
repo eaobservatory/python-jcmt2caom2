@@ -21,6 +21,7 @@ from tools4caom2.utdate_string import utdate_string
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
+
 def run():
     """
     Construct a set of files containing all valid recipe instances stored in
@@ -29,71 +30,74 @@ def run():
     """
     userconfig = SafeConfigParser()
     userconfigpath = '~/.tools4caom2/tools4caom2.config'
-    
+
     wrapper = textwrap.TextWrapper(initial_indent='',
                                    subsequent_indent='')
     description = '\n\n'.join([
-            wrapper.fill(textwrap.dedent(
+        wrapper.fill(textwrap.dedent(
             """
             Generate rcinst files for input to jcmtprocwrap.
             Output goes to stdout by default, so jcmt_rcinst_files can be
             piped to jcmtprocwrap:
             """)),
-            'EXAMPLE: jcmt_rcinst_files --new | jcmtprocwrap --keeeplog --qsub',
-            wrapper.fill(textwrap.dedent(
+        'EXAMPLE: jcmt_rcinst_files --new | jcmtprocwrap --keeeplog --qsub',
+        wrapper.fill(textwrap.dedent(
             """
-            The options --daily and --monthly generate rcinst files in the 
+            The options --daily and --monthly generate rcinst files in the
             current directory that can also be picked up by jcmtprocwrap,
-            which can be useful if there are a large number of recipe instances.
-            Recipe instances will be grouped by days or months respectively.
+            which can be useful if there are a large number of recipe
+            instances.  Recipe instances will be grouped by days or months
+            respectively.
             """)),
-            'EXAMPLE: jcmt_rcinst_files --new --daily\n'
-            '         jcmtprocwrap --qsub --keeplog *.rcinst',
-            wrapper.fill(textwrap.dedent(
+        'EXAMPLE: jcmt_rcinst_files --new --daily\n'
+        '         jcmtprocwrap --qsub --keeplog *.rcinst',
+        wrapper.fill(textwrap.dedent(
             """
-            The list of recipe instances to be considered can be restricted 
+            The list of recipe instances to be considered can be restricted
             with --fromset=<filepath>
-            where the file contains a list of identity_instance_id values as 
+            where the file contains a list of identity_instance_id values as
             decimal integers, one per line as the first token on each line.
             Lines that do not match this pattern (blank, or a token that is not
             an integer at the start of the line) will be ignored.
             """)),
-            wrapper.fill(textwrap.dedent(
+        wrapper.fill(textwrap.dedent(
             """
-            The --utdate, --begin and --end arguments can be used to restrict the 
-            range of UT dates to be considered, where recipe instances are dated by 
-            the utdate for the earliest observation in their inputs.  For obs and
-            night recipe instances, this is always the utdate on which all the 
-            data was taken.
+            The --utdate, --begin and --end arguments can be used to restrict
+            the range of UT dates to be considered, where recipe instances are
+            dated by the utdate for the earliest observation in their inputs.
+            For obs and night recipe instances, this is always the utdate on
+            which all the data was taken.
             """)),
-            wrapper.fill(textwrap.dedent(
+        wrapper.fill(textwrap.dedent(
             """
-            UT dates can be entered as integers in the format YYYYMMDD, or as small
-            integer offsets from the coming night, i.e. the UT date at 
+            UT dates can be entered as integers in the format YYYYMMDD, or as
+            small integer offsets from the coming night, i.e. the UT date at
             midnight HST tonight.  Thus --utdate=0 is tonight, --utdate=1 is
-            last night, and so forth.  If none of --utdate --begin, --end, or 
-            --fromset is specified, the default is equivalent to --begin=1 --end=0.
+            last night, and so forth.  If none of --utdate --begin, --end, or
+            --fromset is specified, the default is equivalent to --begin=1
+            --end=0.
             """)),
-            wrapper.fill(textwrap.dedent(
+        wrapper.fill(textwrap.dedent(
             """
-            The --new switch includes only recipe instances that are not already 
-            present in CAOM-2, or have bee reprocessed since their last ingestion.
+            The --new switch includes only recipe instances that are not
+            already present in CAOM-2, or have bee reprocessed since their last
+            ingestion.
             """)),
-            wrapper.fill(textwrap.dedent(
+        wrapper.fill(textwrap.dedent(
             """
-            It is possible to combine --fromset with --utdate, --begin, --end, and 
-            --new. 
+            It is possible to combine --fromset with --utdate, --begin, --end,
+            and --new.
             """))])
 
     ap = argparse.ArgumentParser(
-                description=description,
-                formatter_class=argparse.RawDescriptionHelpFormatter)
-    
+        description=description,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+
     ap.add_argument('--userconfig',
                     default=userconfigpath,
                     help='Optional user configuration file '
                     '(default=' + userconfigpath + ')')
-    
+
     # UTDATE constraints
     ap.add_argument('--utdate',
                     type=str,
@@ -112,7 +116,7 @@ def run():
     ap.add_argument('--new',
                     action='store_true',
                     help='include new or reprocessed recipe instances')
-    
+
     # Output options, default = stdout
     ap.add_argument('--daily',
                     action='store_true',
@@ -131,33 +135,33 @@ def run():
                     action='store_true',
                     help='run ingestion commands in debug mode')
     a = ap.parse_args()
-    
+
     if a.userconfig:
         userconfigpath = a.userconfig
-    
+
     if os.path.isfile(userconfigpath):
         with open(userconfigpath) as UC:
             userconfig.readfp(UC)
 
     cwd = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars('.')))
-    
+        os.path.expanduser(
+            os.path.expandvars('.')))
+
     if a.logdir:
         logdir = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(a.logdir)))
+            os.path.expanduser(
+                os.path.expandvars(a.logdir)))
     else:
         logdir = cwd
-    
+
     loglevel = logging.INFO
     if a.debug:
         loglevel = logging.DEBUG
-    
+
     if os.path.dirname(a.log):
         logpath = os.path.abspath(
-                    os.path.expanduser(
-                        os.path.expandvars(a.log)))
+            os.path.expanduser(
+                os.path.expandvars(a.log)))
     else:
         logpath = os.path.join(logdir, a.log)
 
@@ -173,50 +177,50 @@ def run():
     if a.utdate and (a.begin or a.end):
         log.console('specify either utdate or begin/end, not both',
                     logging.ERROR)
-    
-    if (a.utdate is None and 
-        a.begin is None and
-        a.end is None and
-        a.fromset is None):
-        
+
+    if (a.utdate is None and
+            a.begin is None and
+            a.end is None and
+            a.fromset is None):
+
         a.begin = '1'
         a.end = '0'
-    
+
     # if begin is present, but end is not, set end=now
     if (a.begin is not None and a.end is None):
         a.end = '0'
-    
+
     # if end is present, but bot begin, set begin before start of observatory
     if (a.end is not None and a.begin is None):
         a.begin = '19880101'
-            
+
     # utdate and begin/end can be absolute or relative to now
-    # Beware of comaprisons between ASCII-coded integers, 
+    # Beware of comaprisons between ASCII-coded integers,
     # because '2' > '19991231'
     now = datetime.utcnow()
     zerotime = datetime(now.year, now.month, now.day, 10, 0, 0)
     if now.hour >= 10:
         zerotime += timedelta(1)
-    
+
     this_utdate = None
     if a.utdate is not None:
         if int(a.utdate) > 19800101:
             this_utdate = a.utdate
         else:
             thisutc = now - timedelta(int(a.utdate))
-            this_utdate = '%04d%02d%02d' % (thisutc.year, 
-                                            thisutc.month, 
+            this_utdate = '%04d%02d%02d' % (thisutc.year,
+                                            thisutc.month,
                                             thisutc.day)
             log.file('%-15s= %s' % ('utdate -> ', this_utdate))
-    
+
     this_begin = None
     if a.begin is not None:
         if int(a.begin) > 19800101:
             this_begin = a.begin
         else:
             thisutc = now - timedelta(int(a.begin))
-            this_begin = '%04d%02d%02d' % (thisutc.year, 
-                                           thisutc.month, 
+            this_begin = '%04d%02d%02d' % (thisutc.year,
+                                           thisutc.month,
                                            thisutc.day)
             log.file('%-15s= %s' % ('begin -> ', this_begin))
 
@@ -226,17 +230,17 @@ def run():
             this_end = a.end
         else:
             thisutc = now - timedelta(int(a.end))
-            this_end = '%04d%02d%02d' % (thisutc.year, 
-                                           thisutc.month, 
-                                           thisutc.day)
+            this_end = '%04d%02d%02d' % (thisutc.year,
+                                         thisutc.month,
+                                         thisutc.day)
             log.file('%-15s= %s' % ('end -> ', this_end))
-    
+
     if this_begin and this_end:
         if this_begin > this_end:
             store = this_begin
             this_begin = this_end
             this_end = store
-    
+
     fromset = set()
     if a.fromset:
         with open(a.fromset) as RCF:
@@ -245,9 +249,9 @@ def run():
                 if m:
                     thisid = str(eval(m.group(1)))
                     log.file('from includes: "' + thisid + '"',
-                                logging.DEBUG)
+                             logging.DEBUG)
                     fromset.add(thisid)
-    
+
     retvals = None
     with connection(userconfig, log) as db:
         rcinstcmd = '\n'.join([
@@ -288,65 +292,66 @@ def run():
             '                   lastModified',
             '            FROM ' + caom_db + 'caom2_Plane',
             '            WHERE productID not like "raw%") u',
-            '                ON s.identity_instance_id=u.identity_instance_id',            
+            '                ON s.identity_instance_id=u.identity_instance_id',
             '    GROUP BY s.identity_instance_id,',
             '             s.state,',
             '             s.outcount,',
             '             s.date_processed) t'])
         retvals = db.read(rcinstcmd)
-        
+
         rcinst_dict = {}
         if retvals:
-            for (identity_instance_id, 
-                 state, 
-                 countout, 
-                 date_processed, 
-                 lastModified, 
+            for (identity_instance_id,
+                 state,
+                 countout,
+                 date_processed,
+                 lastModified,
                  utdate) in retvals:
-                 
+
                 rcinst = str(identity_instance_id).strip()
 
                 if a.fromset and rcinst not in fromset:
                     continue
-                
-                if ((not a.new or (a.new and lastModified < date_processed)) and
-                    utdate and 
-                    (not this_utdate or (this_utdate == utdate)) and
-                    (not this_begin or ((this_begin <= utdate) and
-                                        (utdate <= this_end)))):
+
+                if ((not a.new or (a.new and lastModified < date_processed))
+                        and
+                        utdate and
+                        (not this_utdate or (this_utdate == utdate)) and
+                        (not this_begin or ((this_begin <= utdate) and
+                                            (utdate <= this_end)))):
 
                     if state != 'Y':
-                        log.console('RCINST = ' + rcinst + ' has state=' + 
+                        log.console('RCINST = ' + rcinst + ' has state=' +
                                     state + ' and cannot be ingested',
                                     logging.WARN)
                         continue
-                
+
                     if not countout:
                         log.console('RCINST = ' + rcinst + ' produced no '
                                     'output and cannot be ingested',
                                     logging.WARN)
                         continue
-                    
+
                     if utdate:
                         if not re.match(r'^\d{8}$', utdate):
-                            log.console('RCINST = ' + rcinst +' has UTDATE ' + 
+                            log.console('RCINST = ' + rcinst + ' has UTDATE ' +
                                         utdate + ' which is not an 8-digit '
                                         'integer',
                                         logging.WARN)
                             continue
-                        
+
                         utdatestr = str(utdate)
                         if a.monthly:
                             utdatestr = utdatestr[0:6]
                         elif not a.daily:
                             utdatestr = 'all'
-                        
+
                         if utdatestr not in rcinst_dict:
                             rcinst_dict[utdatestr] = []
                         rcinst_dict[utdatestr].append(rcinst)
-                        log.file('PROGRESS: add ' + rcinst + ' on ' + 
-                                    utdatestr)
-            
+                        log.file('PROGRESS: add ' + rcinst + ' on ' +
+                                 utdatestr)
+
             for utdate in rcinst_dict:
                 if utdate == 'all':
                     for rcinst in sorted(rcinst_dict[utdate]):
