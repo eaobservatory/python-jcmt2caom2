@@ -1,7 +1,0 @@
-#!/usr/bin/env python2.7
-
-from jcmt2caom2.mon import mon
-from tools4caom2.logger import logger
-
-thismon = mon()
-thismon.run()
