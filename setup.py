@@ -7,7 +7,7 @@ import sys
 
 if sys.version_info[0] > 2:
     print 'The jcmt2caom2 package is only compatible with Python version 2.n'
-    sys.exit(-1)
+    sys.exit(1)
 
 if 'CADC_ROOT' in os.environ:
     configdir = os.path.join(os.path.expandvars('$CADC_ROOT'), 'config')
