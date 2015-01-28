@@ -1407,7 +1407,7 @@ class jcmt2caom2ingest(caom2ingest):
 
     def lookup_file_id(self, filename, file_id):
         """
-        Given a file_id, return the collection, observation and plane
+        Given a file_id (and unnecessarily filename), return the URI
         from either the current ingestion or existing observation in the
         archive.  Cache the results from TAP queries for future reference.
         """
@@ -1434,28 +1434,42 @@ class jcmt2caom2ingest(caom2ingest):
 
             if answer and len(answer[0]):
                 for row in answer:
+
+                    # Collection, obsid, productid and uri
                     c, o, p, u = row
+
+                    # Search for 'ad:<anything that isn't a slash>/'
+                    # and replace with nothing with in u
                     fid = re.sub(r'ad:[^/]+/', '', u)
-                    if (c in (c.collection,
+
+                    if (c in (self.collection,
                               'JCMT',
                               'JCMTLS',
                               'JCMTUSER')):
 
+                        # URI for this plane
                         thisInputURI = self.planeURI(c, o, p)
+
+                        # If the ad URI is the same as file_id, set
+                        # inputURI to thisInputURI
                         if fid == file_id:
                             inputURI = thisInputURI
+
+                        # add to cache
                         self.input_cache[fid] = thisInputURI
 
                         self.log.file(
                             'inputs: ' + fid + ': ' + thisInputURI.uri,
                             logging.DEBUG)
-                else:
-                    self.dew.warning(
-                        filename,
-                        'provenance input is neither '
-                        'in the JSA already nor in the '
-                        'current release')
-            return inputURI
+
+        if inputURI is None:
+            self.dew.warning(
+                filename,
+                'provenance input is neither '
+                'in the JSA already nor in the '
+                'current release')
+
+        return inputURI
 
     def checkProvenanceInputs(self):
         """
