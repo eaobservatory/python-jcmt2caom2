@@ -13,7 +13,6 @@ import shutil
 import sys
 
 from tools4caom2.logger import logger
-from tools4caom2.gridengine import gridengine
 
 from tools4caom2.utdate_string import utdate_string
 

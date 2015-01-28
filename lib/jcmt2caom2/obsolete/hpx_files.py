@@ -15,7 +15,6 @@ import textwrap
 from tools4caom2.logger import logger
 from tools4caom2.database import database
 from tools4caom2.database import connection
-from tools4caom2.gridengine import gridengine
 from tools4caom2.utdate_string import utdate_string
 
 from tools4caom2.__version__ import version as tools4caom2version
