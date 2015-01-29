@@ -938,7 +938,6 @@ def run():
                 filelist.append(filepath)
 
         filehandlers = [raw_ingestion(vosclient, a.vos, log),
-                        stdpipe_ingestion(vosclient, a.vos, log),
                         jcmt2caom2_ingestion(vosclient, a.vos, log),
                         qa_logs(vosclient, a.vos, log),
                         oracdr_logs(vosclient, a.vos, log)]
