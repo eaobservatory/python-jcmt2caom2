@@ -1,4 +1,3 @@
-#!/usr/bin/env python2.7
 """
 The jcmt2caom2ingest class immplements methods to collect metadata from a set
 of FITS files and from the jcmt database that will be passed to fits2caom2 to
@@ -1677,10 +1676,3 @@ class jcmt2caom2ingest(caom2ingest):
                                 if not self.test:
                                     with open(badxmlfile, 'w') as XMLFILE:
                                         self.writer.write(observation, XMLFILE)
-
-# ************************************************************************
-# if run as a main program, create an instance and exit
-# ************************************************************************
-if __name__ == '__main__':
-    myjcmt2caom2ingest = jcmt2caom2ingest.jcmt2caom2ingest()
-    myjcmt2caom2.run()

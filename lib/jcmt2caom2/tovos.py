@@ -1,5 +1,3 @@
-#!/usr/bin/env python2.7
-
 import argparse
 from ConfigParser import SafeConfigParser
 from datetime import datetime
