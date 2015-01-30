@@ -14,11 +14,9 @@ from caom2.xml.caom2_observation_reader import ObservationReader
 from caom2.xml.caom2_observation_writer import ObservationWriter
 
 from tools4caom2.caom2repo_wrapper import Repository
-from tools4caom2.logger import logger
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
-
 
 __doc__ = """
 The integration Test Set is a selection of observations that illustrate some
@@ -29,6 +27,8 @@ correct behaviour on the ingestion software.
 The members of the test set are documented at:
 https://wiki.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/caom2/index.php/IntegrationTestSet
 """
+
+logger = logging.getLogger(__name__)
 
 
 class integrationtestset(object):
@@ -48,14 +48,10 @@ class integrationtestset(object):
         # time structures for chunks with WCS
         self.reader = ObservationReader(True)
         self.writer = ObservationWriter()
-        self.logfile = None
-        self.log = None
-        self.loglevel = logging.INFO
         self.outdir = None
         self.rawlist = []
         self.proclist = []
         self.cleanlist = []
-        self.keeplog = False
         self.debug = False
         self.args = None
 
@@ -67,13 +63,6 @@ class integrationtestset(object):
         """
         ap = argparse.ArgumentParser()
         # logging options
-        ap.add_argument('--log',
-                        default='integrationtestset.log',
-                        help='log file for integrationtestset')
-        ap.add_argument(
-            '--keeplog',
-            action='store_true',
-            help='(optional) keep log if successful (default is to delete)')
         ap.add_argument(
             '--debug',
             action='store_true',
@@ -108,13 +97,8 @@ class integrationtestset(object):
             help='file(s) or container(s) to ingest')
         self.args = ap.parse_args()
 
-        self.logfile = os.path.expanduser(
-            os.path.expandvars(self.args.log))
-        if self.args.keeplog:
-            self.keeplog = self.args.keeplog
         if self.args.debug:
-            self.debug = self.args.keeplog
-            self.loglevel = logging.DEBUG
+            logging.getLogger().setLevel(logging.DEBUG)
 
         self.outdir = os.path.abspath(self.args.outdir)
 
@@ -134,14 +118,13 @@ class integrationtestset(object):
                 title = mt.group(1)
             if title not in self.testset:
                 self.testset[title] = {}
-                self.log.console('TITLE = ' + title)
+                logger.info('TITLE = ' + title)
                 criterion = 0
 
             mc = re.match(r'^[^#]*# CRITERIA:\s+(.*)$', line)
             if mc:
                 criterion += 1
-                self.log.console('CRITERION: %d: %s' % (criterion,
-                                                        mc.group(1)))
+                logger.info('CRITERION: %d: %s', criterion, mc.group(1))
                 self.testset[title][criterion] = {}
                 self.testset[title][criterion]['raw'] = []
                 self.testset[title][criterion]['proc'] = []
@@ -150,34 +133,29 @@ class integrationtestset(object):
             mr = re.match(r'^.*jsaraw.*--key=(\S+)\s*$', line)
             if mr:
                 self.testset[title][criterion]['raw'].append(mr.group(1))
-                self.log.file('  raw: ' + mr.group(1),
-                              logging.DEBUG)
+                logger.debug('  raw: %s', mr.group(1))
 
             mp = re.match(r'^.*jsaingest.*dp:(\S+)([#\s].*)$', line)
             if mp:
                 self.testset[title][criterion]['proc'].append(mp.group(1))
-                self.log.file(' proc: ' + mp.group(1),
-                              logging.DEBUG)
+                logger.debug(' proc: %s', mp.group(1))
 
             md = re.match(r'^.*caom2repo.*SANDBOX/(\S+)([#\s].*)$', line)
             if md:
                 self.testset[title][criterion]['clean'].append(md.group(1))
-                self.log.file('clean: ' + md.group(1),
-                              logging.DEBUG)
+                logger.debug('clean: %s', md.group(1))
 
     def log_command_line(self):
         """
         write startup configuration into the log
         """
-        self.log.file(sys.argv[0])
-        self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
-        self.log.file('tools4caom2version   = ' + tools4caom2version)
-        self.log.console('logfile = ' + self.logfile)
-        self.log.file('keeplog = ' + str(self.args.keeplog))
-        self.log.file('outdir = ' + self.outdir)
-        self.log.file('debug = ' + str(self.args.debug))
-        self.log.file('skip = ' + str(self.args.skip))
-        self.log.file('clean = ' + str(self.args.clean))
+        logger.info(sys.argv[0])
+        logger.info('jcmt2caom2version    = ' + jcmt2caom2version)
+        logger.info('tools4caom2version   = ' + tools4caom2version)
+        logger.info('outdir = %s', self.outdir)
+        logger.info('debug = %s', self.args.debug)
+        logger.info('skip = %s', self.args.skip)
+        logger.info('clean = %s', self.args.clean)
         self.read_integrationtestset()
         for item in self.args.input:
             title, criterionstr = re.split(r':', item)
@@ -187,16 +165,16 @@ class integrationtestset(object):
                 self.proclist.extend(self.testset[title][criterion]['proc'])
                 self.cleanlist.extend(self.testset[title][criterion]['clean'])
         for raw in self.rawlist:
-            self.log.file('raw: ' + raw)
+            logger.info('raw: %s', raw)
         for proc in self.proclist:
-            self.log.file('proc: ' + proc)
+            logger.info('proc: %s', proc)
         for clean in self.cleanlist:
-            self.log.file('clean: ' + clean)
+            logger.info('clean: %s', clean)
 
         if self.args.debug:
-            self.repository = Repository(self.outdir, self.log)
+            self.repository = Repository(self.outdir)
         else:
-            self.repository = Repository(self.outdir, self.log, debug=False)
+            self.repository = Repository(self.outdir, debug=False)
 
     def ingest_raw(self):
         """
@@ -208,15 +186,15 @@ class integrationtestset(object):
             rawcmd += ' --collection=SANDBOX'
             for raw in self.rawlist:
                 cmd = rawcmd + ' --key=' + raw
-                self.log.console(cmd)
+                logger.info(cmd)
                 try:
                     output = subprocess.check_output(cmd,
                                                      shell=True,
                                                      stderr=subprocess.STDOUT)
-                    self.log.file(output)
+                    logger.info(output)
                 except subprocess.CalledProcessError as e:
-                    self.log.console('FAILED: ' + cmd)
-                    self.log.file('FAILED: ' + e.output)
+                    logger.info('FAILED: %s', cmd)
+                    logger.info('FAILED: %s', e.output)
 
     def ingest_proc(self):
         """
@@ -228,20 +206,18 @@ class integrationtestset(object):
             proccmd += ' --collection=SANDBOX'
             if self.args.debug:
                 proccmd += ' --debug'
-            elif self.args.keeplog:
-                proccmd += ' --keeplog'
 
             for proc in self.proclist:
                 cmd = proccmd + ' dp:' + proc
-                self.log.console(cmd)
+                logger.info(cmd)
                 try:
                     output = subprocess.check_output(cmd,
                                                      shell=True,
                                                      stderr=subprocess.STDOUT)
-                    self.log.file(output)
+                    logger.info(output)
                 except subprocess.CalledProcessError as e:
-                    self.log.console('FAILED: ' + cmd)
-                    self.log.file('FAILED: ' + e.output)
+                    logger.info('FAILED: %s', cmd)
+                    logger.info('FAILED: %s', e.output)
 
     def decorate(self):
         """
@@ -249,7 +225,7 @@ class integrationtestset(object):
         """
         for clean in self.cleanlist:
             uri = 'caom:SANDBOX/' + clean
-            self.log.console('DECORATE: ' + uri)
+            logger.info('DECORATE: %s', uri)
             with self.repository.process(uri) as xmlfile:
                 orig_xmlfile = xmlfile
                 observation = None
@@ -261,8 +237,7 @@ class integrationtestset(object):
                     del observation.planes[productID]
 
                     new_productID = productID + '-new'
-                    self.log.file('DECORATE: ' + productID + ' -> ' +
-                                  new_productID)
+                    logger.info('DECORATE: %s -> %s', productID, new_productID)
                     plane.product_id = new_productID
                     observation.planes.add(plane)
 
@@ -275,29 +250,27 @@ class integrationtestset(object):
         """
         for clean in self.cleanlist:
             cmd = 'caom2repo.py -r caom:SANDBOX/' + clean
-            self.log.console(cmd)
+            logger.info(cmd)
             try:
                 output = subprocess.check_output(cmd,
                                                  shell=True,
                                                  stderr=subprocess.STDOUT)
-                self.log.file(cmd)
-                self.log.file(output)
+                logger.info(cmd)
+                logger.info(output)
             except subprocess.CalledProcessError as e:
-                self.log.console('FAILED: ' + cmd)
-                self.log.file('FAILED: ' + e.output)
+                logger.info('FAILED: %s', cmd)
+                logger.info('FAILED: %s', e.output)
 
     def run(self):
         """
         Fetch metadata, build a CAOM-2 object, and push it into the repository
         """
         self.parse_command_line()
-        with logger(self.logfile,
-                    loglevel=self.loglevel).record() as self.log:
-            self.log_command_line()
-            if not self.args.skip:
-                self.ingest_raw()
-                self.ingest_proc()
-                if self.args.decorate:
-                    self.decorate()
-            if self.args.clean or self.args.skip:
-                self.cleanup()
+        self.log_command_line()
+        if not self.args.skip:
+            self.ingest_raw()
+            self.ingest_proc()
+            if self.args.decorate:
+                self.decorate()
+        if self.args.clean or self.args.skip:
+            self.cleanup()

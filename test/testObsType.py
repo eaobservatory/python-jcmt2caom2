@@ -3,7 +3,6 @@ from __future__ import absolute_import
 
 import unittest
 
-from tools4caom2.logger import logger
 from jcmt2caom2.jsa.obs_type import obs_type
 
 

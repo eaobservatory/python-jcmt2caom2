@@ -21,7 +21,6 @@ from caom2.caom2_plane import Plane
 
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.timezone import UTC
-from tools4caom2.logger import logger
 from tools4caom2.tapclient import tapclient
 from tools4caom2.utdate_string import utdate_string
 import tools4caom2.__version__
@@ -39,6 +38,8 @@ few fields can be set with this routine, selected by command line arguments,
 and the same value will be assigned to the specified field in every matching
 plane.
 """
+
+logger = logging.getLogger()
 
 
 class setfield(object):
@@ -67,11 +68,6 @@ class setfield(object):
         self.runid = None
         self.releasedate = None
         self.reference = None
-
-        self.logdir = ''
-        self.logfile = ''
-        self.loglevel = logging.INFO
-        self.log = None
 
         self.reader = ObservationReader(True)
         self.writer = ObservationWriter()
@@ -113,14 +109,6 @@ class setfield(object):
         ap.add_argument(
             '--reference',
             help='reference URl to set for the planes and observations')
-
-        ap.add_argument(
-            '--logdir',
-            default='.',
-            help='path to log file directory')
-        ap.add_argument(
-            '--log',
-            help='path to log file')
 
         ap.add_argument(
             '--test',
@@ -167,41 +155,10 @@ class setfield(object):
             os.path.expanduser(
                 os.path.expandvars(self.args.outdir)))
 
-        self.logdir = os.path.abspath(
-            os.path.expanduser(
-                os.path.expandvars(self.args.logdir)))
-
-        if self.args.log:
-            self.logfile = self.args.log
         if self.args.loglevel:
-            self.loglevel = self.args.loglevel
+            logging.getLogger().setLevel(self.args.loglevel)
 
         self.test = self.args.test
-
-    def setup_logger(self):
-        """
-        Configure the logger
-
-        Arguments:
-        logfile:     log file name
-        loglevel:    logging level for messages
-        """
-        if self.logfile:
-            self.logfile = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(self.logfile)))
-        else:
-            defaultlogname = 'jcmt2caom2setfield_' + utdate_string() + '.log'
-            if self.logdir:
-                if not os.path.isdir(self.logdir):
-                    raise RuntimeError('logdir = ' + self.logdir +
-                                       ' is not a directory')
-                defaultlogname = os.path.join(self.logdir, defaultlogname)
-            else:
-                defaultlogname = os.path.join(self.outdir, defaultlogname)
-            self.logfile = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(defaultlogname)))
 
     def logCommandLineSwitches(self):
         """
@@ -210,17 +167,14 @@ class setfield(object):
         Arguments:
         <None>
         """
-        self.log.console('logfile = ' + self.logfile)
-        self.log.file(self.progname)
-        self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
-        self.log.file('tools4caom2version   = ' + tools4caom2version)
+        logger.info(self.progname)
+        logger.info('jcmt2caom2version    = %s', jcmt2caom2version)
+        logger.info('tools4caom2version   = %s', tools4caom2version)
         for attr in dir(self.args):
             if attr != 'id' and attr[0] != '_':
-                self.log.file('%-15s= %s' %
-                              (attr, str(getattr(self.args, attr))))
-        self.log.file('exedir = ' + self.exedir)
-        self.log.file('outdir = ' + self.outdir)
-        self.log.file('logdir = ' + self.logdir)
+                logger.info('%-15s= %s', attr, getattr(self.args, attr))
+        logger.info('exedir = %s', self.exedir)
+        logger.info('outdir = %s', self.outdir)
 
     def update(self):
         """
@@ -230,10 +184,7 @@ class setfield(object):
         Arguments:
         <none>
         """
-        if self.loglevel == logging.DEBUG:
-            repository = Repository(self.outdir, self.log)
-        else:
-            repository = Repository(self.outdir, self.log, debug=False)
+        repository = Repository(self.outdir)
 
         tapcmd = '\n'.join([
             'SELECT',
@@ -264,16 +215,14 @@ class setfield(object):
         for coll in result_dict:
             for obsid in result_dict[coll]:
                 uri = 'caom:' + coll + '/' + obsid
-                self.log.console('PROGRESS: ' + uri)
+                logger.info('PROGRESS: ' + uri)
                 with repository.process(uri) as xmlfile:
                     try:
                         observation = self.reader.read(xmlfile)
                         if self.releasedate:
                             observation.metaRelease = self.releasedate
                         for productID in observation.planes:
-                            self.log.console('PROGRESS:    ' + uri + '/' +
-                                             productID,
-                                             logging.DEBUG)
+                            logger.debug('PROGRESS: %s/%s', uri, productID)
                             plane = observation.planes[productID]
                             if productID in result_dict[coll][obsid]:
                                 if self.releasedate:
@@ -286,36 +235,22 @@ class setfield(object):
                             with open(xmlfile, 'w') as XMLFILE:
                                 self.writer.write(observation, XMLFILE)
                     except:
-                        self.log.console('Cannot process ' + uri + ':\n' +
-                                         traceback.format_exc(),
-                                         logging.ERROR)
+                        logger.exception('Cannot process %s', uri)
+                        raise
 
-            self.log.console('SUCCESS: Observation ' + obsid +
-                             ' has been ingested')
+            logger.info('SUCCESS: Observation %s has been ingested', obsid)
 
     def run(self):
         """
         Fetch metadata, build a CAOM-2 object, and push it into the repository
         """
         self.parse_command_line()
-        self.setup_logger()
 
-        prefix = ''
-
-        with logger(self.logfile,
-                    loglevel=self.loglevel).record() as self.log:
-            try:
-                self.logCommandLineSwitches()
-                self.tap = tapclient(self.log, self.proxy)
-                self.update()
-                self.log.console('DONE')
-            except Exception as e:
-                if not isinstance(e, logger.LoggerError):
-                    # Be sure that every error message is logged
-                    # Log this error, but pass because we are exitting anyways
-                    try:
-                        self.errors = True
-                        self.log.console('ERROR: ' + traceback.format_exc(),
-                                         logging.ERROR)
-                    except Exception as p:
-                        pass
+        try:
+            self.logCommandLineSwitches()
+            self.tap = tapclient(self.proxy)
+            self.update()
+            logger.info('DONE')
+        except Exception:
+            self.errors = True
+            logger.exception('ERROR')

@@ -5,11 +5,15 @@
 #################################
 import logging
 
+from tools4caom2.error import CAOMError
+
 from jcmt2caom2.__version__ import version
 from jcmt2caom2.jsa.product_id import product_id
 
+logger = logging.getLogger(__name__)
 
-def raw_product_id(backend, context, jcmt_db, obsid, conn, log):
+
+def raw_product_id(backend, context, jcmt_db, obsid, conn):
     """
     Generates raw (observationID, productID) values for an observation.
 
@@ -43,12 +47,12 @@ def raw_product_id(backend, context, jcmt_db, obsid, conn, log):
             if result:
                 for file_id, filter in result:
                     fileid_dict[file_id] = (obsid,
-                                            product_id(backend, log,
+                                            product_id(backend,
                                                        product='raw',
                                                        filter=str(filter)))
             else:
-                log.console('no rows returned from FILES for obsid = ' + obsid,
-                            logging.ERROR)
+                raise CAOMError('no rows returned from FILES for obsid = ' +
+                                obsid)
 
     else:
         subsysnr_dict = {}
@@ -81,8 +85,7 @@ def raw_product_id(backend, context, jcmt_db, obsid, conn, log):
                      'WHERE a.obsid = "%s"' % (obsid,),
                      'GROUP BY a.subsysnr, a.restfreq, a.bwmode, a.specid'])
         else:
-            log.console('backend = ' + backend + ' is not supported',
-                        logging.ERROR)
+            raise CAOMError('backend = ' + backend + ' is not supported')
 
         result = conn.read(sqlcmd)
         if result:
@@ -91,14 +94,13 @@ def raw_product_id(backend, context, jcmt_db, obsid, conn, log):
                 prefix = 'raw'
                 if int(hybrid) > 1:
                     prefix = 'raw-hybrid'
-                subsysnr_dict[str(subsysnr)] = product_id(backend, log,
+                subsysnr_dict[str(subsysnr)] = product_id(backend,
                                                           product=prefix,
                                                           restfreq=restfreqhz,
                                                           bwmode=bwmode,
                                                           subsysnr=str(specid))
         else:
-            log.console('no rows returned from ACSIS for obsid = ' + obsid,
-                        logging.ERROR)
+            raise CAOMError('no rows returned from ACSIS for obsid = ' + obsid)
 
         if context == 'prod':
             sqlcmd = '\n'.join([
@@ -115,13 +117,11 @@ def raw_product_id(backend, context, jcmt_db, obsid, conn, log):
                 for file_id, subsysnr in result:
                     fileid_dict[file_id] = (obsid,
                                             subsysnr_dict[str(subsysnr)])
-                    log.file('file_id metadata: ' + file_id +
-                             ', ' + obsid +
-                             ', ' + subsysnr_dict[str(subsysnr)],
-                             logging.DEBUG)
+                    logger.debug('file_id metadata: %s, %s, %s',
+                                 file_id, obsid, subsysnr_dict[str(subsysnr)])
             else:
-                log.console('no rows returned from FILES for obsid = ' + obsid,
-                            logging.ERROR)
+                raise CAOMError('no rows returned from FILES for obsid = ' +
+                                obsid)
 
     if context == 'raw':
         return subsysnr_dict

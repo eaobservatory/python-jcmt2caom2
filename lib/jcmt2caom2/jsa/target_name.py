@@ -3,7 +3,6 @@
 #################################
 # Import required Python modules
 #################################
-import logging
 import re
 
 from jcmt2caom2.__version__ import version

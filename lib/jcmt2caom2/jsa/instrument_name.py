@@ -6,9 +6,9 @@
 import logging
 import re
 
-from tools4caom2.logger import logger
-
 from jcmt2caom2.__version__ import version
+
+logger = logging.getLogger(__name__)
 
 # global dictionary of permitted combinations of values by backend
 frontends = {
@@ -20,7 +20,7 @@ frontends = {
 continuum = ('SCUBA-2', 'SCUBA')
 
 
-def instrument_name(frontend, backend, inbeam, log):
+def instrument_name(frontend, backend, inbeam):
     """
     Generates an unambigous name for Instrument.name.
 
@@ -43,7 +43,6 @@ def instrument_name(frontend, backend, inbeam, log):
     frontend: the receiver name
     backend: the spectrometer name
     inbeam: string containing list of subinstruments in the beam
-    log: a tools4caom2.logger logger object
 
     Returns a string giving the instrument name.
     """
@@ -72,13 +71,12 @@ def instrument_name(frontend, backend, inbeam, log):
         parts.append(myBackend)
 
         if myFrontend not in frontends[myBackend]:
-            log.console('frontend = ' + myFrontend + ' should be one of ' +
-                        repr(sorted(frontends[myBackend])),
-                        logging.WARN)
+            logger.warning('frontend = %s should be one of %s',
+                           myFrontend,
+                           repr(sorted(frontends[myBackend])))
     elif myFrontend not in continuum:
-        log.console('frontend = ' + myFrontend + ' should be one of ' +
-                    repr(sorted(continuum)),
-                    logging.WARN)
+        logger.warning('frontend = %s should be one of %s',
+                       myFrontend, repr(sorted(continuum)))
 
     instrument = separator.join(parts)
 

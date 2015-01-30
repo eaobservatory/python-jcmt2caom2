@@ -2,7 +2,6 @@
 
 __author__ = "Russell O. Redman"
 
-import logging
 import math
 
 

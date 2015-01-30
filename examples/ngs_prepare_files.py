@@ -14,9 +14,10 @@ import subprocess
 from subprocess import CalledProcessError
 import sys
 
-from tools4caom2.logger import logger
+from tools4caom2.error import CAOMError
 from tools4caom2.tapclient import tapclient
 from tools4caom2.utdate_string import utdate_string
+from tools4caom2.util import configure_logger
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
@@ -27,10 +28,12 @@ Custom code to prepare files from the JLS Nearby Galaxy Survey (NGS)
 for ingestion into the JSA.
 """
 
+logger = logging.getLogger('ngs_prepare_files')
+
 planeURI_cache = {}
 
 
-def rewrite_fits(insdf, outfits, project_name, dprcinst, workdir, tap, log):
+def rewrite_fits(insdf, outfits, project_name, dprcinst, workdir, tap):
     """
     Rewrite a single sdf file into FITS, setting custom headers as needed.
 
@@ -48,11 +51,10 @@ def rewrite_fits(insdf, outfits, project_name, dprcinst, workdir, tap, log):
     dprcinst: data processing recipe instance identifier
     workdir: absolute path to the working directory (cwd by default)
     tap: a tools4caom2.tapclient object
-    log: a tools4caom2.logger object
     """
     global planeURI_cache
 
-    log.console('PROGRESS: ' + insdf)
+    logger.info('PROGRESS: ' + insdf)
 
     # Making a copy of the sdf file updates the provenance structure, and
     # avoids accidentally corrupting the original file.  Beware of
@@ -64,9 +66,9 @@ def rewrite_fits(insdf, outfits, project_name, dprcinst, workdir, tap, log):
 
     # Find some useful Starlink commands
     if 'KAPPA_DIR' not in os.environ:
-        log.console(' run kappa command before proceeding', logging.ERROR)
+        raise CAOMError('run kappa command before proceeding')
     if 'CONVERT_DIR' not in os.environ:
-        log.console(' run convert command before proceeding', logging.ERROR)
+        raise CAOMError('run convert command before proceeding')
 
     ndfcopy = os.path.abspath(
         os.path.expandvars('$KAPPA_DIR/ndfcopy'))
@@ -77,13 +79,12 @@ def rewrite_fits(insdf, outfits, project_name, dprcinst, workdir, tap, log):
 
     # ndfcopy will update the PROVENANCE structure to avoid needless repetition
     ndfcopy_cmd = [ndfcopy, insdf, sdfcopy]
-    log.file(' '.join(ndfcopy_cmd))
+    logger.info(' '.join(ndfcopy_cmd))
     try:
         output = subprocess.check_output(ndfcopy_cmd,
                                          stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
-        log.console('ndfcopy command failed: \n' + output,
-                    logging.ERROR)
+        raise CAOMError('ndfcopy command failed: ' + output)
 
     # We need to add the PRODUCT header so that ndf2fits will write the
     # membership and provenance headers.
@@ -104,9 +105,8 @@ def rewrite_fits(insdf, outfits, project_name, dprcinst, workdir, tap, log):
     elif len(name_token) == 5:
         product = name_token[2] + '-' + name_token[3]
     else:
-        log.console('name_token = ' + repr(name_token) +
-                    ' does not have 3-5 tokens',
-                    logging.ERROR)
+        raise CAOMError('name_token = ' + repr(name_token) +
+                        ' does not have 3-5 tokens')
 
     # The set of science_products guides how we will sort files into planes.
     # NGS had originally intended two planes, for totint20 and reduced+others.
@@ -126,13 +126,12 @@ def rewrite_fits(insdf, outfits, project_name, dprcinst, workdir, tap, log):
                    'product',
                    'value=' + product,
                    'comment="product"']
-    log.file(' '.join(fitsmod_cmd))
+    logger.info(' '.join(fitsmod_cmd))
     try:
-        output = subprocess.check_output(fitsmod_cmd,
-                                         stderr=subprocess.STDOUT)
+        subprocess.check_output(fitsmod_cmd, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
-        log.console('fitsmod command failed: \n' + output,
-                    logging.ERROR)
+        logger.error('fitsmod command failed: ' + e.output)
+        raise CAOMError('fitsmod command failure')
 
     # Now convert the sdfcopy into outfits
     comp = 'd'
@@ -150,13 +149,12 @@ def rewrite_fits(insdf, outfits, project_name, dprcinst, workdir, tap, log):
                     'checksum',
                     'encoding="fits-wcs(cd)"',
                     'comp=' + comp]
-    log.file(' '.join(ndf2fits_cmd))
+    logger.info(' '.join(ndf2fits_cmd))
     try:
-        output = subprocess.check_output(ndf2fits_cmd,
-                                         stderr=subprocess.STDOUT)
+        subprocess.check_output(ndf2fits_cmd, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
-        log.console('ndf2fits command failed: \n' + output,
-                    logging.ERROR)
+        logger.error('ndf2fits command failed: ' + e.output)
+        raise CAOMError('ndf2fits command failure')
 
     hdulist = pyfits.open(outfits, mode='update')
     head = hdulist[0].header
@@ -192,9 +190,9 @@ def rewrite_fits(insdf, outfits, project_name, dprcinst, workdir, tap, log):
             restfreqstr = restfreqstrs[transition]
             restfreq = restfreqnums[transition]
         else:
-            log.console('transition = ' + transition + ' is not in ' +
-                        repr(restfreqstrs.keys()),
-                        logging.ERROR)
+            logger.error('transition = %s is not in %r',
+                         transition, restfreqstrs.keys())
+            raise CAOMError('invalid transition')
 
         bwmode = head['BWMODE']
         headerdict['PRODID'] = '-'.join([science_product,
@@ -395,7 +393,7 @@ def fix_name(outdir, prefix, filename):
     return os.path.join(outdir, dirpath, prefix + '_' + file_id + '.fits')
 
 
-def readfilelist(rootdir, subdirpath, filelist, log):
+def readfilelist(rootdir, subdirpath, filelist):
     """
     Construct a list of file names rooted at indir by reading names from indir
     and calling readfilelist recursively for each directory.
@@ -407,7 +405,7 @@ def readfilelist(rootdir, subdirpath, filelist, log):
         readdir = rootdir
 
     for f in os.listdir(readdir):
-        log.file('examine: ' + f)
+        logger.info('examine: %s', f)
         filename = os.path.join(rootdir, subdirpath, f)
 
         if os.path.isfile(filename):
@@ -419,7 +417,7 @@ def readfilelist(rootdir, subdirpath, filelist, log):
             dirlist.append(os.path.join(subdirpath, f))
     for d in dirlist:
         # recurse into the subdirectory d
-        readfilelist(rootdir, d, filelist, log)
+        readfilelist(rootdir, d, filelist)
 
 
 def is_ingestible(filename):
@@ -462,10 +460,6 @@ def run():
                     default='.',
                     help='directory to hold working files (default=cwd)')
 
-    ap.add_argument('--log',
-                    default='ngs_prepare_files_' + utdate_string() + '.log',
-                    help='(optional) name of log file')
-
     # verbosity
     ap.add_argument('--debug', '-d',
                     action='store_true',
@@ -473,103 +467,92 @@ def run():
 
     a = ap.parse_args()
 
-    loglevel = logging.INFO
-    if a.debug:
-        loglevel = logging.DEBUG
+    configure_logger(level=(logging.DEBUG if a.debug else logging.INFO))
 
-    with logger(a.log, loglevel).record() as log:
-        # Report all command line arguments
-        log.file(progname)
-        for attr in dir(a):
-            if attr != 'id' and attr[0] != '_':
-                log.file('%-15s= %s' % (attr, str(getattr(a, attr))))
-        log.console('log = ' + a.log)
+    # Report all command line arguments
+    logger.info(progname)
+    for attr in dir(a):
+        if attr != 'id' and attr[0] != '_':
+            logger.info('%-15s= %s', attr, getattr(a, attr))
 
-        proxy = os.path.abspath(
-            os.path.expandvars(
-                os.path.expanduser(a.proxy)))
+    proxy = os.path.abspath(
+        os.path.expandvars(
+            os.path.expanduser(a.proxy)))
 
-        tap = tapclient(log, proxy)
+    tap = tapclient(proxy)
 
-        workdir = os.path.abspath(
-            os.path.expandvars(
-                os.path.expanduser(a.workdir)))
+    workdir = os.path.abspath(
+        os.path.expandvars(
+            os.path.expanduser(a.workdir)))
 
-        # Convert a.indir into an abspath and verify that it is a directory
-        if not a.indir:
-            log.console('specify --indir as the path to the input directory',
-                        logging.ERROR)
-        a.indir = os.path.abspath(
-            os.path.expandvars(
-                os.path.expanduser(a.indir)))
-        if not os.path.isdir(a.indir):
-            log.console('indir = ' + a.indir +
-                        ' is not a directory',
-                        logging.ERROR)
+    # Convert a.indir into an abspath and verify that it is a directory
+    if not a.indir:
+        raise CAOMError('specify --indir as the path to the input directory')
+    a.indir = os.path.abspath(
+        os.path.expandvars(
+            os.path.expanduser(a.indir)))
+    if not os.path.isdir(a.indir):
+        raise CAOMError('indir = ' + a.indir + ' is not a directory')
 
-        # Convert a.outdir into an abspath and verify that it is a directory
-        if not a.outdir:
-            log.console('specify both --indir and --outdir, since it is '
-                        'forbidden to overwrite the original files',
-                        logging.ERROR)
-        a.outdir = os.path.abspath(
-            os.path.expandvars(
-                os.path.expanduser(a.outdir)))
-        if not os.path.isdir(a.outdir):
-            log.console('output directory ' + a.outdir +
-                        ' is not a directory',
-                        logging.ERROR)
+    # Convert a.outdir into an abspath and verify that it is a directory
+    if not a.outdir:
+        raise CAOMError('specify both --indir and --outdir, since it is '
+                        'forbidden to overwrite the original files')
+    a.outdir = os.path.abspath(
+        os.path.expandvars(
+            os.path.expanduser(a.outdir)))
+    if not os.path.isdir(a.outdir):
+        raise CAOMError('output directory ' + a.outdir +
+                        ' is not a directory')
 
-        # filelist contains a list of file paths relative to a.indir.
-        filelist = []
-        readfilelist(a.indir, '', filelist, log)
+    # filelist contains a list of file paths relative to a.indir.
+    filelist = []
+    readfilelist(a.indir, '', filelist)
 
-        for infile in filelist:
-            # Be sure the directory path exists before creating the FITS file
-            dirpath = os.path.join(a.outdir,
-                                   os.path.dirname(infile))
-            if not os.path.isdir(dirpath):
-                os.makedirs(dirpath)
+    for infile in filelist:
+        # Be sure the directory path exists before creating the FITS file
+        dirpath = os.path.join(a.outdir,
+                               os.path.dirname(infile))
+        if not os.path.isdir(dirpath):
+            os.makedirs(dirpath)
 
-            # Existing FITDS files are defective, so skip them
-            if os.path.splitext(infile)[1] == '.fits':
-                continue
+        # Existing FITDS files are defective, so skip them
+        if os.path.splitext(infile)[1] == '.fits':
+            continue
 
-            inpath = os.path.join(a.indir, infile)
-            if is_ingestible(inpath):
-                # Data files are always in a dirctory called Data in the NGS.
-                # The galaxy class and object name are the preceding two
-                # directories.
-                dirparts = inpath.split('/')
-                dprcinst = ''
-                i = -1
-                for part in dirparts:
-                    i += 1
-                    if part == 'Data':
-                        break
-                if i > 1:
-                    dprcinst = '-'.join([a.prefix,
-                                         dirparts[i-2],
-                                         dirparts[i-1]])
-                if not dprcinst:
-                    log.console('could not form dprcinst from ' +
-                                repr(dirparts),
-                                logging.ERROR)
+        inpath = os.path.join(a.indir, infile)
+        if is_ingestible(inpath):
+            # Data files are always in a dirctory called Data in the NGS.
+            # The galaxy class and object name are the preceding two
+            # directories.
+            dirparts = inpath.split('/')
+            dprcinst = ''
+            i = -1
+            for part in dirparts:
+                i += 1
+                if part == 'Data':
+                    break
+            if i > 1:
+                dprcinst = '-'.join([a.prefix,
+                                     dirparts[i-2],
+                                     dirparts[i-1]])
+            if not dprcinst:
+                raise CAOMError('could not form dprcinst from %r',
+                                dirparts)
 
-                # Add the prefix to fits files generated from sdf files,
-                # but not to other files that will simply be copied.
-                newfile = fix_name(a.outdir, a.prefix, infile)
+            # Add the prefix to fits files generated from sdf files,
+            # but not to other files that will simply be copied.
+            newfile = fix_name(a.outdir, a.prefix, infile)
 
-                rewrite_fits(inpath,
-                             newfile,
-                             a.prefix,
-                             dprcinst,
-                             workdir,
-                             tap,
-                             log)
-            else:
-                newfile = os.path.join(a.outdir, infile)
-                shutil.copyfile(inpath, newfile)
+            rewrite_fits(inpath,
+                         newfile,
+                         a.prefix,
+                         dprcinst,
+                         workdir,
+                         tap)
+        else:
+            newfile = os.path.join(a.outdir, infile)
+            shutil.copyfile(inpath, newfile)
 
 if __name__ == '__main__':
     run()

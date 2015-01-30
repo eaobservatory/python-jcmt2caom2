@@ -42,6 +42,7 @@ from caom2.caom2_enums import ProductType
 from caom2.caom2_simple_observation import SimpleObservation
 
 from tools4caom2.database import database
+from tools4caom2.error import CAOMError
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.timezone import UTC
 from tools4caom2.mjd import utc2mjd
@@ -55,9 +56,9 @@ from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.target_name import target_name
 
-from jcmt2caom2 import tovos
-
 from jcmt2caom2.__version__ import version as jcmt2caom2version
+
+logger = logging.getLogger(__name__)
 
 
 # Utility functions
@@ -112,9 +113,6 @@ class jcmt2caom2ingest(caom2ingest):
         self.archive = 'JCMT'
         self.stream = 'product'
 
-        self.voscopy = None
-        self.vosroot = 'vos:jsaops'
-
         # Database credenials are set using cred_id, cred_key in the section
         # [database] of the userconfig file.
         self.userconfigpath = '~/.tools4caom2/tools4caom2.config'
@@ -148,9 +146,6 @@ class jcmt2caom2ingest(caom2ingest):
 
         # Connection to database
         self.conn = None
-
-        # Log level for validity checking
-        self.validitylevel = logging.ERROR
 
         # get xml file reader and writer, to allow insertion of the
         # time structures for chunks with WCS
@@ -204,7 +199,7 @@ class jcmt2caom2ingest(caom2ingest):
         <none>
         """
         caom2ingest.logCommandLineSwitches(self)
-        self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
+        logger.info('jcmt2caom2version    = %s', jcmt2caom2version)
 
     # Discover observations and planes to remove
     def build_remove_dict(self, run_id):
@@ -266,19 +261,18 @@ class jcmt2caom2ingest(caom2ingest):
             # note that this is similar to the repository in caom2ingest, but
             # that is not made a part of the structure - probably should be
             self.repository = Repository(self.workdir,
-                                         self.log,
                                          debug=self.debug,
                                          backoff=[10.0, 20.0, 40.0, 80.0])
 
         if 'file_id' not in header:
             self.errors = True
-            self.log.console('No file_id in ' + repr(header),
-                             logging.ERROR)
+            raise CAOMError('No file_id in ' + repr(header))
+
         file_id = header['file_id']
         filename = header['filepath']
         self.dew.sizecheck(filename)
 
-        self.log.file('Starting ' + file_id)
+        logger.info('Starting %s', file_id)
         # Doing all the required checks here simplifies the code
         # farther down and ensures error reporting of these basic problems
         # even if the ingestion fails before reaching the place where the
@@ -311,7 +305,7 @@ class jcmt2caom2ingest(caom2ingest):
         algorithm = 'custom'
         if is_defined('ASN_TYPE', header):
             algorithm = header['ASN_TYPE']
-        self.log.console('PROGRESS: ' + header['SRCPATH'])
+        logger.info('PROGRESS: %s', header['SRCPATH'])
 
         if algorithm == 'obs':
             # Obs products can only be ingested into the JCMT collection
@@ -506,12 +500,9 @@ class jcmt2caom2ingest(caom2ingest):
 
                             latest_release_date = release_date
 
-                        self.log.file('fetch from member_cache[' + mbrn +
-                                      '] = [' + this_mbrn + ', ' +
-                                      str(date_obs) + ', ' +
-                                      str(date_end) + ', ' +
-                                      str(release_date) + ']',
-                                      logging.DEBUG)
+                        logger.debug(
+                            'fetch from member_cache[%s] = [%s, %s, %s, %s]',
+                            mbrn, this_mbrn, date_obs, date_end, release_date)
 
                     else:
                         # Verify that the member header points to a real
@@ -569,13 +560,11 @@ class jcmt2caom2ingest(caom2ingest):
                                     # caching mbrn is NOT needlessly repetitive
                                     # because with obsn headers it will be
                                     # different
-                                    self.log.file(
-                                        'cache member_cache[' + mbrn +
-                                        '] = [' + mbrn + ', ' +
-                                        str(date_obs) + ', ' +
-                                        str(date_end) + ', ' +
-                                        str(release_date) + ']',
-                                        logging.DEBUG)
+                                    logger.debug(
+                                        'cache member_cache[%s] ='
+                                        ' [%s, %s, %s, %s]',
+                                        mbrn,
+                                        mbrn, date_obs, date_end, release_date)
                                     self.member_cache[mbrn] = (mbrn,
                                                                date_obs,
                                                                date_end,
@@ -636,12 +625,9 @@ class jcmt2caom2ingest(caom2ingest):
 
                             latest_release_date = release_date
 
-                        self.log.file('fetch from member_cache[' + obsn +
-                                      '] = [' + mbrn.uri + ', ' +
-                                      str(date_obs) + ', ' +
-                                      str(date_end) + ', ' +
-                                      str(release_date) + ']',
-                                      logging.DEBUG)
+                        logger.debug(
+                            'fetch from member_cache[%s] = [%s, %s, %s, %s]',
+                            obsn, mbrn.uri, date_obs, date_end, release_date)
 
                     else:
                         # Verify that the member header points to a real
@@ -685,7 +671,7 @@ class jcmt2caom2ingest(caom2ingest):
                             "WHERE Observation.observationID LIKE '" +
                             obsid_pattern + "'"])
                         answer = self.tap.query(tapquery)
-                        self.log.file(repr(answer), logging.DEBUG)
+                        logger.debug(repr(answer))
                         if len(answer) > 0 and len(answer[0]) > 0:
                             obsid_solitary = None
                             for (obsid,
@@ -723,13 +709,11 @@ class jcmt2caom2ingest(caom2ingest):
                                     # release_date from raw planes
                                     mbrn = self.observationURI('JCMT', obsid)
                                     # cache the members start and end times
-                                    self.log.file(
-                                        'cache member_cache[' + obsn +
-                                        '] = [' + mbrn.uri + ', ' +
-                                        str(date_obs) + ', ' +
-                                        str(date_end) + ', ' +
-                                        str(release_date) + ']',
-                                        logging.DEBUG)
+                                    logger.debug(
+                                        'cache member_cache[%s] ='
+                                        ' [%s, %s, %s, %s]',
+                                        obsn, mbrn.uri, date_obs, date_end,
+                                        release_date)
                                     if mbrn not in self.member_cache:
                                         self.member_cache[obsn] = \
                                             (obsid,
@@ -860,8 +844,7 @@ class jcmt2caom2ingest(caom2ingest):
 
             instrument_fullname = instrument_name(instrument,
                                                   backend,
-                                                  inbeam,
-                                                  self.log)
+                                                  inbeam)
 
         if instrument_fullname:
             self.add_to_plane_dict('instrument.name', instrument_fullname)
@@ -915,8 +898,7 @@ class jcmt2caom2ingest(caom2ingest):
         thisBad, keyword_list = instrument_keywords('stdpipe',
                                                     instrument,
                                                     backend,
-                                                    keyword_dict,
-                                                    self.log)
+                                                    keyword_dict)
         self.instrument_keywords = ''
         if thisBad:
             self.dew.error(filename,
@@ -1067,7 +1049,6 @@ class jcmt2caom2ingest(caom2ingest):
 
             if filter:
                 self.productID = product_id(backend,
-                                            self.log,
                                             product=science_product,
                                             filter=filter)
 
@@ -1075,7 +1056,6 @@ class jcmt2caom2ingest(caom2ingest):
                 if product in ['reduced', 'rimg', 'rsp', 'cube']:
                     self.productID = \
                         product_id(backend,
-                                   self.log,
                                    product=science_product,
                                    restfreq=restfreq,
                                    bwmode=bwmode,
@@ -1135,11 +1115,10 @@ class jcmt2caom2ingest(caom2ingest):
                                        calibrationLevel)
 
         # Check for existence of provenance input headers, which are optional
-        self.log.file('Reading provenance')
-        self.log.file('input_cache: ' +
-                      '\n'.join([str(k) + ': ' + repr(self.input_cache[k])
-                                 for k in sorted(self.input_cache.keys())]),
-                      logging.DEBUG)
+        logger.info('Reading provenance')
+        logger.debug('input_cache: %s',
+                     ', '.join([str(k) + ': ' + repr(self.input_cache[k])
+                                for k in sorted(self.input_cache.keys())]))
 
         if is_defined('INPCNT', header):
             planeURI_regex = r'^caom:([^\s/]+)/([^\s/]+)/([^\s/]+)$'
@@ -1151,8 +1130,7 @@ class jcmt2caom2ingest(caom2ingest):
                     if not self.dew.expect_keyword(filename, inpkey, header):
                         continue
                     inpn_str = header[inpkey]
-                    self.log.file(inpkey + ' = ' + inpn_str,
-                                  logging.DEBUG)
+                    logger.debug('%s = %s', inpkey, inpn_str)
                     pm = re.match(planeURI_regex, inpn_str)
                     if pm:
                         # inpn looks like a planeURI, so add it unconditionally
@@ -1170,7 +1148,7 @@ class jcmt2caom2ingest(caom2ingest):
             # Translate the PRV1..PRV<PRVCNT> headers into plane URIs
             prvcnt = int(header['PRVCNT'])
             if product and product == science_product and prvcnt > 0:
-                self.log.file('PRVCNT = ' + str(prvcnt))
+                logger.info('PRVCNT = %s', prvcnt)
                 for i in range(prvcnt):
                     # Verify that files in provenance are being ingested
                     # or have already been ingested.
@@ -1178,8 +1156,8 @@ class jcmt2caom2ingest(caom2ingest):
                     if not self.dew.expect_keyword(filename, prvkey, header):
                         continue
                     prvn = header[prvkey]
-                    self.log.file(prvkey + ' = ' + prvn,
-                                  logging.DEBUG)
+                    logger.debug('%s = %s', prvkey, prvn)
+
                     # An existing problem is that some files include
                     # themselves in their provenance, but are otherwise
                     # OK.
@@ -1310,15 +1288,11 @@ class jcmt2caom2ingest(caom2ingest):
         # Report the earliest UTDATE
         if earliest_utdate and self.dprcinst:
             rcinstprefix = 'caom-' + self.collection + '-' + earliest_obs
-            # This comment is read by tovos.jcmt2caom2_ingestion and must have
-            # exactly this format.  Do not change this log message without
-            # making the corresponding change in tovos.py
-            self.log.file('Earliest utdate: ' +
-                          Time(earliest_utdate,
-                               format='mjd',
-                               out_subfmt='date').iso +
-                          ' for ' + rcinstprefix +
-                          '_vlink-' + self.dprcinst)
+            logger.info(
+                'Earliest utdate: %s for %s_vlink-%s',
+                Time(earliest_utdate, format='mjd', out_subfmt='date').iso,
+                rcinstprefix,
+                self.dprcinst)
 
         if self.dew.expect_keyword(filename, 'DPDATE', header, mandatory=True):
             # DPDATE is a characteristic datetime when the data was processed
@@ -1458,9 +1432,7 @@ class jcmt2caom2ingest(caom2ingest):
                         # add to cache
                         self.input_cache[fid] = thisInputURI
 
-                        self.log.file(
-                            'inputs: ' + fid + ': ' + thisInputURI.uri,
-                            logging.DEBUG)
+                        logger.debug('inputs: %s: %s', fid, thisInputURI.uri)
 
         if inputURI is None:
             self.dew.warning(
@@ -1492,9 +1464,8 @@ class jcmt2caom2ingest(caom2ingest):
                                     inputURI.uri not in thisPlane['inputset']):
 
                                 thisPlane['inputset'].add(inputURI)
-                                self.log.file('add ' + inputURI.uri +
-                                              ' to inputset for ' +
-                                              planeURI.uri)
+                                logger.info('add %s to inputset for %s',
+                                            inputURI.uri, planeURI.uri)
 
     def build_fitsuri_custom(self,
                              xmlfile,
@@ -1512,16 +1483,14 @@ class jcmt2caom2ingest(caom2ingest):
             self.metadict[collection][observationID][planeID][fitsuri]['custom']
         if thisCustom:
             # if this dictionary is empty,skip processing
-            self.log.console('custom processing for ' + fitsuri,
-                             logging.DEBUG)
+            logger.debug('custom processing for %s', fitsuri)
 
             observation = self.reader.read(xmlfile)
             # Check whether this is a part-specific uri.  We are only
             # interested in artifact-specific uri's.
             if fitsuri not in observation.planes[planeID].artifacts:
-                self.log.console('skip custom processing because fitsuri does '
-                                 'not point to an artifact',
-                                 logging.DEBUG)
+                logger.debug('skip custom processing because fitsuri does '
+                             'not point to an artifact')
                 return
             if (observation.algorithm != SimpleObservation._ALGORITHM and
                     len(observation.members) > 1):
@@ -1561,10 +1530,8 @@ class jcmt2caom2ingest(caom2ingest):
                                         # These are already MJDs
                                         # mjdstart = utc2mjd(date_start)
                                         # mjdend = utc2mjd(date_end)
-                                        self.log.console(
-                                            'time bounds = %f, %f' %
-                                            (date_start, date_end),
-                                            logging.DEBUG)
+                                        logger.debug('time bounds = %f, %f',
+                                                     date_start, date_end)
 
                                         time_axis.bounds.samples.append(
                                             CoordRange1D(
@@ -1573,9 +1540,9 @@ class jcmt2caom2ingest(caom2ingest):
 
                                 else:
                                     self.warnings = True
-                                    self.log.console('no time ranges defined '
-                                                     ' for ' + fitsuri.uri,
-                                                     logging.WARN)
+                                    logger.warning(
+                                        'no time ranges defined  for %s',
+                                        fitsuri.uri)
 
                                 # if a temporalWCS already exists, use it but
                                 # replace the CoordAxis1D
@@ -1585,12 +1552,10 @@ class jcmt2caom2ingest(caom2ingest):
                                 else:
                                     chunk.time = TemporalWCS(time_axis)
                                     chunk.time.timesys = 'UTC'
-                                self.log.console('temporal axis = ' +
-                                                 repr(chunk.time.axis.axis),
-                                                 logging.DEBUG)
-                                self.log.console('temporal WCS = ' +
-                                                 str(chunk.time),
-                                                 logging.DEBUG)
+                                logger.debug('temporal axis = %r',
+                                             chunk.time.axis.axis)
+                                logger.debug('temporal WCS = %s',
+                                             chunk.time)
 
                 with open(xmlfile, 'w') as XMLFILE:
                     self.writer.write(observation, XMLFILE)
@@ -1628,9 +1593,8 @@ class jcmt2caom2ingest(caom2ingest):
                                             prod,
                                             input=False)
                         self.warnings = True
-                        self.log.console('CLEANUP: remove obsolete plane:' +
-                                         uri.uri,
-                                         logging.WARN)
+                        logger.warning('CLEANUP: remove obsolete plane: %s',
+                                       uri.uri)
                         del obs.planes[prod]
                         del self.remove_dict[collection][observationID][prod]
 
@@ -1659,16 +1623,16 @@ class jcmt2caom2ingest(caom2ingest):
         for coll in self.remove_dict:
             for obsid in self.remove_dict[coll].keys():
                 for prodid in self.remove_dict[coll][obsid].keys():
-                    self.log.file('remove_dict ' + coll + ': ' + obsid +
-                                  ': ' + prodid + '= ' +
-                                  str(self.remove_dict[coll][obsid][prodid]))
+                    logger.info('remove_dict %s: %s: %s = %s',
+                                coll, obsid, prodid,
+                                self.remove_dict[coll][obsid][prodid])
 
         for coll in self.remove_dict:
             if coll not in self.metadict:
                 # Nothing in the existing collection still exists
                 for obsid in self.remove_dict[coll].keys():
                     uri = self.observationURI(coll, obsid)
-                    self.log.console('CLEANUP: remove ' + uri.uri)
+                    logger.info('CLEANUP: remove %s', uri.uri)
                     if not self.test:
                         self.repository.remove(uri.uri)
                     del self.remove_dict[coll][obsid]
@@ -1686,9 +1650,9 @@ class jcmt2caom2ingest(caom2ingest):
                             # all planes come from the same recipe instance
                             # so delete the whole observation
                             self.warnings = True
-                            self.log.console('CLEANUP: remove obsolete '
-                                             'observation: ' + uri.uri,
-                                             logging.WARN)
+                            logger.warning(
+                                'CLEANUP: remove obsolete observation: %s',
+                                uri.uri)
                             if not self.test:
                                 self.repository.remove(uri.uri)
                             del self.remove_dict[coll][obsid]
@@ -1704,63 +1668,15 @@ class jcmt2caom2ingest(caom2ingest):
                                                                 prod,
                                                                 input=False)
                                             self.warnings = True
-                                            self.log.console(
-                                                'CLEANUP: remove '
-                                                'plane: ' + uri.uri,
-                                                logging.WARN)
+                                            logger.warning(
+                                                'CLEANUP: remove plane: %s',
+                                                uri.uri)
 
                                             del obs.planes[prod]
                                             del self.remove_dict[coll][obsid][prod]
                                 if not self.test:
                                     with open(badxmlfile, 'w') as XMLFILE:
                                         self.writer.write(observation, XMLFILE)
-
-    # ************************************************************************
-    # JSA cleanup
-    # ************************************************************************
-    def cleanup(self):
-        """
-        Save the log file to the jsaops VOspace, then delete the log file from
-        the logdir unless in debug mode or --keeplog was requested.
-
-        Arguements:
-        <none>
-        """
-        if self.collection != 'SANDBOX' and self.ingest:
-            print("\n\n Full Log Follows:\n\n")
-            with open(self.logfile, 'r') as logtext:
-                for line in logtext:
-                    print(line.rstrip())
-
-            self.voscopy = tovos.jcmt2caom2_ingestion(vos.Client(),
-                                                      self.vosroot,
-                                                      self.log)
-            logcopy = self.logfile
-            logsuffix = ''
-            if self.errors:
-                logsuffix = '_ERRORS'
-            if self.warnings:
-                logsuffix += '_WARNINGS'
-
-            logid, ext = os.path.splitext(self.logfile)
-            if self.local and self.dprcinst:
-                logid = re.sub(r'provenance_runid', self.dprcinst, logid)
-
-            if logsuffix:
-                logcopy = logid + logsuffix + ext
-            else:
-                logcopy = logid + ext
-
-            if logcopy != self.logfile:
-                shutil.copy(self.logfile, logcopy)
-
-            self.voscopy.match(logcopy)
-            self.voscopy.push()
-
-            if logcopy != self.logfile:
-                os.remove(logcopy)
-
-        caom2ingest.cleanup(self)
 
 # ************************************************************************
 # if run as a main program, create an instance and exit

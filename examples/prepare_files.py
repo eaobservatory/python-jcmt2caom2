@@ -12,12 +12,14 @@ import re
 import shutil
 import sys
 
-from tools4caom2.logger import logger
-
+from tools4caom2.error import CAOMError
 from tools4caom2.utdate_string import utdate_string
+from tools4caom2.util import configure_logger
 
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
+
+logger = logging.getLogger('prepare_files')
 
 
 def rewrite_fits(infits, outfits, headerdict):
@@ -109,7 +111,7 @@ def fix_name(outdir, prefix, filename):
     return os.path.join(outdir, dirpath, prefix + '_' + basename.lower())
 
 
-def readfilelist(rootdir, indir, filter, filelist, log):
+def readfilelist(rootdir, indir, filter, filelist):
     """
     Construct a list of file names rooted at indir by reading names from indir
     and calling readfilelist recursively for each directory.  Include only
@@ -122,14 +124,14 @@ def readfilelist(rootdir, indir, filter, filelist, log):
         readdir = rootdir
 
     for f in os.listdir(readdir):
-        log.file('examine: ' + f)
+        logger.info('examine: %s', f)
         filename = os.path.join(rootdir, indir, f)
         if os.path.isfile(filename) and filter(f):
             filelist.append(os.path.join(indir, f))
         if os.path.isdir(filename):
             dirlist.append(os.path.join(indir, f))
     for d in dirlist:
-        readfilelist(rootdir, d, filter, filelist, log)
+        readfilelist(rootdir, d, filter, filelist)
 
 
 def fits_and_png(filename):
@@ -210,10 +212,6 @@ def run():
                     help='comma-separated value file listing files to edit '
                          'and headers to change')
 
-    ap.add_argument('--log',
-                    default='jcmt_prepare_files_' + utdate_string() + '.log',
-                    help='(optional) name of log file')
-
     # verbosity
     ap.add_argument('--debug', '-d',
                     action='store_true',
@@ -225,133 +223,116 @@ def run():
 
     a = ap.parse_args()
 
-    loglevel = logging.INFO
-    if a.debug:
-        loglevel = logging.DEBUG
+    configure_logger(level=(logging.DEBUG if a.debug else logging.INFO))
 
-    with logger(a.log, loglevel).record() as log:
-        # Report all command line arguments
-        log.file(progname)
-        for attr in dir(a):
-            if attr != 'id' and attr[0] != '_':
-                log.file('%-15s= %s' % (attr, str(getattr(a, attr))))
-        log.console('log = ' + a.log)
+    # Report all command line arguments
+    logger.info(progname)
+    for attr in dir(a):
+        if attr != 'id' and attr[0] != '_':
+            logger.info('%-15s= %s', attr, getattr(a, attr))
 
-        # if any keyvalue arguments were supplied save them in a dictionary
-        keydict = {}
-        if a.keyvalue:
-            for keyvalue in a.keyvalue:
-                m = re.match(r'^([A-Z0-9]+)=(\w+)$', keyvalue)
-                if m:
-                    keydict[m.group(1)] = m.group(2)
+    # if any keyvalue arguments were supplied save them in a dictionary
+    keydict = {}
+    if a.keyvalue:
+        for keyvalue in a.keyvalue:
+            m = re.match(r'^([A-Z0-9]+)=(\w+)$', keyvalue)
+            if m:
+                keydict[m.group(1)] = m.group(2)
+            else:
+                logger.warning('%s does not match key=value and is '
+                            'being ignored', keyvalue)
+
+    if not a.indir and not a.csv:
+        raise CAOMError('specify either --indir or --csv for input; '
+                        'if both are given the csv file will be output')
+
+    if a.indir:
+        if not a.outdir:
+            raise CAOMError('specify both --indir and --outdir, since it is '
+                            'forbidden to overwrite the original files')
+
+        a.indir = os.path.abspath(
+            os.path.expandvars(
+                os.path.expanduser(a.indir)))
+
+        a.outdir = os.path.abspath(
+            os.path.expandvars(
+                os.path.expanduser(a.outdir)))
+
+        if not os.path.isdir(a.indir):
+            raise CAOMError('indir = ' + a.indir + ' is not a directory')
+
+        if not os.path.isdir(a.outdir):
+            raise CAOMError('output directory ' + a.outdir +
+                            ' is not a directory')
+
+        filelist = []
+        readfilelist(a.indir, '', fits_and_png, filelist)
+        infile = [os.path.join(a.indir, f) for f in filelist]
+        outfile = [fix_name(a.outdir, a.prefix, f) for f in filelist]
+
+        # if a CSV filename is given, open it for output
+        try:
+            CSV = None
+            csvwriter = None
+            if a.csv:
+                CSV = open(a.csv, 'wb')
+                csvwriter = csv.DictWriter(CSV, header_order)
+                csvwriter.writeheader()
+
+            # Open each FITS file and update it as required
+            for i in range(len(filelist)):
+                logger.debug('infile = ' + infile[i])
+                logger.debug('    outfile = ' + outfile[i])
+
+                if CSV and csvwriter:
+                    # If a CSV file is open, write a row in the CSV file
+                    # for each input file
+                    rowdict = {}
+                    rowdict.update(keydict)
+                    rowdict['inputfile'] = infile[i]
+                    rowdict['outputfile'] = outfile[i]
+
+                    csvwriter.writerow(rowdict)
                 else:
-                    log.console(keyvalue + ' does not match key=value and is '
-                                'being ignored',
-                                logging.WARN)
-
-        if not a.indir and not a.csv:
-            log.console('specify either --indir or --csv for input; '
-                        'if both are given the csv file will be output',
-                        logging.ERROR)
-
-        if a.indir:
-            if not a.outdir:
-                log.console('specify both --indir and --outdir, since it is '
-                            'forbidden to overwrite the original files',
-                            logging.ERROR)
-
-            a.indir = os.path.abspath(
-                os.path.expandvars(
-                    os.path.expanduser(a.indir)))
-
-            a.outdir = os.path.abspath(
-                os.path.expandvars(
-                    os.path.expanduser(a.outdir)))
-
-            if not os.path.isdir(a.indir):
-                log.console('indir = ' + a.indir +
-                            ' is not a directory',
-                            logging.ERROR)
-
-            if not os.path.isdir(a.outdir):
-                log.console('output directory ' + a.outdir +
-                            ' is not a directory',
-                            logging.ERROR)
-
-            filelist = []
-            readfilelist(a.indir, '', fits_and_png, filelist, log)
-            infile = [os.path.join(a.indir, f) for f in filelist]
-            outfile = [fix_name(a.outdir, a.prefix, f) for f in filelist]
-
-            # if a CSV filename is given, open it for output
-            try:
-                CSV = None
-                csvwriter = None
-                if a.csv:
-                    CSV = open(a.csv, 'wb')
-                    csvwriter = csv.DictWriter(CSV, header_order)
-                    csvwriter.writeheader()
-
-                # Open each FITS file and update it as required
-                for i in range(len(filelist)):
-                    if a.debug:
-                        log.console('infile = ' + infile[i])
-                        log.console('    outfile = ' + outfile[i])
+                    # If the file is a FITS file, copy the file and update
+                    # the headers in the primary HDU
+                    ext = os.path.splitext(infile[i])[1].lower()
+                    if ext in ('.fits', '.fit'):
+                        rewrite_fits(infile[i], outfile[i], keydict)
                     else:
-                        log.file('infile = ' + infile[i])
-                        log.file('    outfile = ' + outfile[i])
+                        shutil.copy(nfile[i], outfile[i])
+        finally:
+            if CSV:
+                CSV.close()
 
-                    if CSV and csvwriter:
-                        # If a CSV file is open, write a row in the CSV file
-                        # for each input file
-                        rowdict = {}
-                        rowdict.update(keydict)
-                        rowdict['inputfile'] = infile[i]
-                        rowdict['outputfile'] = outfile[i]
+    else:
+        if not os.path.isfile(a.csv):
+            raise CAOMError(a.csv + 'is not a file')
 
-                        csvwriter.writerow(rowdict)
-                    else:
-                        # If the file is a FITS file, copy the file and update
-                        # the headers in the primary HDU
-                        ext = os.path.splitext(infile[i])[1].lower()
-                        if ext in ('.fits', '.fit'):
-                            rewrite_fits(infile[i], outfile[i], keydict)
-                        else:
-                            shutil.copy(nfile[i], outfile[i])
-            finally:
-                if CSV:
-                    CSV.close()
+        with open(a.csv, 'r') as csvfile:
+            reader = csv.DictReader(csvfile, delimiter=',', quotechar='"')
+            for csvdict in reader:
+                if 'inputfile' in csvdict:
+                    infile = csvdict.pop('inputfile')
+                else:
+                    raise CAOMError('"inputfile" must be a column in ' + a.csv)
 
-        else:
-            if not os.path.isfile(a.csv):
-                log.console(a.csv + 'is not a file', logging.ERROR)
+                if 'outputfile' in csvdict:
+                    outfile = csvdict.pop('outputfile')
+                else:
+                    raise CAOMError(
+                        '"outputfile" must be a column in ' + a.csv)
 
-            with open(a.csv, 'r') as csvfile:
-                reader = csv.DictReader(csvfile, delimiter=',', quotechar='"')
-                for csvdict in reader:
-                    if 'inputfile' in csvdict:
-                        infile = csvdict.pop('inputfile')
-                    else:
-                        log.console('"inputfile" must be a column in ' + a.csv,
-                                    logging.ERROR)
+                if not os.path.isfile(csvdict['inputfile']):
+                    raise CAOMError('The FITS file ' + csvdict['inputfile'] +
+                                    ' does not exist')
 
-                    if 'outputfile' in csvdict:
-                        outfile = csvdict.pop('outputfile')
-                    else:
-                        log.console(
-                            '"outputfile" must be a column in ' + a.csv,
-                            logging.ERROR)
+                headerdict = {}
+                headerdict.update(keydict)
+                headerdict.update(csvdict)
 
-                    if not os.path.isfile(csvdict['inputfile']):
-                        log.console('The FITS file ' + csvdict['inputfile'] +
-                                    ' does not exist',
-                                    logging.ERROR)
+                rewrite_fits(infile, outfile, headerdict)
 
-                    headerdict = {}
-                    headerdict.update(keydict)
-                    headerdict.update(csvdict)
-
-                    rewrite_fits(infile, outfile, headerdict)
-
-if __name__ == __main__:
+if __name__ == '__main__':
     run()

@@ -5,7 +5,6 @@ import os
 import tempfile
 import unittest
 
-from tools4caom2.logger import logger
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 
 
@@ -13,15 +12,6 @@ class testInstrumentKeywords(unittest.TestCase):
     """
     Test cases for the function intent(obs_type, backend, sam_mode)
     """
-    def setUp(self):
-        # self.log = logger(os.path.expanduser('~/temp.log'))
-        fh, self.logfile = tempfile.mkstemp()
-        os.close(fh)
-        self.log = logger(self.logfile, console_output=False)
-
-    def tearDown(self):
-        os.remove(self.logfile)
-
     def testInstrumentKeywords(self):
         test_data = [['ACSIS',
                       'RxA3',
@@ -95,8 +85,7 @@ class testInstrumentKeywords(unittest.TestCase):
                 status, keyword_list = instrument_keywords(strictness,
                                                            frontend,
                                                            backend,
-                                                           keyword_dict,
-                                                           self.log)
+                                                           keyword_dict)
                 if strict_dict[strictness]:
                     self.assertEqual(
                         status, True,

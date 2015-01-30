@@ -1,4 +1,12 @@
 #!/usr/bin/env python2.7
+
+import logging
+
+from tools4caom2.util import configure_logger
+
 from jcmt2caom2.integrationtestset import integrationtestset
+
+configure_logger(level=logging.INFO)
+
 testset = integrationtestset()
 testset.run()

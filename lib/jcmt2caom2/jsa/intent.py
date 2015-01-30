@@ -3,7 +3,6 @@
 #################################
 # Import required Python modules
 #################################
-import logging
 from caom2.caom2_enums import ObservationIntentType
 
 from jcmt2caom2.__version__ import version

@@ -6,9 +6,11 @@
 import logging
 from collections import namedtuple
 
-from tools4caom2.logger import logger
+from tools4caom2.error import CAOMError
 
 from jcmt2caom2.__version__ import version
+
+logger = logging.getLogger(__name__)
 
 JSA_NAMES = ('GOOD', 'FAILED_QA', 'BAD', 'JUNK')
 JSA_VALUES = range(len(JSA_NAMES))
@@ -43,26 +45,22 @@ class quality(object):
     This will need ajdustment when the CADC decides how to implement quality
     assessment in CAOM-2.
     """
-    def __init__(self, jcmt_value, log):
+    def __init__(self, jcmt_value):
         """
         A JSA quality assessment derived from the input JCMT quality assessment
 
         Arguments:
         jcmt_value: a JCMT_QA value
-        log: a tools4caom2.logger to report errors
         """
-        self.log = log
 
         if jcmt_value in JSA_TRANS:
             self._jcmt_value = jcmt_value
             self._jsa_value = JSA_TRANS[jcmt_value]
         else:
-            self.log.console('jcmt_value = %d must be in ' % (jcmt_value) +
-                             repr(JSA_TRANS.keys()),
-                             logging.ERROR)
-        self.log.file('jcmt_value = ' + str(self._jcmt_value) +
-                      '  jsa_value = ' + str(self._jsa_value),
-                      logging.DEBUG)
+            raise CAOMError('jcmt_value = %d must be in ' % (jcmt_value) +
+                            repr(JSA_TRANS.keys()))
+        logger.debug('jcmt_value = %s  jsa_value = %s',
+                      self._jcmt_value, self._jsa_value)
 
     def jsa_value(self):
         """
@@ -89,9 +87,8 @@ class quality(object):
         if self._jsa_value in JSA_VALUES:
             return JSA_NAMES[JSA_VALUES.index(self._jsa_value)]
         else:
-            self.log.console('jsa_value = %d must be in ' % (self._jsa_value) +
-                             repr(JSA_VALUES),
-                             logging.ERROR)
+            raise CAOMError('jsa_value = %d must be in ' % (self._jsa_value) +
+                            repr(JSA_VALUES))
 
     def jcmt_name(self):
         """
@@ -100,7 +97,6 @@ class quality(object):
         if self._jcmt_value in JCMT_VALUES:
             return JCMT_NAMES[JCMT_VALUES.index(self._jcmt_value)]
         else:
-            self.log.console(
+            raise CAOMError(
                 'jcmt_value = %d must be in ' % (self._jcmt_value) +
-                repr(JCMT_VALUES),
-                logging.ERROR)
+                repr(JCMT_VALUES))

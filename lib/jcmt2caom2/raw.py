@@ -52,9 +52,9 @@ from caom2.caom2_enums import ProductType
 
 from tools4caom2.database import database
 from tools4caom2.database import connection
+from tools4caom2.error import CAOMError
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.mjd import utc2mjd
-from tools4caom2.logger import logger
 from tools4caom2.utdate_string import utdate_string
 import tools4caom2.__version__
 
@@ -70,8 +70,6 @@ from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.twod import TwoD
 from jcmt2caom2.jsa.threed import ThreeD
 
-from jcmt2caom2 import tovos
-
 from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
@@ -84,6 +82,8 @@ repository.
 This routine requires read access to the database, but does only reads.
 It therefore always reads the metadata from SYBASE.
 """
+
+logger = logging.getLogger(__name__)
 
 
 class INGESTIBILITY(object):
@@ -218,10 +218,6 @@ class raw(object):
 
         self.checkmode = None
 
-        self.logdir = ''
-        self.logfile = ''
-        self.loglevel = logging.INFO
-        self.log = None
         self.errors = False
         self.warnings = False
         self.junk = False
@@ -265,12 +261,6 @@ class raw(object):
             dest='checkmode',
             help='Check the validity of metadata for this'
                  ' observation and file, then exit')
-        ap.add_argument(
-            '--logdir',
-            help='path to log file directory')
-        ap.add_argument(
-            '--log',
-            help='path to log file')
         ap.add_argument(
             '--debug',
             dest='loglevel',
@@ -321,48 +311,10 @@ class raw(object):
         else:
             self.outdir = os.getcwd()
 
-        if args.logdir:
-            self.logdir = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(args.logdir)))
-        else:
-            self.logdir = os.getcwd()
-
-        if args.log:
-            self.logfile = args.log
-
         if args.loglevel:
-            self.loglevel = args.loglevel
+            logging.getLogger().setLevel(args.loglevel)
 
         self.checkmode = args.checkmode
-
-    def setup_logger(self):
-        """
-        Configure the logger
-
-        Arguments:
-        logfile:     log file name
-        loglevel:    logging level for messages
-        """
-        if self.logfile:
-            self.logfile = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(self.logfile)))
-        else:
-            defaultlogname = ('-'.join(['caom',
-                                        self.collection,
-                                        self.obsid]) +
-                              '_' + utdate_string() + '.log')
-            if self.logdir:
-                if not os.path.isdir(self.logdir):
-                    raise RuntimeError('logdir = ' + self.logdir +
-                                       ' is not a directory')
-                defaultlogname = os.path.join(self.logdir, defaultlogname)
-            else:
-                defaultlogname = os.path.join(self.outdir, defaultlogname)
-            self.logfile = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(defaultlogname)))
 
     def logCommandLineSwitches(self):
         """
@@ -371,16 +323,13 @@ class raw(object):
         Arguments:
         <None>
         """
-        self.log.file(sys.argv[0])
-        self.log.file('jcmt2caom2version    = ' + jcmt2caom2version)
-        self.log.file('tools4caom2version   = ' + tools4caom2version)
-        for line in ['obsid = ' + self.obsid,
-                     'schema = ' + self.schema,
-                     'outdir = ' + self.outdir,
-                     'loglevel = %d' % self.loglevel,
-                     'checkmode = ' + str(self.checkmode)]:
-            self.log.file(line)
-        self.log.console('Logfile = ' + self.logfile)
+        logger.info(sys.argv[0])
+        logger.info('jcmt2caom2version    = %s', jcmt2caom2version)
+        logger.info('tools4caom2version   = %s', tools4caom2version)
+        logger.info('obsid = %s', self.obsid)
+        logger.info('schema = %s', self.schema)
+        logger.info('outdir = %s', self.outdir)
+        logger.info('checkmode = %s', self.checkmode)
 
     # Some custom read queries for particular applications
     def check_obsid(self):
@@ -400,7 +349,7 @@ class raw(object):
                             'WHERE',
                             '    obsid = "%s"' % (self.obsid,)])
         count = self.conn.read(sqlcmd)[0][0]
-        self.log.file('query complete', logging.DEBUG)
+        logger.debug('query complete')
         return count
 
     def query_table(self,
@@ -426,14 +375,14 @@ class raw(object):
                             'WHERE obsid = "%s"' % (self.obsid,)])
 
         answer = self.conn.read(sqlcmd)
-        self.log.file('query complete', logging.DEBUG)
+        logger.debug('query complete')
         rowlist = []
         for row in answer:
             rowdict = {}
             for key, value in zip(columns, row):
                 rowdict[key] = value
             rowlist.append(rowdict)
-        self.log.file(rowlist)
+        logger.info(repr(rowlist))
 
         return rowlist
 
@@ -456,7 +405,7 @@ class raw(object):
             'ompuser ou on op.pi=ou.userid',
             'WHERE c.obsid="%s"' % (obsid,)])
         answer = self.conn.read(sqlcmd)
-        self.log.file('query complete', logging.DEBUG)
+        logger.debug('query complete')
 
         results = {}
         if len(answer):
@@ -486,13 +435,13 @@ class raw(object):
             'GROUP BY obsid',
             'HAVING commentdate=max(commentdate)'])
         answer = self.conn.read(sqlcmd)
-        self.log.file('query complete', logging.DEBUG)
+        logger.debug('query complete')
 
-        results = {'quality': quality(JCMT_QA.GOOD, self.log)}
+        results = {'quality': quality(JCMT_QA.GOOD)}
         if len(answer):
-            results['quality'] = quality(answer[0][0], self.log)
-        self.log.file('For %s JSA_QA = %s from ompobslog' %
-                      (obsid, results['quality'].jsa_name()))
+            results['quality'] = quality(answer[0][0])
+        logger.info('For %s JSA_QA = %s from ompobslog',
+                    obsid, results['quality'].jsa_name())
         return results
 
     def get_files(self, obsid):
@@ -511,7 +460,7 @@ class raw(object):
             'WHERE obsid="%s"' % (obsid,),
             'ORDER BY obsid_subsysnr, file_id'])
         answer = self.conn.read(sqlcmd)
-        self.log.file('query complete', logging.DEBUG)
+        logger.debug('query complete')
 
         results = {}
         if len(answer):
@@ -522,9 +471,9 @@ class raw(object):
                 results[obsid_subsysnr].append(answer[i][1])
         else:
             self.errors = True
-            self.log.console('No rows in ' + self.db + 'FILES for obsid = ' +
-                             obsid,
-                             logging.ERROR)
+            raise CAOMError('No rows in ' + self.db + 'FILES for obsid = ' +
+                            obsid)
+
         return results
 
     def check_observation(self,
@@ -554,19 +503,17 @@ class raw(object):
                 nullvalues.append(field)
         if nullvalues:
             self.warnings = True
-            self.log.console('The following mandatory fields are NULL:\n' +
-                             '\n'.join(sorted(nullvalues)),
-                             logging.WARN)
+            logger.warning('The following mandatory fields are NULL: %s',
+                           ', '.join(sorted(nullvalues)))
             ingestibility = INGESTIBILITY.BAD
 
         if common['obs_type'] in ('phase', 'RAMP'):
             # do not ingest observations with bogus obs_type
             # this is not an error, but log a warning
             self.warnings = True
-            self.log.console('Observation ' + self.obsid +
-                             ' is being skipped because obs_type = ' +
-                             common['obs_type'],
-                             logging.WARN)
+            logger.warning(
+                'Observation %s is being skipped because obs_type = %s',
+                self.obsid, common['obs_type'])
             ingestibility = INGESTIBILITY.BAD
 
         # JUNK status trumps BAD, because a JUNK observation must be removed
@@ -574,9 +521,9 @@ class raw(object):
         # ingested.
         if common['quality'].jsa_value() == JSA_QA.JUNK:
             self.junk = True
-            self.log.console('JUNK QUALITY ASSESSMENT for ' + self.obsid +
-                             ' prevents it from being ingested in CAOM-2',
-                             logging.WARN)
+            logger.warning('JUNK QUALITY ASSESSMENT for %s'
+                           ' prevents it from being ingested in CAOM-2',
+                           self.obsid)
             ingestibility = INGESTIBILITY.JUNK
 
         # Check observation-level mandatory headers with restricted values
@@ -596,8 +543,8 @@ class raw(object):
         someBad, keyword_list = instrument_keywords('raw',
                                                     common['instrume'],
                                                     common['backend'],
-                                                    keyword_dict,
-                                                    self.log)
+                                                    keyword_dict)
+
         if someBad:
             ingestibility = INGESTIBILITY.JUNK
             self.instrument_keywords = []
@@ -627,8 +574,7 @@ class raw(object):
         # ------------------------------------------------------------
         collection = self.collection
         observationID = self.obsid
-        self.log.console('PROGRESS: build observationID = ' + self.obsid,
-                         logging.DEBUG)
+        logger.debug('PROGRESS: build observationID = %s', self.obsid)
 
         if observation is None:
             observation = SimpleObservation(collection,
@@ -691,8 +637,7 @@ class raw(object):
             inbeam = ''
         instrument = Instrument(instrument_name(frontend,
                                                 backend,
-                                                inbeam,
-                                                self.log))
+                                                inbeam))
         instrument.keywords.extend(self.instrument_keywords)
 
         if backend in ['ACSIS', 'DAS', 'AOSC']:
@@ -869,10 +814,10 @@ class raw(object):
                     br = TwoD(common['obsrabr'], common['obsdecbr'])
                     tl = TwoD(common['obsratl'], common['obsdectl'])
                     tr = TwoD(common['obsratr'], common['obsdectr'])
-                    self.log.file('initial bounds bl = ' + str(bl))
-                    self.log.file('initial bounds br = ' + str(br))
-                    self.log.file('initial bounds tr = ' + str(tr))
-                    self.log.file('initial bounds tl = ' + str(tl))
+                    logger.info('initial bounds bl = %s', bl)
+                    logger.info('initial bounds br = %s', br)
+                    logger.info('initial bounds tr = %s', tr)
+                    logger.info('initial bounds tl = %s', tl)
                     halfbeam = beamsize / 2.0
 
                     # The precomputed bounding box can be represented as a
@@ -881,9 +826,9 @@ class raw(object):
                             and (bl - tl).abs() < eps
                             and (tl - tr).abs() < eps):
                         # bounding "box" is a point, so expand to a box
-                        self.log.console('For observation ' +
-                                         common['obsid'] +
-                                         ' the bounds are a point')
+                        logger.info(
+                            'For observation %s the bounds are a point',
+                            common['obsid'])
 
                         cosdec = math.cos(br.y * math.pi / 180.0)
                         offsetX = 0.5 * beamsize / cosdec
@@ -898,9 +843,10 @@ class raw(object):
                           and (bl - tl).abs() >= eps):
                         # bounding box is a line in y, so diff points to + Y
                         # and the perpendicular points along - X
-                        self.log.console('For observation ' +
-                                         common['obsid'] +
-                                         ' the bounds are in a line in Y')
+                        logger.info(
+                            'For observation %s the bounds are in a line in Y',
+                            common['obsid'])
+
                         diff = tl - bl
                         mean = (tl + bl)/2.0
                         cosdec = math.cos(mean.y * math.pi / 180.0)
@@ -922,9 +868,10 @@ class raw(object):
                           and (br - tr).abs() < eps
                           and (bl - br).abs() >= eps):
                         # bounding box is a line in x
-                        self.log.console('For observation ' +
-                                         common['obsid'] +
-                                         ' the bounds are in a line in X')
+                        logger.info(
+                            'For observation %s the bounds are in a line in X',
+                            common['obsid'])
+
                         diff = br - bl
                         mean = (br + bl)/2.0
                         cosdec = math.cos(mean.y * math.pi / 180.0)
@@ -960,26 +907,24 @@ class raw(object):
                                 1, ThreeD.included_angle(bl3d, tl3d, tr3d))
                         except ValueError as e:
                             self.errors = True
-                            self.log.console('The bounding box for obsid = ' +
-                                             self.obsid + ' is degenerate',
-                                             logging.ERROR)
+                            raise CAOMError('The bounding box for obsid = ' +
+                                             self.obsid + ' is degenerate')
 
                         # If the signs are not all the same, the vertices
                         # were recorded in a bowtie order.  Swap any two.
                         if (sign1 != sign2 or sign2 != sign3 or
                                 sign3 != sign4):
                             self.warnings = True
-                            self.log.console('For observation ' +
-                                             common['obsid'] +
-                                             ' the bounds are in a' +
-                                             ' bowtie order',
-                                             logging.WARN)
+                            logger.warning(
+                                'For observation %s the bounds are in a'
+                                ' bowtie order',
+                                common['obsid'])
                             bl.swap(br)
 
-                    self.log.file('final bounds bl = ' + str(bl))
-                    self.log.file('final bounds br = ' + str(br))
-                    self.log.file('final bounds tr = ' + str(tr))
-                    self.log.file('final bounds tl = ' + str(tl))
+                    logger.info('final bounds bl = ' + str(bl))
+                    logger.info('final bounds br = ' + str(br))
+                    logger.info('final bounds tr = ' + str(tr))
+                    logger.info('final bounds tl = ' + str(tl))
                     bounding_box = CoordPolygon2D()
                     bounding_box.vertices.append(ValueCoord2D(bl.x, bl.y))
                     bounding_box.vertices.append(ValueCoord2D(br.x, br.y))
@@ -1088,9 +1033,8 @@ class raw(object):
         # Check that this is a valid observation
         if not self.check_obsid():
             self.errors = True
-            self.log.console('There is no observation with '
-                             'obsid = %s' % (self.obsid,),
-                             logging.ERROR)
+            raise CAOMError('There is no observation with '
+                             'obsid = %s' % (self.obsid,))
 
         # get the dictionary of common metadata
         common = self.query_table(self.jcmt_db + 'COMMON',
@@ -1130,11 +1074,10 @@ class raw(object):
 
         else:
             self.warnings = True
-            self.log.console(
-                'backend = "' + backend + '" is not one of '
-                '["ACSIS",  "DAS",  "AOSC",  "SCUBA",  '
-                '"SCUBA-2"]',
-                logging.WARN)
+            logger.warning(
+                'backend = "%s" is not one of '
+                '["ACSIS", "DAS", "AOSC", "SCUBA", "SCUBA-2"]',
+                backend)
 
         # somewhat repetitive, but custom SQL is useful
         # get dictionary of productID's for each subsystem
@@ -1142,33 +1085,29 @@ class raw(object):
                                              'raw',
                                              self.jcmt_db,
                                              self.obsid,
-                                             self.conn,
-                                             self.log)
-        self.log.file('query complete', logging.DEBUG)
+                                             self.conn)
+        logger.debug('query complete')
 
         ingestibility = self.check_observation(common, subsystem)
         if ingestibility == INGESTIBILITY.BAD:
             self.errors = True
-            self.log.console('SERIOUS ERRORS were found in ' + self.obsid,
-                             logging.ERROR)
+            logger.error('SERIOUS ERRORS were found in %s', self.obsid)
+            raise CAOMError('Serious errors found')
+
         if self.checkmode:
             if ingestibility == INGESTIBILITY.GOOD:
-                self.log.console('SUCCESS: Observation ' + self.obsid +
-                                 ' is ready for ingestion')
+                logger.info('SUCCESS: Observation %s is ready for ingestion',
+                            self.obsid)
             # running in checkmode will NOT remove JUNK observations,
             # and does NOT check whether they are currently in CAOM-2,
             # but will report that they are junk.
             return
 
-        if self.loglevel == logging.DEBUG:
-            repository = Repository(self.outdir, self.log)
-        else:
-            repository = Repository(self.outdir, self.log, debug=False)
+        repository = Repository(self.outdir)
 
         uri = 'caom:' + self.collection + '/' + common['obsid']
         if ingestibility == INGESTIBILITY.JUNK:
-            self.log.console('     Remove non-ingestible observation ' +
-                             self.obsid)
+            logger.info('Remove non-ingestible observation %s', self.obsid)
             repository.remove(uri)
         else:
             # get the list of files for this observation
@@ -1188,9 +1127,8 @@ class raw(object):
                 with open(xmlfile, 'w') as XMLFILE:
                     self.writer.write(observation, XMLFILE)
 
-            self.log.console(
-                'SUCCESS: Observation ' + self.obsid +
-                ' has been ingested')
+            logger.info('SUCCESS: Observation %s has been ingested',
+                        self.obsid)
 
     def run(self):
         """
@@ -1199,51 +1137,15 @@ class raw(object):
         Returns True on success, False otherwise.
         """
         self.parse_command_line()
-        self.setup_logger()
 
-        prefix = ''
+        try:
+            self.logCommandLineSwitches()
+            with connection(self.userconfig) as self.conn:
+                self.ingest()
+            logger.info('DONE')
 
-        with logger(self.logfile,
-                    loglevel=self.loglevel).record() as self.log:
-            try:
-                self.logCommandLineSwitches()
-                with connection(self.userconfig,
-                                self.log) as self.conn:
-                    self.ingest()
-                self.log.console('DONE')
-            except Exception as e:
-                self.errors = True
-                if not isinstance(e, logger.LoggerError):
-                    # Be sure that every error message is logged
-                    # Logg this error, but pass because we are exitting anyways
-                    try:
-                        self.log.console('ERROR: ' + traceback.format_exc(),
-                                         logging.ERROR)
-                    except Exception as p:
-                        pass
-
-        # beware that errors after this are not logged
-        if self.collection == 'JCMT' and not self.checkmode:
-            self.voscopy = tovos.raw_ingestion(vos.Client(),
-                                               self.vosroot)
-            logsuffix = ''
-            if self.errors:
-                logsuffix = '_ERRORS'
-            if self.junk:
-                logsuffix += '_JUNK'
-            elif self.warnings:
-                logsuffix += '_WARNINGS'
-
-            logcopy = self.logfile
-            if logsuffix:
-                logid, ext = os.path.splitext(self.logfile)
-                logcopy = logid + logsuffix + ext
-                shutil.copy(self.logfile, logcopy)
-
-            self.voscopy.match(logcopy)
-            self.voscopy.push()
-
-            if logsuffix:
-                os.remove(logcopy)
+        except Exception as e:
+            self.errors = True
+            logger.exception('Error during ingestion')
 
         return not self.errors

@@ -3,12 +3,12 @@
 #################################
 # Import required Python modules
 #################################
-import logging
+from tools4caom2.error import CAOMError
 
 from jcmt2caom2.__version__ import version
 
 
-def product_id(backend, log,
+def product_id(backend,
                product=None,
                restfreq=None,
                bwmode=None,
@@ -30,14 +30,12 @@ def product_id(backend, log,
     """
     separator = '-'
     if not product:
-        log.console('product must be supplied to generate productID',
-                    logging.ERROR)
+        raise CAOMError('product must be supplied to generate productID')
 
     if backend == 'SCUBA-2':
         if not filter:
-            log.console(
-                'filter must be supplied to generate SCUBA-2 productID',
-                logging.ERROR)
+            raise CAOMError(
+                'filter must be supplied to generate SCUBA-2 productID')
 
         subsysnr_dict = {'450': '450um',
                          '850': '850um'}
@@ -51,17 +49,16 @@ def product_id(backend, log,
 
     else:
         if not restfreq or type(restfreq) != float:
-            log.console(
-                'restfreq must be supplied to generate heterodyne productID',
-                logging.ERROR)
+            raise CAOMError(
+                'restfreq must be supplied to generate heterodyne productID')
+
         if not bwmode or type(bwmode) != str:
-            log.console(
-                'bwmode must be supplied to generate heterodyne productID',
-                logging.ERROR)
+            raise CAOMError(
+                'bwmode must be supplied to generate heterodyne productID')
+
         if not subsysnr or type(subsysnr) != str:
-            log.console(
-                'subsysnr must be supplied to generate heterodyne productID',
-                logging.ERROR)
+            raise CAOMError(
+                'subsysnr must be supplied to generate heterodyne productID')
 
         restfreqstr = '%.0fMHz' % (restfreq * 1.0e-6)
 
