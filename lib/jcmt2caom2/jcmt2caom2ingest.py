@@ -1157,6 +1157,16 @@ class jcmt2caom2ingest(caom2ingest):
                     prvn = header[prvkey]
                     logger.debug('%s = %s', prvkey, prvn)
 
+                    # jsawrapdr has left some "oractempXXXXXX" entries in the
+                    # provenance headers.  While the correct thing to do is to
+                    # correct jsawrapdr, there are still a lot of existing
+                    # processed data which we need to be able to ingest
+                    # efficiently.  Therefore skip over these files in
+                    # the provenance.
+                    if prvn.startswith('oractemp'):
+                        logger.warning('provenance contains oractemp file')
+                        continue
+
                     # An existing problem is that some files include
                     # themselves in their provenance, but are otherwise
                     # OK.
