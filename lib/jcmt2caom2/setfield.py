@@ -10,9 +10,6 @@ import shutil
 import sys
 import traceback
 
-from caom2.xml.caom2_observation_reader import ObservationReader
-from caom2.xml.caom2_observation_writer import ObservationWriter
-
 from caom2.caom2_observation import Observation
 from caom2.caom2_observation_uri import ObservationURI
 from caom2.caom2_plane import Plane
@@ -66,9 +63,6 @@ class setfield(object):
         self.runid = None
         self.releasedate = None
         self.reference = None
-
-        self.reader = ObservationReader(True)
-        self.writer = ObservationWriter()
 
     def parse_command_line(self):
         """
@@ -182,7 +176,7 @@ class setfield(object):
         Arguments:
         <none>
         """
-        repository = Repository(self.outdir)
+        repository = Repository()
 
         tapcmd = '\n'.join([
             'SELECT',
@@ -214,9 +208,9 @@ class setfield(object):
             for obsid in result_dict[coll]:
                 uri = 'caom:' + coll + '/' + obsid
                 logger.info('PROGRESS: ' + uri)
-                with repository.process(uri) as xmlfile:
+                with repository.process(uri) as wrapper:
+                    observation = wrapper.observation
                     try:
-                        observation = self.reader.read(xmlfile)
                         if self.releasedate:
                             observation.metaRelease = self.releasedate
                         for productID in observation.planes:
@@ -229,9 +223,9 @@ class setfield(object):
                                 if self.reference:
                                     plane.provenance_reference = self.reference
 
-                        if not self.test:
-                            with open(xmlfile, 'w') as XMLFILE:
-                                self.writer.write(observation, XMLFILE)
+                        if self.test:
+                            wrapper.observation = None
+
                     except:
                         logger.exception('Cannot process %s', uri)
                         raise

@@ -8,9 +8,6 @@ import subprocess
 import sys
 import urllib2
 
-from caom2.xml.caom2_observation_reader import ObservationReader
-from caom2.xml.caom2_observation_writer import ObservationWriter
-
 from tools4caom2.caom2repo_wrapper import Repository
 
 from tools4caom2.__version__ import version as tools4caom2version
@@ -42,10 +39,6 @@ class integrationtestset(object):
         """
         Initialize the integration test set processor
         """
-        # get xml file reader and writer, to allow insertion of the
-        # time structures for chunks with WCS
-        self.reader = ObservationReader(True)
-        self.writer = ObservationWriter()
         self.outdir = None
         self.rawlist = []
         self.proclist = []
@@ -169,10 +162,7 @@ class integrationtestset(object):
         for clean in self.cleanlist:
             logger.info('clean: %s', clean)
 
-        if self.args.debug:
-            self.repository = Repository(self.outdir)
-        else:
-            self.repository = Repository(self.outdir, debug=False)
+        self.repository = Repository()
 
     def ingest_raw(self):
         """
@@ -224,11 +214,8 @@ class integrationtestset(object):
         for clean in self.cleanlist:
             uri = 'caom:SANDBOX/' + clean
             logger.info('DECORATE: %s', uri)
-            with self.repository.process(uri) as xmlfile:
-                orig_xmlfile = xmlfile
-                observation = None
-                if os.path.exists(xmlfile):
-                    observation = self.reader.read(xmlfile)
+            with self.repository.process(uri) as wrapper:
+                observation = wrapper.observation
 
                 for productID in observation.planes.keys():
                     plane = observation.planes[productID]
@@ -238,9 +225,6 @@ class integrationtestset(object):
                     logger.info('DECORATE: %s -> %s', productID, new_productID)
                     plane.product_id = new_productID
                     observation.planes.add(plane)
-
-                with open(xmlfile, 'w') as XMLFILE:
-                    self.writer.write(observation, XMLFILE)
 
     def cleanup(self):
         """

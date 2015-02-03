@@ -26,9 +26,6 @@ import shutil
 import string
 import vos
 
-from caom2.xml.caom2_observation_reader import ObservationReader
-from caom2.xml.caom2_observation_writer import ObservationWriter
-
 from caom2.caom2_enums import CalibrationLevel
 from caom2.caom2_enums import ObservationIntentType
 from caom2.wcs.caom2_axis import Axis
@@ -42,7 +39,6 @@ from caom2.caom2_simple_observation import SimpleObservation
 
 from tools4caom2.database import database
 from tools4caom2.error import CAOMError
-from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.timezone import UTC
 from tools4caom2.mjd import utc2mjd
 from tools4caom2.utdate_string import UTDATE_REGEX
@@ -146,16 +142,10 @@ class jcmt2caom2ingest(caom2ingest):
         # Connection to database
         self.conn = None
 
-        # get xml file reader and writer, to allow insertion of the
-        # time structures for chunks with WCS
-        self.reader = ObservationReader(True)
-        self.writer = ObservationWriter()
-
         self.member_cache = {}
         self.input_cache = {}
         self.remove_dict = {}
         self.remove_id = []
-        self.repository = None
 
         # Are any errors or warnings recorded in this log file?
         self.errors = False
@@ -256,12 +246,6 @@ class jcmt2caom2ingest(caom2ingest):
                observationID
                productID
         '''
-        if self.repository is None:
-            # note that this is similar to the repository in caom2ingest, but
-            # that is not made a part of the structure - probably should be
-            self.repository = Repository(self.workdir,
-                                         debug=False,
-                                         backoff=[10.0, 20.0, 40.0, 80.0])
 
         if 'file_id' not in header:
             self.errors = True
@@ -1477,13 +1461,13 @@ class jcmt2caom2ingest(caom2ingest):
                                             inputURI.uri, planeURI.uri)
 
     def build_fitsuri_custom(self,
-                             xmlfile,
+                             observation,
                              collection,
                              observationID,
                              planeID,
                              fitsuri):
         """
-        Customize the xml file with fitsuri-specific metadata.  For
+        Customize the CAOM-2 observation with fitsuri-specific metadata.  For
         jsaingest, this comprises the time structure constructed from the
         OBSID for simple observations or list of OBSn values for composite
         observations.
@@ -1494,7 +1478,6 @@ class jcmt2caom2ingest(caom2ingest):
             # if this dictionary is empty,skip processing
             logger.debug('custom processing for %s', fitsuri)
 
-            observation = self.reader.read(xmlfile)
             # Check whether this is a part-specific uri.  We are only
             # interested in artifact-specific uri's.
             if fitsuri not in observation.planes[planeID].artifacts:
@@ -1566,11 +1549,8 @@ class jcmt2caom2ingest(caom2ingest):
                                 logger.debug('temporal WCS = %s',
                                              chunk.time)
 
-                with open(xmlfile, 'w') as XMLFILE:
-                    self.writer.write(observation, XMLFILE)
-
     def build_plane_custom(self,
-                           xmlfile,
+                           observation,
                            collection,
                            observationID,
                            productID):
@@ -1581,15 +1561,14 @@ class jcmt2caom2ingest(caom2ingest):
         replaced by the new set of products.
 
         Arguments:
-        xmlfile: current xmlfile
+        observation: CAOM-2 observation object to be updated
         collection: current collection
         observationID: current observationID
         productID: current productID NOT USED in this routine
         """
         if collection in self.remove_dict:
             if observationID in self.remove_dict[collection]:
-                obs = self.reader.read(xmlfile)
-                for prod in obs.planes.keys():
+                for prod in observation.planes.keys():
                     # logic is, this collection/observation/plane used to be
                     # genrated by this recipe instance, but is not part of the
                     # current ingestion and so is obsolete.
@@ -1604,15 +1583,13 @@ class jcmt2caom2ingest(caom2ingest):
                         self.warnings = True
                         logger.warning('CLEANUP: remove obsolete plane: %s',
                                        uri.uri)
-                        del obs.planes[prod]
+
+                        if not self.test:
+                            del observation.planes[prod]
                         del self.remove_dict[collection][observationID][prod]
 
-                if not self.test:
-                    with open(xmlfile, 'w') as XMLFILE:
-                        self.writer.write(obs, XMLFILE)
-
     def build_observation_custom(self,
-                                 xmlfile,
+                                 observation,
                                  collection,
                                  observationID):
         """
@@ -1624,7 +1601,7 @@ class jcmt2caom2ingest(caom2ingest):
         instance.
 
         Arguments:
-        xmlfile: current xmlfile NOT USED in this routine
+        observation: CAOM-2 observation object NOT USED in this routine
         collection: current collection NOT USED in this routine
         observationID: current observationID NOT USED in this routine
         """
@@ -1666,9 +1643,9 @@ class jcmt2caom2ingest(caom2ingest):
                                 self.repository.remove(uri.uri)
                             del self.remove_dict[coll][obsid]
                         else:
-                            with repository.process(uri) as badxmlfile:
-                                if os.path.exists(badxmlfile):
-                                    obs = self.reader.read(badxmlfile)
+                            with repository.process(uri) as wrapper:
+                                if wrapper.observation is not None:
+                                    obs = wrapper.observation
                                     for prod in self.remove_dict[coll][obsid].keys():
                                         if self.remove_dict[coll][obsid][prod] \
                                                 and prod in obs.planes:
@@ -1683,6 +1660,5 @@ class jcmt2caom2ingest(caom2ingest):
 
                                             del obs.planes[prod]
                                             del self.remove_dict[coll][obsid][prod]
-                                if not self.test:
-                                    with open(badxmlfile, 'w') as XMLFILE:
-                                        self.writer.write(observation, XMLFILE)
+                                if self.test:
+                                    wrapper.observation = None

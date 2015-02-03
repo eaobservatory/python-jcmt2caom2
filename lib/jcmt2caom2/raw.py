@@ -12,9 +12,6 @@ import sys
 import traceback
 import vos
 
-from caom2.xml.caom2_observation_reader import ObservationReader
-from caom2.xml.caom2_observation_writer import ObservationWriter
-
 from caom2.caom2_simple_observation import SimpleObservation
 from caom2.caom2_enums import CalibrationLevel
 from caom2.caom2_enums import ObservationIntentType
@@ -223,8 +220,6 @@ class raw(object):
         self.voscopy = None
         self.vosroot = 'vos:jsaops'
 
-        self.reader = ObservationReader(True)
-        self.writer = ObservationWriter()
         self.conn = None
 
     def parse_command_line(self):
@@ -1101,7 +1096,7 @@ class raw(object):
             # but will report that they are junk.
             return
 
-        repository = Repository(self.outdir)
+        repository = Repository()
 
         uri = 'caom:' + self.collection + '/' + common['obsid']
         if ingestibility == INGESTIBILITY.JUNK:
@@ -1111,19 +1106,9 @@ class raw(object):
             # get the list of files for this observation
             files = self.get_files(self.obsid)
 
-            with repository.process(uri) as xmlfile:
-                observation = None
-                if os.path.exists(xmlfile):
-                    observation = self.reader.read(xmlfile)
-
-                observation = \
-                    self.build_observation(observation,
-                                           common,
-                                           subsystem,
-                                           files)
-
-                with open(xmlfile, 'w') as XMLFILE:
-                    self.writer.write(observation, XMLFILE)
+            with repository.process(uri) as wrapper:
+                wrapper.observation = self.build_observation(
+                    wrapper.observation, common, subsystem, files)
 
             logger.info('SUCCESS: Observation %s has been ingested',
                         self.obsid)
