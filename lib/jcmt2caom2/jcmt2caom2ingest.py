@@ -260,7 +260,7 @@ class jcmt2caom2ingest(caom2ingest):
             # note that this is similar to the repository in caom2ingest, but
             # that is not made a part of the structure - probably should be
             self.repository = Repository(self.workdir,
-                                         debug=self.debug,
+                                         debug=False,
                                          backoff=[10.0, 20.0, 40.0, 80.0])
 
         if 'file_id' not in header:
