@@ -1609,8 +1609,7 @@ class jcmt2caom2ingest(caom2ingest):
 
                         uri = self.planeURI(collection,
                                             observationID,
-                                            prod,
-                                            input=False)
+                                            prod)
                         self.warnings = True
                         logger.warning('CLEANUP: remove obsolete plane: %s',
                                        uri.uri)
@@ -1682,8 +1681,7 @@ class jcmt2caom2ingest(caom2ingest):
                                                 and prod in obs.planes:
                                             uri = self.planeURI(coll,
                                                                 obsid,
-                                                                prod,
-                                                                input=False)
+                                                                prod)
                                             self.warnings = True
                                             logger.warning(
                                                 'CLEANUP: remove plane: %s',
