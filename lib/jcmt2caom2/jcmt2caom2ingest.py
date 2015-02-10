@@ -77,6 +77,28 @@ def is_blank(key, header):
     return (key in header and header[key] == pyfits.card.UNDEFINED)
 
 
+def read_recipe_instance_mapping():
+    """
+    Read the recipe instance mapping file.
+
+    Return a dictionary of JAC job names "jac-?????????" containing the
+    old CADC recipe instance number as the value.
+    """
+
+    result = {}
+
+    with open('/net/kamaka/export/data/jsa_proc/recipe-instance-mapping.txt') as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('#') or not line:
+                continue
+
+            (cadc_rc_inst, jsa_proc_job, tag) = line.split(' ', 2)
+            result['jac-{0:09d}'.format(int(jsa_proc_job))] = cadc_rc_inst
+
+    return result
+
+
 class jcmt2caom2ingest(caom2ingest):
     """
     A derived class of caom2ingest specialized to ingest externally generated
@@ -152,6 +174,9 @@ class jcmt2caom2ingest(caom2ingest):
         self.warnings = False
         self.dprcinst = None
 
+        # Read recipe instance mapping file.
+        self.recipe_instance_mapping = read_recipe_instance_mapping()
+
     # ************************************************************************
     # Process the custom command line switchs
     # ************************************************************************
@@ -226,6 +251,12 @@ class jcmt2caom2ingest(caom2ingest):
                 for coll, obsid, prodid, run in result:
                     this_runID = run
                     eq = (1 if this_runID == run_id else 0)
+                    # If this is a "new" JAC processing job number, check also
+                    # whether the file came from a previous version of the job
+                    # at CADC.
+                    if run_id in self.recipe_instance_mapping:
+                        if this_runID == self.recipe_instance_mapping[run_id]:
+                            eq = 1
                     # Ignore entries in other collections
                     if coll == self.collection:
                         if coll not in self.remove_dict:
