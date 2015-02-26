@@ -50,8 +50,11 @@ from tools4caom2.database import connection
 from tools4caom2.error import CAOMError
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.mjd import utc2mjd
+from tools4caom2.tapclient import tapclient
 from tools4caom2.utdate_string import utdate_string
 import tools4caom2.__version__
+
+from jcmt2caom2.project import get_project_pi_title
 
 from jcmt2caom2.jsa.quality import JCMT_QA
 from jcmt2caom2.jsa.quality import JSA_QA
@@ -221,6 +224,7 @@ class raw(object):
         self.vosroot = 'vos:jsaops'
 
         self.conn = None
+        self.tap = tapclient()
 
     def parse_command_line(self):
         """
@@ -379,32 +383,18 @@ class raw(object):
 
         return rowlist
 
-    def get_proposal(self, obsid):
+    def get_proposal(self, project_id):
         """
-        Get the PI name and proposal title for this obsid.
-
-        Arguments:
-        obsid: the observation identifier in COMMON for the observation
+        Get the PI name and proposal title for this project.
         """
 
-        sqlcmd = '\n'.join([
-            'SELECT ',
-            '    ou.uname,',
-            '    op.title',
-            'FROM ' + self.jcmt_db + 'COMMON c',
-            '    left join ' + self.omp_db +
-            'ompproj op on c.project=op.projectid',
-            '    left join ' + self.omp_db +
-            'ompuser ou on op.pi=ou.userid',
-            'WHERE c.obsid="%s"' % (obsid,)])
-        answer = self.conn.read(sqlcmd)
-        logger.debug('query complete')
+        (proposal_pi, proposal_title) = get_project_pi_title(
+            project_id, self.conn, self.tap)
 
-        results = {}
-        if len(answer):
-            results['pi'] = answer[0][0]
-            results['title'] = answer[0][1]
-        return results
+        return {
+            'pi': proposal_pi,
+            'title': proposal_title,
+        }
 
     def get_quality(self, obsid):
         """
@@ -1036,7 +1026,7 @@ class raw(object):
             common = common[0]
 
         # Append the proposal metadata
-        proposal = self.get_proposal(self.obsid)
+        proposal = self.get_proposal(common['project'])
         if proposal:
             common.update(proposal)
 

@@ -44,6 +44,8 @@ from tools4caom2.mjd import utc2mjd
 from tools4caom2.utdate_string import UTDATE_REGEX
 from tools4caom2.caom2ingest import caom2ingest
 
+from jcmt2caom2.project import get_project_pi_title
+
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.intent import intent
@@ -410,46 +412,16 @@ class jcmt2caom2ingest(caom2ingest):
 
             if is_defined('PI', header):
                 proposal_pi = header['PI']
-                self.add_to_plane_dict('proposal.pi', proposal_pi)
 
             if is_defined('TITLE', header):
                 proposal_title = header['TITLE']
-                self.add_to_plane_dict('proposal.title', proposal_title)
 
             if not (proposal_pi and proposal_title):
-                if self.omp_db:
-                    sqlcmd = '\n'.join([
-                        'SELECT ',
-                        '    ou.uname,',
-                        '    op.title',
-                        'FROM ' + self.omp_db + 'ompproj op',
-                        '    LEFT JOIN ' + self.omp_db + 'ompuser ou'
-                        '        ON op.pi=ou.userid',
-                        'WHERE op.projectid="%s"' % (header['PROJECT'],)])
-                    answer = self.conn.read(sqlcmd)
+                (proposal_pi, proposal_title) = get_project_pi_title(
+                    header['PROJECT'], self.conn, self.tap)
 
-                    if len(answer):
-                        self.add_to_plane_dict('proposal.pi',
-                                               answer[0][0])
-                        self.add_to_plane_dict('proposal.title',
-                                               answer[0][1])
-                else:
-                    tapcmd = '\n'.join([
-                        "SELECT DISTINCT Observation.proposal_pi, ",
-                        "                Observation.proposal_title",
-                        "FROM caom2.Observation as Observation",
-                        "WHERE Observation.collection = 'JCMT'",
-                        "      AND Observation.proposal_id = '" +
-                        proposal_id + "'"])
-                    answer = self.tap.query(tapcmd)
-
-                    if answer and len(answer[0]) > 0:
-                        if answer[0][0]:
-                            self.add_to_plane_dict('proposal.pi',
-                                                   answer[0][0])
-                        if answer[0][1]:
-                            self.add_to_plane_dict('proposal.title',
-                                                   answer[0][1])
+            self.add_to_plane_dict('proposal.pi', proposal_pi)
+            self.add_to_plane_dict('proposal.title', proposal_title)
 
         # Observation membership headers, which are optional
         earliest_utdate = None
