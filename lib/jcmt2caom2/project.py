@@ -29,7 +29,7 @@ def get_project_pi_title(project_id, conn, tap):
         '    op.title',
         'FROM omp..ompproj op',
         '    LEFT JOIN omp..ompuser ou'
-        '        ON op.pi=ou.userid',
+        '        ON op.pi=ou.userid AND ou.obfuscated=0',
         'WHERE op.projectid="%s"' % (project_id,)])
     answer = conn.read(sqlcmd)
 
