@@ -420,8 +420,10 @@ class jcmt2caom2ingest(caom2ingest):
                 (proposal_pi, proposal_title) = get_project_pi_title(
                     header['PROJECT'], self.conn, self.tap)
 
-            self.add_to_plane_dict('proposal.pi', proposal_pi)
-            self.add_to_plane_dict('proposal.title', proposal_title)
+            if proposal_pi is not None:
+                self.add_to_plane_dict('proposal.pi', proposal_pi)
+            if proposal_title is not None:
+                self.add_to_plane_dict('proposal.title', proposal_title)
 
         # Observation membership headers, which are optional
         earliest_utdate = None
