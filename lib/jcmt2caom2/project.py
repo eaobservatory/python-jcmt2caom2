@@ -19,23 +19,9 @@ def get_project_pi_title(project_id, conn, tap):
     could not be found.
     """
 
-    project_pi = None
-    project_title = None
 
     logger.debug('Fetching project "%s" details from OMP', project_id)
-    sqlcmd = '\n'.join([
-        'SELECT ',
-        '    ou.uname,',
-        '    op.title',
-        'FROM omp..ompproj op',
-        '    LEFT JOIN omp..ompuser ou'
-        '        ON op.pi=ou.userid AND ou.obfuscated=0',
-        'WHERE op.projectid="%s"' % (project_id,)])
-    answer = conn.read(sqlcmd)
-
-    if len(answer):
-        project_pi = answer[0][0]
-        project_title = answer[0][1]
+    (project_pi, project_title) = conn.get_project_pi_title(project_id)
 
     if (project_pi is None) or (project_title is None):
         # Some of the information was missing, so try a TAP query
