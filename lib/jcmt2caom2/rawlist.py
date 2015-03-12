@@ -11,7 +11,6 @@ import subprocess
 import sys
 import traceback
 
-from tools4caom2.database import database
 from tools4caom2.error import CAOMError
 from tools4caom2.utdate_string import utdate_string
 

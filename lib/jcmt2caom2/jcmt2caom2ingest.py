@@ -37,7 +37,6 @@ from caom2.wcs.caom2_temporal_wcs import TemporalWCS
 from caom2.caom2_enums import ProductType
 from caom2.caom2_simple_observation import SimpleObservation
 
-from tools4caom2.database import database
 from tools4caom2.error import CAOMError
 from tools4caom2.timezone import UTC
 from tools4caom2.mjd import utc2mjd
