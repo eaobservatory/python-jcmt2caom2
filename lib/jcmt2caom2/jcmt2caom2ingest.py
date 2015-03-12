@@ -26,6 +26,8 @@ import shutil
 import string
 import vos
 
+from omp.db.part.arc import ArcDB
+
 from caom2.caom2_enums import CalibrationLevel
 from caom2.caom2_enums import ObservationIntentType
 from caom2.wcs.caom2_axis import Axis
@@ -135,9 +137,6 @@ class jcmt2caom2ingest(caom2ingest):
         # [database] of the userconfig file.
         self.userconfigpath = '~/.tools4caom2/tools4caom2.config'
 
-        # This is needed for compatability with other uses of caom2ingest, but
-        # should not be used for the JCMT.
-        self.database = 'jcmt'
         self.collection_choices = ['JCMT', 'JCMTLS', 'JCMTUSER', 'SANDBOX']
         self.external_collections = ['JCMTLS', 'JCMTUSER']
 
@@ -191,17 +190,6 @@ class jcmt2caom2ingest(caom2ingest):
         caom2ingest.processCommandLineSwitches(self)
 
         self.collection = self.args.collection
-
-        self.jcmt_db = ''
-        self.omp_db = ''
-
-        if self.sybase_defined and self.userconfig.has_section('jcmt'):
-            if self.userconfig.has_option('jcmt', 'jcmt_db'):
-                self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' +
-                                self.schema + '.')
-            if self.userconfig.has_option('jcmt', 'omp_db'):
-                self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' +
-                               self.schema + '.')
 
     # ************************************************************************
     # Include the custom command line switch in the log
@@ -1664,3 +1652,11 @@ class jcmt2caom2ingest(caom2ingest):
                                             del self.remove_dict[coll][obsid][prod]
                                 if self.test:
                                     wrapper.observation = None
+
+    def run(self):
+        try:
+            self.conn = ArcDB()
+            caom2ingest.run(self)
+
+        finally:
+            self.conn.close()

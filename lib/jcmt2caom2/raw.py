@@ -1,7 +1,6 @@
 __author__ = "Russell O. Redman"
 
 import argparse
-from ConfigParser import SafeConfigParser
 import errno
 import logging
 import math
@@ -11,6 +10,8 @@ import shutil
 import sys
 import traceback
 import vos
+
+from omp.db.part.arc import ArcDB
 
 from caom2.caom2_simple_observation import SimpleObservation
 from caom2.caom2_enums import CalibrationLevel
@@ -45,8 +46,6 @@ from caom2.wcs.caom2_coord_range2d import CoordRange2D
 from caom2.wcs.caom2_temporal_wcs import TemporalWCS
 from caom2.caom2_enums import ProductType
 
-from tools4caom2.database import database
-from tools4caom2.database import connection
 from tools4caom2.error import CAOMError
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.mjd import utc2mjd
@@ -198,18 +197,11 @@ class raw(object):
         self.exedir = os.path.abspath(os.path.dirname(sys.path[0]))
         self.configpath = os.path.abspath(self.exedir + '/../config')
 
-        # The userconfig contains an instance of ConfigParser.SafeConfigparser.
-        # This is required to configure access to the database.
-        self.userconfigpath = '~/.tools4caom2/tools4caom2.config'
-        self.userconfig = SafeConfigParser()
-
         self.outdir = None
 
         # Database attributes
-        self.conn = None
-        self.schema = 'dbo'
-        self.jcmt_db = None
-        self.omp_db = None
+        self.jcmt_db = 'jcmt..'
+        self.omp_db = 'omp..'
 
         self.collection = None
         self.obsid = None
@@ -234,10 +226,6 @@ class raw(object):
         <None>
         """
         ap = argparse.ArgumentParser()
-        ap.add_argument('--userconfig',
-                        default=self.userconfigpath,
-                        help='Optional user configuration file '
-                        '(default=' + self.userconfigpath + ')')
         ap.add_argument(
             '--key',
             required=True,
@@ -264,37 +252,6 @@ class raw(object):
             action='store_const',
             const=logging.DEBUG)
         args = ap.parse_args()
-
-        if args.userconfig:
-            self.userconfigpath = args.userconfig
-        self.userconfigpath = os.path.abspath(
-            os.path.expandvars(
-                os.path.expanduser(
-                    self.userconfigpath)))
-
-        if os.path.isfile(self.userconfigpath):
-            with open(self.userconfigpath) as UC:
-                self.userconfig.readfp(UC)
-        else:
-            raise RuntimeError('userconfig is not a file: ' +
-                               self.userconfigpath)
-
-        # OPTIONAL: configure schema (defaults to dbo)
-        if self.userconfig.has_option('database', 'schema'):
-            self.schema = self.userconfig.get('database', 'schema')
-
-        # REQUIRED: Configure database prefixes for the jcmt and omp databases
-        if self.userconfig.has_option('jcmt', 'jcmt_db'):
-            self.jcmt_db = (self.userconfig.get('jcmt', 'jcmt_db') + '.' +
-                            self.schema + '.')
-        else:
-            raise RuntimeError('userconfig does not define jcmt_db')
-
-        if self.userconfig.has_option('jcmt', 'omp_db'):
-            self.omp_db = (self.userconfig.get('jcmt', 'omp_db') + '.' +
-                           self.schema + '.')
-        else:
-            raise RuntimeError('userconfig does not define omp_db')
 
         if args.collection:
             self.collection = args.collection
@@ -324,7 +281,6 @@ class raw(object):
         logger.info('jcmt2caom2version    = %s', jcmt2caom2version)
         logger.info('tools4caom2version   = %s', tools4caom2version)
         logger.info('obsid = %s', self.obsid)
-        logger.info('schema = %s', self.schema)
         logger.info('outdir = %s', self.outdir)
         logger.info('checkmode = %s', self.checkmode)
 
@@ -1113,12 +1069,18 @@ class raw(object):
 
         try:
             self.logCommandLineSwitches()
-            with connection(self.userconfig) as self.conn:
-                self.ingest()
+
+            self.conn = ArcDB()
+
+            self.ingest()
+
             logger.info('DONE')
 
         except Exception as e:
             self.errors = True
             logger.exception('Error during ingestion')
+
+        finally:
+            self.conn.close()
 
         return not self.errors
