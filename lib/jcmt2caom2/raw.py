@@ -222,27 +222,6 @@ class raw(object):
         logger.info('outdir = %s', self.outdir)
         logger.info('checkmode = %s', self.checkmode)
 
-    # Some custom read queries for particular applications
-    def check_obsid(self):
-        """
-        Query the number of rows in COMMON matching obsid to check that
-        the observation actually exists.
-
-        Arguments:
-        <None>
-
-        Returns:
-        1 if the observation exists in COMMON else 0
-        """
-        sqlcmd = '\n'.join(['SELECT',
-                            '    count(obsid)',
-                            'FROM ' + self.jcmt_db + 'COMMON',
-                            'WHERE',
-                            '    obsid = "%s"' % (self.obsid,)])
-        count = self.conn.read(sqlcmd)[0][0]
-        logger.debug('query complete')
-        return count
-
     def get_proposal(self, project_id):
         """
         Get the PI name and proposal title for this project.
@@ -285,38 +264,6 @@ class raw(object):
             results['quality'] = quality(answer[0][0])
         logger.info('For %s JSA_QA = %s from ompobslog',
                     obsid, results['quality'].jsa_name())
-        return results
-
-    def get_files(self, obsid):
-        """
-        Get the list of files in this observations, grouped obsid_subsysnr
-        and sorted alphabetically.
-
-        Arguments:
-        obsid: the observation identifier for the observation
-        """
-        sqlcmd = '\n'.join([
-            'SELECT ',
-            '    obsid_subsysnr,',
-            '    file_id',
-            'FROM ' + self.jcmt_db + 'FILES',
-            'WHERE obsid="%s"' % (obsid,),
-            'ORDER BY obsid_subsysnr, file_id'])
-        answer = self.conn.read(sqlcmd)
-        logger.debug('query complete')
-
-        results = {}
-        if len(answer):
-            for i in range(len(answer)):
-                obsid_subsysnr = answer[i][0]
-                if obsid_subsysnr not in results:
-                    results[obsid_subsysnr] = []
-                results[obsid_subsysnr].append(answer[i][1])
-        else:
-            self.errors = True
-            raise CAOMError('No rows in ' + self.db + 'FILES for obsid = ' +
-                            obsid)
-
         return results
 
     def check_observation(self,
@@ -874,7 +821,7 @@ class raw(object):
         <none>
         """
         # Check that this is a valid observation
-        if not self.check_obsid():
+        if not self.conn.check_obsid(self.obsid):
             self.errors = True
             raise CAOMError('There is no observation with '
                              'obsid = %s' % (self.obsid,))
@@ -951,7 +898,10 @@ class raw(object):
             repository.remove(uri)
         else:
             # get the list of files for this observation
-            files = self.get_files(self.obsid)
+            files = self.conn.get_files(self.obsid)
+            if files is None:
+                self.errors = True
+                raise CAOMError('No rows in FILES for obsid = ' + self.obsid)
 
             with repository.process(uri) as wrapper:
                 wrapper.observation = self.build_observation(
