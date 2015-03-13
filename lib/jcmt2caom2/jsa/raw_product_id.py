@@ -11,13 +11,12 @@ from jcmt2caom2.jsa.product_id import product_id
 logger = logging.getLogger(__name__)
 
 
-def raw_product_id(backend, jcmt_db, obsid, conn):
+def raw_product_id(backend, obsid, conn):
     """
     Generates raw (observationID, productID) values for an observation.
 
     Arguments:
     backend: one of ACSIS, DAS, AOS-C, SCUBA-2
-    jcmt_db: prefix fot the database and schem where ACSIS, FILES are located
     obsid: observation identifier, primary key in COMMON table
     conn: connection to database
 
