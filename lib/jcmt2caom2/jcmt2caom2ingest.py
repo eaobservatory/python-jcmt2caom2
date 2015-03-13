@@ -51,7 +51,6 @@ from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.intent import intent
 from jcmt2caom2.jsa.product_id import product_id
-from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.target_name import target_name
 
 from jcmt2caom2.__version__ import version as jcmt2caom2version

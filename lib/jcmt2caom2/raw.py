@@ -860,7 +860,6 @@ class raw(object):
         # somewhat repetitive, but custom SQL is useful
         # get dictionary of productID's for each subsystem
         self.productID_dict = raw_product_id(backend,
-                                             'raw',
                                              self.jcmt_db,
                                              self.obsid,
                                              self.conn)
