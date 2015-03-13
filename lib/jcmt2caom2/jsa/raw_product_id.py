@@ -31,38 +31,9 @@ def raw_product_id(backend, jcmt_db, obsid, conn):
 
     else:
         subsysnr_dict = {}
-        if backend == 'ACSIS':
-            sqlcmd = '\n'.join([
-                     'SELECT a.subsysnr,',
-                     '       min(a.restfreq),',
-                     '       min(a.bwmode),',
-                     '       min(aa.subsysnr),',
-                     '       count(aa.subsysnr)',
-                     'FROM ' + jcmt_db + 'ACSIS a',
-                     '    INNER JOIN ' + jcmt_db + 'ACSIS aa',
-                     '        ON a.obsid=aa.obsid',
-                     '        AND a.restfreq=aa.restfreq',
-                     '        AND a.iffreq=aa.iffreq',
-                     '        AND a.ifchansp=aa.ifchansp',
-                     'WHERE a.obsid = "%s"' % (obsid,),
-                     'GROUP BY a.subsysnr'])
-        elif backend in ['DAS', 'AOS-C']:
-            sqlcmd = '\n'.join([
-                     'SELECT a.subsysnr,',
-                     '       a.restfreq,',
-                     '       a.bwmode,',
-                     '       a.specid,',
-                     '       count(aa.subsysnr)',
-                     'FROM ' + jcmt_db + 'ACSIS a',
-                     '    INNER JOIN ' + jcmt_db + 'ACSIS aa',
-                     '        ON a.obsid=aa.obsid',
-                     '        AND a.specid=aa.specid',
-                     'WHERE a.obsid = "%s"' % (obsid,),
-                     'GROUP BY a.subsysnr, a.restfreq, a.bwmode, a.specid'])
-        else:
-            raise CAOMError('backend = ' + backend + ' is not supported')
 
-        result = conn.read(sqlcmd)
+        result = conn.get_heterodyne_product_info(backend, obsid)
+
         if result:
             for subsysnr, restfreq, bwmode, specid, hybrid in result:
                 restfreqhz = 1.0e9 * float(restfreq)
