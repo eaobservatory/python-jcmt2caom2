@@ -807,16 +807,16 @@ class raw(object):
         Arguments:
         <none>
         """
-        # Check that this is a valid observation
-        if not self.conn.check_obsid(self.obsid):
-            self.errors = True
-            raise CAOMError('There is no observation with '
-                             'obsid = %s' % (self.obsid,))
 
+        # Check that this is a valid observation and
         # get the dictionary of common metadata
         common = self.conn.query_table('COMMON', self.obsid)
         if len(common):
             common = common[0]
+        else:
+            self.errors = True
+            raise CAOMError('There is no observation with '
+                            'obsid = %s' % (self.obsid,))
 
         # Append the proposal metadata
         proposal = self.get_proposal(common['project'])
