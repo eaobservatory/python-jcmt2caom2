@@ -247,21 +247,12 @@ class raw(object):
         a one-entry dictionary with the key 'quality' and a JSA quality
              as the value
         """
-        sqlcmd = '\n'.join([
-            'SELECT ',
-            '    isnull(commentstatus, 0)',
-            'FROM ' + self.omp_db + 'ompobslog',
-            'WHERE obsid="%s"' % (obsid,),
-            '    AND obsactive=1',
-            '    AND commentstatus <= %d' % (JCMT_QA.JUNK),
-            'GROUP BY obsid',
-            'HAVING commentdate=max(commentdate)'])
-        answer = self.conn.read(sqlcmd)
-        logger.debug('query complete')
+
+        status = self.conn.get_obsid_status(obsid)
 
         results = {'quality': quality(JCMT_QA.GOOD)}
-        if len(answer):
-            results['quality'] = quality(answer[0][0])
+        if status is not None:
+            results['quality'] = quality(status)
         logger.info('For %s JSA_QA = %s from ompobslog',
                     obsid, results['quality'].jsa_name())
         return results
