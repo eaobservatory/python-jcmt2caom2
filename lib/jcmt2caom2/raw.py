@@ -111,68 +111,6 @@ class raw(object):
     # Allowed values for backend names in ACSIS
     BACKENDS = ['ACSIS', 'SCUBA-2', 'DAS', 'AOSC']
 
-    # Fields to extract from COMMON
-    COMMON = ('atstart',
-              'backend',
-              'date_end',
-              'date_obs',
-              'elstart',
-              'humstart',
-              'inbeam',
-              'instrume',
-              'object',
-              'obsdec',
-              'obsdecbl',
-              'obsdecbr',
-              'obsdectl',
-              'obsdectr',
-              'obsid',
-              'obsgeo_x',
-              'obsgeo_y',
-              'obsgeo_z',
-              'obsnum',
-              'obsra',
-              'obsrabl',
-              'obsrabr',
-              'obsratl',
-              'obsratr',
-              'obs_type',
-              'project',
-              'release_date',
-              'sam_mode',
-              'scan_pat',
-              'seeingst',
-              'standard',
-              'survey',
-              'sw_mode',
-              'tau225st')
-
-    # Fields to extract from ACSIS
-    ACSIS = ('bwmode',
-             'freq_sig_lower',
-             'freq_sig_upper',
-             'freq_img_lower',
-             'freq_img_upper',
-             'ifchansp',
-             'obsid_subsysnr',
-             'molecule',
-             'obs_sb',
-             'restfreq',
-             'iffreq',
-             'ifchansp',
-             'sb_mode',
-             'ssysobs',
-             'ssyssrc',
-             'subsysnr',
-             'transiti',
-             'zsource')
-
-    # Fields to extract from SCUBA2
-    SCUBA2 = ('obsid_subsysnr',
-              'filter',
-              'wavelen',
-              'bandwid')
-
     MANDATORY = ('backend',
                  'instrume',
                  'obsgeo_x',
@@ -304,40 +242,6 @@ class raw(object):
         count = self.conn.read(sqlcmd)[0][0]
         logger.debug('query complete')
         return count
-
-    def query_table(self,
-                    table,
-                    columns):
-        """
-        Query a specified table in self.db for a set of columns.
-
-        Arguments:
-        table      the name of the table to query
-        columns    a list of column names in the table
-
-        Returns:
-        A list of dictionaries keyed on the column_name.
-        If a value is null, a default value will be returned in its place
-        that depends upon the data_type.
-        """
-        selection = ',\n'.join(['    ' + key
-                                for key in columns])
-        sqlcmd = '\n'.join(['SELECT',
-                            '%s' % (selection,),
-                            'FROM ' + table,
-                            'WHERE obsid = "%s"' % (self.obsid,)])
-
-        answer = self.conn.read(sqlcmd)
-        logger.debug('query complete')
-        rowlist = []
-        for row in answer:
-            rowdict = {}
-            for key, value in zip(columns, row):
-                rowdict[key] = value
-            rowlist.append(rowdict)
-        logger.info(repr(rowlist))
-
-        return rowlist
 
     def get_proposal(self, project_id):
         """
@@ -976,8 +880,7 @@ class raw(object):
                              'obsid = %s' % (self.obsid,))
 
         # get the dictionary of common metadata
-        common = self.query_table(self.jcmt_db + 'COMMON',
-                                  raw.COMMON)
+        common = self.conn.query_table('COMMON', self.obsid)
         if len(common):
             common = common[0]
 
@@ -994,8 +897,7 @@ class raw(object):
         # get a list of rows for the subsystems in this observation
         backend = common['backend']
         if backend in ['ACSIS', 'DAS', 'AOSC']:
-            subsystemlist = self.query_table(self.jcmt_db + 'ACSIS',
-                                             raw.ACSIS)
+            subsystemlist = self.conn.query_table('ACSIS', self.obsid)
             # Convert the list of rows into a dictionary
             subsystem = {}
             for row in subsystemlist:
@@ -1003,8 +905,7 @@ class raw(object):
                 subsystem[subsysnr] = row
 
         elif backend == 'SCUBA-2':
-            subsystemlist = self.query_table(self.jcmt_db + 'SCUBA2',
-                                             raw.SCUBA2)
+            subsystemlist = self.conn.query_table('SCUBA2', self.obsid)
             # Convert the list of rows into a dictionary
             subsystem = {}
             for row in subsystemlist:
