@@ -523,14 +523,15 @@ class raw(object):
             if productID not in observation.planes:
                 observation.planes.add(Plane(productID))
                 plane = observation.planes[productID]
-                # set the release dates
-                plane.meta_release = common['release_date']
-                plane.data_release = common['release_date']
 
-                # all JCMT raw data is in a non-FITS format
-                plane.calibration_level = CalibrationLevel.RAW_INSTRUMENT
             else:
                 plane = observation.planes[productID]
+
+            # set the release dates
+            plane.meta_release = common['release_date']
+            plane.data_release = common['release_date']
+            # all JCMT raw data is in a non-FITS format
+            plane.calibration_level = CalibrationLevel.RAW_INSTRUMENT
 
             # For JCMT raw data, all artifacts have the same WCS
             for jcmt_file_id in files[obsid_subsysnr]:
