@@ -89,7 +89,6 @@ class INGESTIBILITY(object):
     """
     GOOD = 0
     BAD = 1
-    JUNK = 2
 
 
 class raw(object):
@@ -265,7 +264,6 @@ class raw(object):
 
         Returns:
          0 if observation is OK
-         1 if observation is JUNK
         -1 if observation should be skipped
         """
         # -----------------------------------------------------------------
@@ -292,16 +290,6 @@ class raw(object):
                 'Observation %s is being skipped because obs_type = %s',
                 self.obsid, common['obs_type'])
             ingestibility = INGESTIBILITY.BAD
-
-        # JUNK status trumps BAD, because a JUNK observation must be removed
-        # from CAOM-2 if present, whereas a bad observation just cannot be
-        # ingested.
-        if common['quality'].jsa_value() == JSA_QA.JUNK:
-            self.junk = True
-            logger.warning('JUNK QUALITY ASSESSMENT for %s'
-                           ' prevents it from being ingested in CAOM-2',
-                           self.obsid)
-            ingestibility = INGESTIBILITY.JUNK
 
         # Check observation-level mandatory headers with restricted values
         # by creating the instrument keyword list
@@ -870,30 +858,23 @@ class raw(object):
             if ingestibility == INGESTIBILITY.GOOD:
                 logger.info('SUCCESS: Observation %s is ready for ingestion',
                             self.obsid)
-            # running in checkmode will NOT remove JUNK observations,
-            # and does NOT check whether they are currently in CAOM-2,
-            # but will report that they are junk.
             return
 
         repository = Repository()
 
         uri = 'caom:' + self.collection + '/' + common['obsid']
-        if ingestibility == INGESTIBILITY.JUNK:
-            logger.info('Remove non-ingestible observation %s', self.obsid)
-            repository.remove(uri)
-        else:
-            # get the list of files for this observation
-            files = self.conn.get_files(self.obsid)
-            if files is None:
-                self.errors = True
-                raise CAOMError('No rows in FILES for obsid = ' + self.obsid)
+        # get the list of files for this observation
+        files = self.conn.get_files(self.obsid)
+        if files is None:
+            self.errors = True
+            raise CAOMError('No rows in FILES for obsid = ' + self.obsid)
 
-            with repository.process(uri) as wrapper:
-                wrapper.observation = self.build_observation(
-                    wrapper.observation, common, subsystem, files)
+        with repository.process(uri) as wrapper:
+            wrapper.observation = self.build_observation(
+                wrapper.observation, common, subsystem, files)
 
-            logger.info('SUCCESS: Observation %s has been ingested',
-                        self.obsid)
+        logger.info('SUCCESS: Observation %s has been ingested',
+                    self.obsid)
 
     def run(self):
         """
