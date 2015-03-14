@@ -323,7 +323,7 @@ class raw(object):
                                                     keyword_dict)
 
         if someBad:
-            ingestibility = INGESTIBILITY.JUNK
+            ingestibility = INGESTIBILITY.BAD
             self.instrument_keywords = []
         else:
             self.instrument_keywords = keyword_list
