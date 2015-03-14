@@ -12,6 +12,7 @@ import traceback
 import vos
 
 from omp.db.part.arc import ArcDB
+from omp.obs.state import OMPState
 
 from caom2.caom2_simple_observation import SimpleObservation
 from caom2.caom2_enums import CalibrationLevel
@@ -54,10 +55,6 @@ from tools4caom2.utdate_string import utdate_string
 import tools4caom2.__version__
 
 from jcmt2caom2.project import get_project_pi_title
-
-from jcmt2caom2.jsa.quality import JCMT_QA
-from jcmt2caom2.jsa.quality import JSA_QA
-from jcmt2caom2.jsa.quality import quality
 
 from jcmt2caom2.jsa.intent import intent
 from jcmt2caom2.jsa.target_name import target_name
@@ -245,11 +242,13 @@ class raw(object):
 
         status = self.conn.get_obsid_status(obsid)
 
-        results = {'quality': quality(JCMT_QA.GOOD)}
+        results = {'quality': OMPState.GOOD}
         if status is not None:
-            results['quality'] = quality(status)
-        logger.info('For %s JSA_QA = %s from ompobslog',
-                    obsid, results['quality'].jsa_name())
+            if not OMPState.is_valid(status):
+                raise CAOMError('Invalid OMP status: {0}'.format(status))
+            results['quality'] = status
+        logger.info('For %s state = %s from ompobslog',
+                    obsid, OMPState.get_name(results['quality']))
         return results
 
     def check_observation(self,
