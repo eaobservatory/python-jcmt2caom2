@@ -263,8 +263,8 @@ class raw(object):
         subsystem   dictionary containing fields from ACSIS or SCUBA2
 
         Returns:
-         0 if observation is OK
-        -1 if observation should be skipped
+        INGESTIBILITY.GOOD if observation is OK
+        INGESTIBILITY.BAD  if observation should be skipped
         """
         # -----------------------------------------------------------------
         #  Validity checking for raw ACSIS and SCUBA-2 data
