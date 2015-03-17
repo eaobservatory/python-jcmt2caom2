@@ -15,8 +15,9 @@ from omp.db.part.arc import ArcDB
 from omp.obs.state import OMPState
 
 from caom2.caom2_simple_observation import SimpleObservation
-from caom2.caom2_enums import CalibrationLevel
-from caom2.caom2_enums import ObservationIntentType
+from caom2.caom2_data_quality import DataQuality
+from caom2.caom2_enums import CalibrationLevel, ObservationIntentType, \
+    ProductType, Quality, Status
 from caom2.caom2_energy_transition import EnergyTransition
 from caom2.caom2_environment import Environment
 from caom2.caom2_instrument import Instrument
@@ -26,6 +27,7 @@ from caom2.caom2_target_position import TargetPosition
 from caom2.caom2_telescope import Telescope
 from caom2.caom2_observation_uri import ObservationURI
 from caom2.caom2_plane import Plane
+from caom2.caom2_requirements import Requirements
 from caom2.caom2_artifact import Artifact
 from caom2.caom2_part import Part
 from caom2.caom2_chunk import Chunk
@@ -45,7 +47,6 @@ from caom2.wcs.caom2_coord_circle2d import CoordCircle2D
 from caom2.wcs.caom2_coord_range1d import CoordRange1D
 from caom2.wcs.caom2_coord_range2d import CoordRange2D
 from caom2.wcs.caom2_temporal_wcs import TemporalWCS
-from caom2.caom2_enums import ProductType
 
 from tools4caom2.error import CAOMError
 from tools4caom2.caom2repo_wrapper import Repository
@@ -344,6 +345,15 @@ class raw(object):
             observation = SimpleObservation(collection,
                                             observationID)
 
+        # Determine data quality metrics for this observation.
+        data_quality = DataQuality(Quality.JUNK) \
+            if OMPState.is_caom_junk(common['quality']) else None
+        requirement_status = Requirements(Status.FAIL) \
+            if OMPState.is_caom_fail(common['quality']) else None
+
+        # "Requirements" is an observation-level attribute, so fill it in now.
+        observation.requirements = requirement_status
+
         # Every ACSSIS and SCUBA2 observation has an obsnum in COMMON.
         observation.sequence_number = common['obsnum']
 
@@ -506,10 +516,13 @@ class raw(object):
         observation.telescope = telescope
 
         # Delete any existing raw planes, since we will construct
-        # new ones from scratch
+        # new ones from scratch.  For all other planes, update the
+        # "data quality" since this is a plane-level attribute.
         for productID in observation.planes:
             if productID[0:3] == 'raw':
                 del observation.planes[productID]
+            else:
+                observation.planes[productID].quality = data_quality
 
         # Use key for the numeric value of subsysnr here for brevity and
         # to distinguish it from the string representation that will be
@@ -533,6 +546,8 @@ class raw(object):
             plane.data_release = common['release_date']
             # all JCMT raw data is in a non-FITS format
             plane.calibration_level = CalibrationLevel.RAW_INSTRUMENT
+            # set the plane data quality
+            plane.quality = data_quality
 
             # For JCMT raw data, all artifacts have the same WCS
             for jcmt_file_id in files[obsid_subsysnr]:
