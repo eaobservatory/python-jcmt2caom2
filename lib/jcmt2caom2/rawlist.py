@@ -1,5 +1,4 @@
 import argparse
-import commands
 from ConfigParser import SafeConfigParser
 import datetime
 import logging
