@@ -1488,22 +1488,7 @@ class jcmt2caom2ingest(caom2ingest):
                             if chunk.position:
                                 # if the position WCS exists, add a time axis
                                 time_axis = CoordAxis1D(Axis('TIME', 'd'))
-#                                if len(thisCustom) == 1:
-#                                    # time range
-#                                    for key in thisCustom:
-#                                        date_start, date_end = thisCustom[key]
-#                                        mjdstart = utc2mjd(date_start)
-#                                        mjdend = utc2mjd(date_end)
-#                                        self.log.console(
-#                                            'time range = %f, %f' %
-#                                            (mjdstart, mjdend),
-#                                            logging.DEBUG)
-#
-#                                        time_axis.range = CoordRange1D(
-#                                            RefCoord(0.5, mjdstart),
-#                                            RefCoord(1.5, mjdend))
-#
-#                                elif len(thisCustom) > 1:
+
                                 if len(thisCustom):
                                     # time
                                     time_axis.bounds = CoordBounds1D()
