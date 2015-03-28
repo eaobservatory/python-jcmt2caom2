@@ -1576,26 +1576,13 @@ class caom2ingest(object):
         pass
 
     # ***********************************************************************
-    # Standard cleanup method, which can be customized in derived classes
-    # ***********************************************************************
-    def cleanup(self):
-        """
-        Cleanup actions to be done after closing the log.
-
-        Arguments:
-        <none>
-        """
-        pass
-
-    # ***********************************************************************
     # Run the program
     # ***********************************************************************
     def run(self):
         """
         Generic method to run the checks or persistence
 
-        Arguments:
-        <none>
+        Returns True on success, False otherwise.
         """
         # metadict is the fundamental structure in the program, sorting
         # files by observation, plane and file, and holding all the relevant
@@ -1642,8 +1629,4 @@ class caom2ingest(object):
             # Log this previously uncaught error, but let it pass
             logger.exception('Error during ingestion')
 
-        self.cleanup()
-        if self.errors:
-            sys.exit(1)
-        else:
-            sys.exit(0)
+        return not self.errors

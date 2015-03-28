@@ -1637,9 +1637,14 @@ class jcmt2caom2ingest(caom2ingest):
                                     wrapper.observation = None
 
     def run(self):
+        """Perform ingestion.
+
+        Returns True on success, False otherwise.
+        """
+
         try:
             self.conn = ArcDB()
-            caom2ingest.run(self)
+            return caom2ingest.run(self)
 
         finally:
             self.conn.close()
