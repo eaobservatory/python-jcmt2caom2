@@ -751,8 +751,10 @@ class jcmt2caom2ingest(caom2ingest):
                                        '%f' % (header['ELSTART'],))
 
             if is_defined('TAU225ST', header):
+                # Some old data appears to have TAU225ST in string form
+                # so convert to float in order to handle that data.
                 self.add_to_plane_dict('environment.tau',
-                                       '%f' % (header['TAU225ST'],))
+                                       '%f' % (float(header['TAU225ST']),))
                 self.add_to_plane_dict('environment.wavelengthTau',
                                        jcmt2caom2ingest.lambda_csotau)
 
