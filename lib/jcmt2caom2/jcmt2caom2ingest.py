@@ -43,10 +43,9 @@ from tools4caom2.error import CAOMError
 from tools4caom2.timezone import UTC
 from tools4caom2.mjd import utc2mjd
 from tools4caom2.utdate_string import UTDATE_REGEX
-from tools4caom2.caom2ingest import caom2ingest
 
+from jcmt2caom2.caom2ingest import caom2ingest
 from jcmt2caom2.project import get_project_pi_title
-
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.intent import intent
