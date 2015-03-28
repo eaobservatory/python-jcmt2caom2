@@ -3,8 +3,6 @@
 #################################
 import re
 
-from jcmt2caom2.__version__ import version
-
 
 def target_name(object_name):
     """

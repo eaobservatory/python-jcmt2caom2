@@ -8,9 +8,9 @@ import subprocess
 import sys
 import urllib2
 
+from tools4caom2.__version__ import version as tools4caom2version
 from tools4caom2.caom2repo_wrapper import Repository
 
-from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 __doc__ = """

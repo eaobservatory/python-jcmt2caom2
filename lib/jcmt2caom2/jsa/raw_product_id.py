@@ -5,7 +5,6 @@ import logging
 
 from tools4caom2.error import CAOMError
 
-from jcmt2caom2.__version__ import version
 from jcmt2caom2.jsa.product_id import product_id
 
 logger = logging.getLogger(__name__)

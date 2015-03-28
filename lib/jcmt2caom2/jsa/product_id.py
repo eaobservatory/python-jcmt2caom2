@@ -3,8 +3,6 @@
 #################################
 from tools4caom2.error import CAOMError
 
-from jcmt2caom2.__version__ import version
-
 
 def product_id(backend,
                product=None,

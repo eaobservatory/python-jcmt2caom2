@@ -1,19 +1,14 @@
 import argparse
-from ConfigParser import SafeConfigParser
-import datetime
 import logging
 import os
-import os.path
 import re
-import stat
 import subprocess
 import sys
-import traceback
 
+from tools4caom2.__version__ import version as tools4caom2version
 from tools4caom2.error import CAOMError
 from tools4caom2.utdate_string import utdate_string
 
-from tools4caom2.__version__ import version as tools4caom2version
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 logger = logging.getLogger(__name__)

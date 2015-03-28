@@ -1,8 +1,6 @@
 #!/usr/bin/env python2.7
 from __future__ import absolute_import
 
-import os
-import tempfile
 import unittest
 
 from jcmt2caom2.jsa.intent import intent

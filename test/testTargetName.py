@@ -1,11 +1,9 @@
 #!/usr/bin/env python2.7
 from __future__ import absolute_import
 
-import re
 import unittest
 
 from jcmt2caom2.jsa.target_name import target_name
-from caom2.caom2_enums import ObservationIntentType as OIT
 
 
 class testTargetName(unittest.TestCase):

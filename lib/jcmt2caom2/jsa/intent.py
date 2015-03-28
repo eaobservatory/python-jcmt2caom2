@@ -3,8 +3,6 @@
 #################################
 from caom2.caom2_enums import ObservationIntentType
 
-from jcmt2caom2.__version__ import version
-
 
 def intent(obs_type, backend):
     """

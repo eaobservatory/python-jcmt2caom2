@@ -4,8 +4,6 @@
 import logging
 import re
 
-from jcmt2caom2.__version__ import version
-
 logger = logging.getLogger(__name__)
 
 # global dictionary of permitted combinations of values by backend

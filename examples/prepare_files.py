@@ -1,23 +1,16 @@
 #!/usr/bin/env python2.7
 
 import argparse
-from collections import OrderedDict
-from ConfigParser import SafeConfigParser
 import csv
-from datetime import datetime
 import logging
-import pyfits
 import os.path
+import pyfits
 import re
 import shutil
 import sys
 
 from tools4caom2.error import CAOMError
-from tools4caom2.utdate_string import utdate_string
 from tools4caom2.util import configure_logger
-
-from tools4caom2.__version__ import version as tools4caom2version
-from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 logger = logging.getLogger('prepare_files')
 

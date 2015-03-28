@@ -1,16 +1,12 @@
 import argparse
 from ConfigParser import SafeConfigParser
-from datetime import datetime
-from datetime import timedelta
 import logging
 import os
-import os.path
 import re
 import sys
 
 import vos
 
-from tools4caom2.utdate_string import utdate_string
 from tools4caom2.utdate_string import UTDATE_REGEX
 
 from tools4caom2.__version__ import version as tools4caom2version

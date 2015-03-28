@@ -1,72 +1,59 @@
 __author__ = "Russell O. Redman"
 
 import argparse
-import errno
 import logging
 import math
 import os.path
 import re
-import shutil
 import sys
-import traceback
-import vos
 
 from omp.db.part.arc import ArcDB
 from omp.obs.state import OMPState
 
-from caom2.caom2_simple_observation import SimpleObservation
+from caom2.caom2_artifact import Artifact
+from caom2.caom2_chunk import Chunk
 from caom2.caom2_data_quality import DataQuality
+from caom2.caom2_energy_transition import EnergyTransition
 from caom2.caom2_enums import CalibrationLevel, ObservationIntentType, \
     ProductType, Quality, Status
-from caom2.caom2_energy_transition import EnergyTransition
 from caom2.caom2_environment import Environment
 from caom2.caom2_instrument import Instrument
+from caom2.caom2_part import Part
+from caom2.caom2_plane import Plane
 from caom2.caom2_proposal import Proposal
+from caom2.caom2_requirements import Requirements
+from caom2.caom2_simple_observation import SimpleObservation
 from caom2.caom2_target import Target
 from caom2.caom2_target_position import TargetPosition
 from caom2.caom2_telescope import Telescope
-from caom2.caom2_observation_uri import ObservationURI
-from caom2.caom2_plane import Plane
-from caom2.caom2_requirements import Requirements
-from caom2.caom2_artifact import Artifact
-from caom2.caom2_part import Part
-from caom2.caom2_chunk import Chunk
 from caom2.types.caom2_point import Point
 from caom2.wcs.caom2_axis import Axis
-from caom2.wcs.caom2_spatial_wcs import SpatialWCS
-from caom2.wcs.caom2_coord_axis2d import CoordAxis2D
-from caom2.wcs.caom2_dimension2d import Dimension2D
-from caom2.wcs.caom2_coord_polygon2d import CoordPolygon2D
-from caom2.wcs.caom2_value_coord2d import ValueCoord2D
-from caom2.wcs.caom2_ref_coord import RefCoord
-from caom2.wcs.caom2_spectral_wcs import SpectralWCS
 from caom2.wcs.caom2_coord_axis1d import CoordAxis1D
-from caom2.wcs.caom2_coord_error import CoordError
+from caom2.wcs.caom2_coord_axis2d import CoordAxis2D
 from caom2.wcs.caom2_coord_bounds1d import CoordBounds1D
-from caom2.wcs.caom2_coord_circle2d import CoordCircle2D
+from caom2.wcs.caom2_coord_polygon2d import CoordPolygon2D
 from caom2.wcs.caom2_coord_range1d import CoordRange1D
-from caom2.wcs.caom2_coord_range2d import CoordRange2D
+from caom2.wcs.caom2_ref_coord import RefCoord
+from caom2.wcs.caom2_spatial_wcs import SpatialWCS
+from caom2.wcs.caom2_spectral_wcs import SpectralWCS
 from caom2.wcs.caom2_temporal_wcs import TemporalWCS
-
-from tools4caom2.error import CAOMError
-from tools4caom2.caom2repo_wrapper import Repository
-from tools4caom2.mjd import utc2mjd
-from tools4caom2.tapclient import tapclient
-from tools4caom2.utdate_string import utdate_string
-import tools4caom2.__version__
-
-from jcmt2caom2.project import get_project_pi_title
-
-from jcmt2caom2.jsa.intent import intent
-from jcmt2caom2.jsa.target_name import target_name
-from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
-from jcmt2caom2.jsa.instrument_name import instrument_name
-from jcmt2caom2.jsa.raw_product_id import raw_product_id
-from jcmt2caom2.jsa.twod import TwoD
-from jcmt2caom2.jsa.threed import ThreeD
+from caom2.wcs.caom2_value_coord2d import ValueCoord2D
 
 from tools4caom2.__version__ import version as tools4caom2version
+from tools4caom2.caom2repo_wrapper import Repository
+from tools4caom2.error import CAOMError
+from tools4caom2.mjd import utc2mjd
+from tools4caom2.tapclient import tapclient
+
 from jcmt2caom2.__version__ import version as jcmt2caom2version
+from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
+from jcmt2caom2.jsa.instrument_name import instrument_name
+from jcmt2caom2.jsa.intent import intent
+from jcmt2caom2.jsa.raw_product_id import raw_product_id
+from jcmt2caom2.jsa.target_name import target_name
+from jcmt2caom2.jsa.threed import ThreeD
+from jcmt2caom2.jsa.twod import TwoD
+from jcmt2caom2.project import get_project_pi_title
 
 __doc__ = """
 The raw class immplements methods to collect metadata from the database

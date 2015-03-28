@@ -6,21 +6,12 @@ from datetime import datetime
 import logging
 import os.path
 import re
-import shutil
 import sys
-import traceback
-
-from caom2.caom2_observation import Observation
-from caom2.caom2_observation_uri import ObservationURI
-from caom2.caom2_plane import Plane
-
-from tools4caom2.caom2repo_wrapper import Repository
-from tools4caom2.timezone import UTC
-from tools4caom2.tapclient import tapclient
-from tools4caom2.utdate_string import utdate_string
-import tools4caom2.__version__
 
 from tools4caom2.__version__ import version as tools4caom2version
+from tools4caom2.caom2repo_wrapper import Repository
+from tools4caom2.tapclient import tapclient
+
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
 __doc__ = """

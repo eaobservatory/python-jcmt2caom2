@@ -2,8 +2,6 @@
 # Import required Python modules
 #################################
 
-from jcmt2caom2.__version__ import version
-
 
 def obs_type(jcmt_obs_type, sam_mode):
     """
