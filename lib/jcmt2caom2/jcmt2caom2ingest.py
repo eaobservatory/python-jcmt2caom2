@@ -1023,19 +1023,17 @@ class jcmt2caom2ingest(object):
         local: True if the file is already on the disk
 
         The structure of metadict is a nested set of OrderedDict's and sets.
-            [collection]
-                [observationID]
-                    ['memberset']
-                    [productID]
-                        ['uri_dict']
-                        ['inputset']
-                        ['fileset']
-                        ['plane_dict']
-                        [fitsuri]
-                            ['custom']
+            [observationID]
+                ['memberset']
+                [productID]
+                    ['uri_dict']
+                    ['inputset']
+                    ['fileset']
+                    ['plane_dict']
+                    [fitsuri]
+                        ['custom']
         where:
-            - The metadict is an OrderedDict of collections.
-            - Each collection is an OrderedDict of observations.
+            - The metadict is an OrderedDict of observations.
             - Each observation is an OrderedDict of planes.
             - Each observation also contains an element called 'memberset'
               holding the set of members for the observation, which will be
@@ -1106,13 +1104,9 @@ class jcmt2caom2ingest(object):
             # ****************************************************************
             # Build the dictionary structure
             # ****************************************************************
-            if self.collection not in self.metadict:
-                self.metadict[self.collection] = OrderedDict()
-            thisCollection = self.metadict[self.collection]
-
-            if self.observationID not in thisCollection:
-                thisCollection[self.observationID] = OrderedDict()
-            thisObservation = thisCollection[self.observationID]
+            if self.observationID not in self.metadict:
+                self.metadict[self.observationID] = OrderedDict()
+            thisObservation = self.metadict[self.observationID]
 
             # ****************************************************************
             # If memberset is not empty, the observation is a composite.
@@ -2444,27 +2438,25 @@ class jcmt2caom2ingest(object):
         build the list of provenance input URIs for each output plane,
         caching results to save time in the TAP queries.
         """
-        for coll in self.metadict:
-            for obs in self.metadict[coll]:
-                for prod in self.metadict[coll][obs]:
-                    if prod != 'memberset':
-                        thisPlane = self.metadict[coll][obs][prod]
-                        planeURI = self.planeURI(coll, obs, prod)
+        for obs in self.metadict:
+            for prod in self.metadict[obs]:
+                if prod != 'memberset':
+                    thisPlane = self.metadict[obs][prod]
+                    planeURI = self.planeURI(self.collection, obs, prod)
 
-                        for filename in thisPlane['fileset']:
-                            file_id = self.make_file_id(filename)
-                            inputURI = self.lookup_file_id(filename,
-                                                           file_id)
-                            if (inputURI and
-                                    inputURI.uri not in thisPlane['inputset']):
+                    for filename in thisPlane['fileset']:
+                        file_id = self.make_file_id(filename)
+                        inputURI = self.lookup_file_id(filename,
+                                                       file_id)
+                        if (inputURI and
+                                inputURI.uri not in thisPlane['inputset']):
 
-                                thisPlane['inputset'].add(inputURI)
-                                logger.info('add %s to inputset for %s',
-                                            inputURI.uri, planeURI.uri)
+                            thisPlane['inputset'].add(inputURI)
+                            logger.info('add %s to inputset for %s',
+                                        inputURI.uri, planeURI.uri)
 
     def build_fitsuri_custom(self,
                              observation,
-                             collection,
                              observationID,
                              planeID,
                              fitsuri):
@@ -2474,8 +2466,7 @@ class jcmt2caom2ingest(object):
         OBSID for simple observations or list of OBSn values for composite
         observations.
         """
-        thisCustom = \
-            self.metadict[collection][observationID][planeID][fitsuri]['custom']
+        thisCustom = self.metadict[observationID][planeID][fitsuri]['custom']
         if thisCustom:
             # if this dictionary is empty,skip processing
             logger.debug('custom processing for %s', fitsuri)
@@ -2538,7 +2529,6 @@ class jcmt2caom2ingest(object):
 
     def build_plane_custom(self,
                            observation,
-                           collection,
                            observationID,
                            productID):
         """
@@ -2549,21 +2539,20 @@ class jcmt2caom2ingest(object):
 
         Arguments:
         observation: CAOM-2 observation object to be updated
-        collection: current collection
         observationID: current observationID
         productID: current productID NOT USED in this routine
         """
-        if collection in self.remove_dict:
-            if observationID in self.remove_dict[collection]:
+        if self.collection in self.remove_dict:
+            if observationID in self.remove_dict[self.collection]:
                 for prod in observation.planes.keys():
                     # logic is, this collection/observation/plane used to be
                     # genrated by this recipe instance, but is not part of the
                     # current ingestion and so is obsolete.
-                    if prod in self.remove_dict[collection][observationID] and \
-                            self.remove_dict[collection][observationID][prod] and \
-                            prod not in self.metadict[collection][observationID]:
+                    if prod in self.remove_dict[self.collection][observationID] and \
+                            self.remove_dict[self.collection][observationID][prod] and \
+                            prod not in self.metadict[observationID]:
 
-                        uri = self.planeURI(collection,
+                        uri = self.planeURI(self.collection,
                                             observationID,
                                             prod)
                         self.warnings = True
@@ -2572,11 +2561,10 @@ class jcmt2caom2ingest(object):
 
                         if not self.test:
                             del observation.planes[prod]
-                        del self.remove_dict[collection][observationID][prod]
+                        del self.remove_dict[self.collection][observationID][prod]
 
     def build_observation_custom(self,
                                  observation,
-                                 collection,
                                  observationID):
         """
         Implement the cleanup of collections, observations, and planes that are
@@ -2588,7 +2576,6 @@ class jcmt2caom2ingest(object):
 
         Arguments:
         observation: CAOM-2 observation object NOT USED in this routine
-        collection: current collection NOT USED in this routine
         observationID: current observationID NOT USED in this routine
         """
         # log the contents of remove_dict
@@ -2600,7 +2587,7 @@ class jcmt2caom2ingest(object):
                                 self.remove_dict[coll][obsid][prodid])
 
         for coll in self.remove_dict:
-            if coll not in self.metadict:
+            if coll != self.collection:
                 # Nothing in the existing collection still exists
                 for obsid in self.remove_dict[coll].keys():
                     uri = self.observationURI(coll, obsid)
@@ -2613,7 +2600,7 @@ class jcmt2caom2ingest(object):
             else:
                 for obsid in self.remove_dict[coll].keys():
                     uri = self.observationURI(coll, obsid)
-                    if obsid not in self.metadict[coll]:
+                    if obsid not in self.metadict:
                         # Delete the whole observation or just some planes?
                         same = 1
                         for prodid in self.remove_dict[coll][obsid]:
@@ -2703,13 +2690,12 @@ class jcmt2caom2ingest(object):
             raise CAOMError('storemethod = ' + self.storemethod +
                             'has not been implemented')
 
-    def prepare_override_info(self, collection, observationID, productID):
+    def prepare_override_info(self, observationID, productID):
         """
         Prepare the information required in override files for a plane specified
         by the collection, observationID and productID.
 
         Arguments:
-        collection : the collection containing observationID
         observationID : the observationID containing productID
         productID : productID for this plane
 
@@ -2717,7 +2703,7 @@ class jcmt2caom2ingest(object):
         A tuple (general, section) containing the global and URI-specific
         parts of the override information.
         """
-        thisObservation = self.metadict[collection][observationID]
+        thisObservation = self.metadict[observationID]
         thisPlane = thisObservation[productID]
 
         sections = OrderedDict()
@@ -2797,105 +2783,102 @@ class jcmt2caom2ingest(object):
         <none>
         """
 
-        for collection in self.metadict:
-            thisCollection = self.metadict[collection]
-            for observationID in thisCollection:
-                obsuri = self.observationURI(collection,
-                                             observationID)
-                with self.repository.process(obsuri) as wrapper:
-                    if wrapper.observation is not None:
-                        self.remove_excess_parts(wrapper.observation)
+        for observationID in self.metadict:
+            thisObservation = self.metadict[observationID]
 
-                    thisObservation = thisCollection[observationID]
-                    for productID in thisObservation:
-                        if productID != 'memberset':
-                            thisPlane = thisObservation[productID]
+            obsuri = self.observationURI(self.collection,
+                                         observationID)
 
-                            logger.info('PROGRESS ingesting collection="%s"  '
-                                        'observationID="%s" productID="%s"',
-                                        collection, observationID, productID)
+            with self.repository.process(obsuri) as wrapper:
+                if wrapper.observation is not None:
+                    self.remove_excess_parts(wrapper.observation)
 
-                            self.replace_members(thisObservation,
-                                                 thisPlane)
+                for productID in thisObservation:
+                    if productID != 'memberset':
+                        thisPlane = thisObservation[productID]
 
-                            self.replace_inputs(thisObservation,
-                                                thisPlane)
+                        logger.info('PROGRESS ingesting collection="%s"  '
+                                    'observationID="%s" productID="%s"',
+                                    self.collection, observationID, productID)
 
-                            override = self.prepare_override_info(
-                                collection, observationID, productID)
+                        self.replace_members(thisObservation,
+                                             thisPlane)
 
-                            # *******************************************
-                            # Run fits2caom2
-                            # *******************************************
-                            urilist = sorted(thisPlane['uri_dict'].keys())
-                            if urilist:
-                                if self.local:
-                                    filepathlist = [thisPlane['uri_dict'][u]
-                                                    for u in urilist]
-                                else:
-                                    filepathlist = None
+                        self.replace_inputs(thisObservation,
+                                            thisPlane)
+
+                        override = self.prepare_override_info(
+                            observationID, productID)
+
+                        # *******************************************
+                        # Run fits2caom2
+                        # *******************************************
+                        urilist = sorted(thisPlane['uri_dict'].keys())
+                        if urilist:
+                            if self.local:
+                                filepathlist = [thisPlane['uri_dict'][u]
+                                                for u in urilist]
                             else:
-                                logger.error(
-                                    'for %s/%s/%s, uri_dict is empty so '
-                                    'there is nothing to ingest',
-                                    collection, observationID, productID)
-                                raise CAOMError('Nothing to ingest')
+                                filepathlist = None
+                        else:
+                            logger.error(
+                                'for %s/%s/%s, uri_dict is empty so '
+                                'there is nothing to ingest',
+                                self.collection, observationID, productID)
+                            raise CAOMError('Nothing to ingest')
 
-                            arg = thisPlane.get('fits2caom2_arg', None)
+                        arg = thisPlane.get('fits2caom2_arg', None)
 
-                            try:
-                                wrapper.observation = run_fits2caom2(
-                                    collection=collection,
-                                    observationID=observationID,
-                                    productID=productID,
-                                    observation=wrapper.observation,
-                                    override_info=override,
-                                    file_uris=urilist,
-                                    local_files=filepathlist,
-                                    workdir=self.workdir,
-                                    config_file=self.config,
-                                    default_file=self.default,
-                                    caom2_reader=self.repository.reader,
-                                    caom2_writer=self.repository.writer,
-                                    arg=arg,
-                                    debug=self.debug,
-                                    big=self.big,
-                                    dry_run=self.test)
-                                logger.info(
-                                    'INGESTED: observationID=%s productID="%s"',
-                                    observationID, productID)
+                        try:
+                            wrapper.observation = run_fits2caom2(
+                                collection=self.collection,
+                                observationID=observationID,
+                                productID=productID,
+                                observation=wrapper.observation,
+                                override_info=override,
+                                file_uris=urilist,
+                                local_files=filepathlist,
+                                workdir=self.workdir,
+                                config_file=self.config,
+                                default_file=self.default,
+                                caom2_reader=self.repository.reader,
+                                caom2_writer=self.repository.writer,
+                                arg=arg,
+                                debug=self.debug,
+                                big=self.big,
+                                dry_run=self.test)
+                            logger.info(
+                                'INGESTED: observationID=%s productID="%s"',
+                                observationID, productID)
 
-                            except CAOMError:
-                                # Transitional code: before run_fits2caom2 was
-                                # extracted from this class, it set
-                                # self.errors and raised this exception.
-                                # TODO: remove self.errors and just use
-                                # exception handling.
-                                self.errors = True
-                                raise
+                        except CAOMError:
+                            # Transitional code: before run_fits2caom2 was
+                            # extracted from this class, it set
+                            # self.errors and raised this exception.
+                            # TODO: remove self.errors and just use
+                            # exception handling.
+                            self.errors = True
+                            raise
 
-                            for fitsuri in thisPlane:
-                                if fitsuri not in ('plane_dict',
-                                                   'uri_dict',
-                                                   'inputset',
-                                                   'fileset'):
+                        for fitsuri in thisPlane:
+                            if fitsuri not in ('plane_dict',
+                                               'uri_dict',
+                                               'inputset',
+                                               'fileset'):
 
-                                    self.build_fitsuri_custom(wrapper.observation,
-                                                              collection,
-                                                              observationID,
-                                                              productID,
-                                                              fitsuri)
+                                self.build_fitsuri_custom(wrapper.observation,
+                                                          observationID,
+                                                          productID,
+                                                          fitsuri)
 
-                            self.build_plane_custom(wrapper.observation,
-                                                    collection,
-                                                    observationID,
-                                                    productID)
+                        self.build_plane_custom(wrapper.observation,
+                                                observationID,
+                                                productID)
 
-                    self.build_observation_custom(wrapper.observation,
-                                                  collection,
-                                                  observationID)
+                self.build_observation_custom(wrapper.observation,
+                                              observationID)
 
-                logger.info('SUCCESS observationID="%s"', observationID)
+            logger.info('SUCCESS observationID="%s"', observationID)
 
     def remove_excess_parts(self, observation, excess_parts=50):
         """
