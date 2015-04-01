@@ -1232,13 +1232,13 @@ class jcmt2caom2ingest(object):
             if result:
                 for coll, obsid, prodid, run in result:
                     this_runID = run
-                    eq = (1 if this_runID == run_id else 0)
+                    eq = (this_runID == run_id)
                     # If this is a "new" JAC processing job number, check also
                     # whether the file came from a previous version of the job
                     # at CADC.
                     if run_id in self.recipe_instance_mapping:
                         if this_runID == self.recipe_instance_mapping[run_id]:
-                            eq = 1
+                            eq = True
                     # Ignore entries in other collections
                     if coll == self.collection:
                         if obsid not in self.remove_dict:
@@ -2586,10 +2586,7 @@ class jcmt2caom2ingest(object):
             uri = self.observationURI(self.collection, obsid)
             if obsid not in self.metadict:
                 # Delete the whole observation or just some planes?
-                same = 1
-                for prodid in self.remove_dict[obsid]:
-                    same *= self.remove_dict[obsid][prodid]
-                if same:
+                if all(self.remove_dict[obsid].values()):
                     # all planes come from the same recipe instance
                     # so delete the whole observation
                     self.warnings = True
