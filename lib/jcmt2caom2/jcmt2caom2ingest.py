@@ -581,8 +581,6 @@ class jcmt2caom2ingest(object):
         if self.args.ingest:
             self.ingest = self.args.ingest
 
-        self.collection = self.args.collection
-
     # ************************************************************************
     # Include the custom command line switch in the log
     # ************************************************************************
