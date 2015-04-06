@@ -518,6 +518,9 @@ class raw(object):
             productID = self.productID_dict[str(key)]
             obsid_subsysnr = subsystem[key]['obsid_subsysnr']
 
+            logger.debug('Processing subsystem %s: %s, %s',
+                         key, obsid_subsysnr, productID)
+
             # This plane might already have been created in a hybrid-mode
             # observation, use it if it exists, but remove existing artifacts.
             if productID not in observation.planes:
