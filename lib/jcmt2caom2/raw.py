@@ -522,14 +522,13 @@ class raw(object):
                          key, obsid_subsysnr, productID)
 
             # This plane might already have been created in a hybrid-mode
-            # observation, use it if it exists, but remove existing artifacts.
+            # observation, use it if it exists
             if productID not in observation.planes:
                 observation.planes.add(Plane(productID))
                 plane = observation.planes[productID]
 
             else:
                 plane = observation.planes[productID]
-                plane.artifacts.clear()
 
             # set the release dates
             plane.meta_release = common['release_date']
