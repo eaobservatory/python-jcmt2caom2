@@ -698,7 +698,7 @@ class jcmt2caom2ingest(object):
                                       self.archive,
                                       self.ingest,
                                       self.workdir,
-                                      self.dew,
+                                      self.dew.validation,
                                       self.vosclient,
                                       self.data_web,
                                       self.make_file_id))
