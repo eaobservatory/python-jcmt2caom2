@@ -77,9 +77,9 @@ import datetime
 import logging
 import os
 try:
-    from astropy.io import fits as pyfits
+    from astropy.io import fits
 except:
-    import pyfits
+    import pyfits as fits
 import re
 import shutil
 import subprocess
@@ -139,7 +139,7 @@ def is_defined(key, header):
     prepackaged tests in delayed_error_warn.  Use the error() or warn() methods
     from that package to report errors and warnings that affect ingestion.
     """
-    return (key in header and header[key] != pyfits.card.UNDEFINED)
+    return (key in header and header[key] != fits.card.UNDEFINED)
 
 
 def is_blank(key, header):
@@ -148,7 +148,7 @@ def is_blank(key, header):
     This is useful for optional headers whose presence or absence acts as a
     flag for some condition.
     """
-    return (key in header and header[key] == pyfits.card.UNDEFINED)
+    return (key in header and header[key] == fits.card.UNDEFINED)
 
 
 def read_recipe_instance_mapping():
@@ -779,7 +779,7 @@ class jcmt2caom2ingest(object):
         # ingested along with regular FITS files.
         if self.dew.namecheck(filepath, report=False):
             try:
-                with closing(pyfits.open(filepath, mode='readonly')) as f:
+                with closing(fits.open(filepath, mode='readonly')) as f:
                     head = f[0].header
                     self.artifact_part_count[self.fitsfileURI(
                         self.archive, file_id)] = len(f)

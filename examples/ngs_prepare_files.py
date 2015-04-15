@@ -3,7 +3,7 @@
 import argparse
 import logging
 import os.path
-import pyfits
+from astropy.io import fits
 import re
 import shutil
 import subprocess
@@ -147,7 +147,7 @@ def rewrite_fits(insdf, outfits, project_name, dprcinst, workdir, tap):
         logger.error('ndf2fits command failed: ' + e.output)
         raise CAOMError('ndf2fits command failure')
 
-    hdulist = pyfits.open(outfits, mode='update')
+    hdulist = fits.open(outfits, mode='update')
     head = hdulist[0].header
 
     # Gather all the modified headers into headerdict, then update them in

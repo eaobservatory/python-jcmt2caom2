@@ -4,7 +4,7 @@ import argparse
 import csv
 import logging
 import os.path
-import pyfits
+from astropy.io import fits
 import re
 import shutil
 import sys
@@ -19,7 +19,7 @@ def rewrite_fits(infits, outfits, headerdict):
     """
     Customize this routine to suit the needs of your data.
     """
-    hdulist = pyfits.open(infits)
+    hdulist = fits.open(infits)
     hdu = hdulist[0].header
 
     # Uncomment lines below as required and supply an algorithmic
