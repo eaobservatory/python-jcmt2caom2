@@ -6,7 +6,6 @@ import os.path
 import re
 import subprocess
 import sys
-import urllib2
 
 from tools4caom2.__version__ import version as tools4caom2version
 from tools4caom2.caom2repo_wrapper import Repository
@@ -19,8 +18,8 @@ aspect of the JCMT ingestion process.  It is important to be able to ingest
 without error every memeber on the integration test set to demonstrate the
 correct behaviour on the ingestion software.
 
-The members of the test set are documented at:
-https://wiki.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/caom2/index.php/IntegrationTestSet
+The members of the test set are documented in the file:
+data/integration_tests.html
 """
 
 logger = logging.getLogger(__name__)
@@ -95,46 +94,45 @@ class integrationtestset(object):
 
     def read_integrationtestset(self):
         """
-        Read the integration test set from the wiki page
+        Read the integration test set from the HTML file.
         """
-        ITS = urllib2.urlopen(
-            'https://wiki.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/caom2/index.php/'
-            'IntegrationTestSet')
+
         title = ''
         criterion = 0
 
-        for line in ITS:
-            mt = re.match(r'^<h3>\s*<span[^>]*>([^<]+)(<.*)?$', line)
-            if mt:
-                title = mt.group(1)
-            if title not in self.testset:
-                self.testset[title] = {}
-                logger.info('TITLE = ' + title)
-                criterion = 0
+        with open('data/integration_tests.html', 'r') as f:
+            for line in f:
+                mt = re.match(r'^<h3>\s*<span[^>]*>([^<]+)(<.*)?$', line)
+                if mt:
+                    title = mt.group(1)
+                if title not in self.testset:
+                    self.testset[title] = {}
+                    logger.info('TITLE = ' + title)
+                    criterion = 0
 
-            mc = re.match(r'^[^#]*# CRITERIA:\s+(.*)$', line)
-            if mc:
-                criterion += 1
-                logger.info('CRITERION: %d: %s', criterion, mc.group(1))
-                self.testset[title][criterion] = {}
-                self.testset[title][criterion]['raw'] = []
-                self.testset[title][criterion]['proc'] = []
-                self.testset[title][criterion]['clean'] = []
+                mc = re.match(r'^[^#]*# CRITERIA:\s+(.*)$', line)
+                if mc:
+                    criterion += 1
+                    logger.info('CRITERION: %d: %s', criterion, mc.group(1))
+                    self.testset[title][criterion] = {}
+                    self.testset[title][criterion]['raw'] = []
+                    self.testset[title][criterion]['proc'] = []
+                    self.testset[title][criterion]['clean'] = []
 
-            mr = re.match(r'^.*jsaraw.*--key=(\S+)\s*$', line)
-            if mr:
-                self.testset[title][criterion]['raw'].append(mr.group(1))
-                logger.debug('  raw: %s', mr.group(1))
+                mr = re.match(r'^.*jsaraw.*--key=(\S+)\s*$', line)
+                if mr:
+                    self.testset[title][criterion]['raw'].append(mr.group(1))
+                    logger.debug('  raw: %s', mr.group(1))
 
-            mp = re.match(r'^.*jsaingest.*dp:(\S+)([#\s].*)$', line)
-            if mp:
-                self.testset[title][criterion]['proc'].append(mp.group(1))
-                logger.debug(' proc: %s', mp.group(1))
+                mp = re.match(r'^.*jsaingest.*dp:(\S+)([#\s].*)$', line)
+                if mp:
+                    self.testset[title][criterion]['proc'].append(mp.group(1))
+                    logger.debug(' proc: %s', mp.group(1))
 
-            md = re.match(r'^.*caom2repo.*SANDBOX/(\S+)([#\s].*)$', line)
-            if md:
-                self.testset[title][criterion]['clean'].append(md.group(1))
-                logger.debug('clean: %s', md.group(1))
+                md = re.match(r'^.*caom2repo.*SANDBOX/(\S+)([#\s].*)$', line)
+                if md:
+                    self.testset[title][criterion]['clean'].append(md.group(1))
+                    logger.debug('clean: %s', md.group(1))
 
     def log_command_line(self):
         """
