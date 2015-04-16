@@ -721,7 +721,6 @@ class jcmt2caom2ingest(object):
         Arguments:
         <none>
         """
-        self.file_id = ''
         self.uri = ''
         self.observationID = None
         self.productID = None
@@ -807,7 +806,6 @@ class jcmt2caom2ingest(object):
             logger.debug('...could not read primary header from ',
                          filepath)
 
-        self.file_id = file_id
         if self.ingest:
             self.validation.is_in_archive(filepath)
 
