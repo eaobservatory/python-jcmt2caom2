@@ -109,7 +109,6 @@ from tools4caom2.container.adfile import adfile_container
 from tools4caom2.container.filelist import filelist_container
 from tools4caom2.container.vos import vos_container
 from tools4caom2.data_web_client import data_web_client
-from tools4caom2.delayed_error_warning import delayed_error_warning
 from tools4caom2.error import CAOMError
 from tools4caom2.fits2caom2 import run_fits2caom2
 from tools4caom2.mjd import utc2mjd
@@ -118,6 +117,7 @@ from tools4caom2.timezone import UTC
 from tools4caom2.utdate_string import UTDATE_REGEX
 from tools4caom2.utdate_string import utdate_string
 from tools4caom2.util import make_file_id_no_ext
+from tools4caom2.validation import CAOMValidation, CAOMValidationError
 
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
@@ -136,8 +136,7 @@ def is_defined(key, header):
     return True if key is in header and has a defined value, False otherwise
     This is useful for optional headers whose absence is not an error, or for
     metadata with more complicated logic than is supported using the
-    prepackaged tests in delayed_error_warn.  Use the error() or warn() methods
-    from that package to report errors and warnings that affect ingestion.
+    prepackaged tests in CAOMValidation.
     """
     return (key in header and header[key] != fits.card.UNDEFINED)
 
@@ -298,8 +297,8 @@ class jcmt2caom2ingest(object):
         # list of containers for input files
         self.containerlist = []
 
-        # Delayed reporting of errors and warnings discovered in files
-        self.dew = None
+        # Validation object
+        self.validation = None
 
         # TAP client
         self.tap = None
@@ -628,24 +627,30 @@ class jcmt2caom2ingest(object):
 
         logger.info('jcmt2caom2version    = %s', jcmt2caom2version)
 
-    def getfilelist(self, rootdir, check):
+    def getfilelist(self, rootdir):
         """
-        Return a list of files in the directory tree rooted at dirpath
-        for which check(f) is True.
+        Return a list of valid files in the directory tree rooted at dirpath.
 
         Arguments:
         rootdir: absolute path to the root of the directory tree
-        check: function that checks whether to include the file in the list
         """
         mylist = []
+
         for dirpath, dirlist, filelist in os.walk(rootdir):
             for f in filelist:
                 filepath = os.path.join(dirpath, f)
-                if check(filepath):
+
+                try:
+                    self.validation.check_name(filepath)
+                    self.validation.check_size(filepath)
+                except CAOMValidationError:
+                    pass
+                else:
                     mylist.append(filepath)
+
             for d in dirlist:
-                mylist.extend(self.getfilelist(os.path.join(dirpath, d),
-                                               check))
+                mylist.extend(self.getfilelist(os.path.join(dirpath, d)))
+
         return mylist
 
     def commandLineContainers(self):
@@ -662,9 +667,7 @@ class jcmt2caom2ingest(object):
         self.containerlist = []
         try:
             if os.path.isdir(self.indir):
-                check = lambda f: (self.dew.namecheck(f, report=False)
-                                   and self.dew.sizecheck(f))
-                filelist = self.getfilelist(self.indir, check)
+                filelist = self.getfilelist(self.indir)
                 self.containerlist.append(
                     filelist_container(
                         self.indir,
@@ -698,7 +701,7 @@ class jcmt2caom2ingest(object):
                                       self.archive,
                                       self.ingest,
                                       self.workdir,
-                                      self.dew.validation,
+                                      self.validation,
                                       self.vosclient,
                                       self.data_web,
                                       self.make_file_id))
@@ -777,40 +780,42 @@ class jcmt2caom2ingest(object):
         # standard, substitute an empty dictionary for the headers.  This is
         # a silent replacement, not an error, to allow non-FITS files to be
         # ingested along with regular FITS files.
-        if self.dew.namecheck(filepath, report=False):
-            try:
-                with closing(fits.open(filepath, mode='readonly')) as f:
-                    head = f[0].header
-                    self.artifact_part_count[self.fitsfileURI(
-                        self.archive, file_id)] = len(f)
+        try:
+            self.validation.check_name(filepath)
+        except CAOMValidationError:
+            return
 
-                head.update('file_id', file_id)
-                head.update('filepath', filepath)
-                if isinstance(container, vos_container):
-                    head.update('VOSPATH', container.vosroot)
-                    head.update('SRCPATH', container.uri(file_id))
-                else:
-                    head.update('SRCPATH', filepath)
+        try:
+            with closing(fits.open(filepath, mode='readonly')) as f:
+                head = f[0].header
+                self.artifact_part_count[self.fitsfileURI(
+                    self.archive, file_id)] = len(f)
 
-                logger.debug('...got primary header from %s', filepath)
+            head.update('file_id', file_id)
+            head.update('filepath', filepath)
+            if isinstance(container, vos_container):
+                head.update('VOSPATH', container.vosroot)
+                head.update('SRCPATH', container.uri(file_id))
+            else:
+                head.update('SRCPATH', filepath)
 
-            except:
-                head = {}
-                head['file_id'] = file_id
-                head['filepath'] = filepath
-                logger.debug('...could not read primary header from ',
-                             filepath)
+            logger.debug('...got primary header from %s', filepath)
 
-            self.file_id = file_id
-            if self.ingest:
-                self.verifyFileInAD(filepath, file_id)
+        except:
+            head = {}
+            head['file_id'] = file_id
+            head['filepath'] = filepath
+            logger.debug('...could not read primary header from ',
+                         filepath)
 
-            self.build_dict(head)
-            self.build_metadict(filepath)
-            if (filepath not in self.dew.errors
-                    or len(self.dew.errors[filepath]) == 0):
+        self.file_id = file_id
+        if self.ingest:
+            self.validation.is_in_archive(filepath)
 
-                self.data_storage.append(head['SRCPATH'])
+        self.build_dict(head)
+        self.build_metadict(filepath)
+
+        self.data_storage.append(head['SRCPATH'])
 
 #        else:
 #            self.preview_storage.append(container.uri(file_id))
@@ -1264,7 +1269,7 @@ class jcmt2caom2ingest(object):
 
         file_id = header['file_id']
         filename = header['filepath']
-        self.dew.sizecheck(filename)
+        self.validation.check_size(filename)
 
         logger.info('Starting %s', file_id)
         # Doing all the required checks here simplifies the code
@@ -1280,16 +1285,14 @@ class jcmt2caom2ingest(object):
                       'CHECKSUM',
                       'DATASUM')
         for key in structural:
-            self.dew.expect_keyword(filename, key, header, mandatory=True)
+            self.validation.expect_keyword(filename, key, header)
 
         # Observation metadata
-        if self.collection == 'SANDBOX':
-            self.dew.restricted_value(filename,
-                                      'INSTREAM', header,
-                                      self.collection_choices)
-        else:
-            self.dew.restricted_value(filename,
-                                      'INSTREAM', header, (self.collection,))
+        self.validation.restricted_value(filename, 'INSTREAM', header,
+                                         (self.collection_choices
+                                          if self.collection == 'SANDBOX'
+                                          else (self.collection,)))
+
         instream = None
         if is_defined('INSTREAM', header):
             instream = header['INSTREAM']
@@ -1305,66 +1308,59 @@ class jcmt2caom2ingest(object):
             # Obs products can only be ingested into the JCMT collection
             # External data providers must choose a different grouping
             # algorithm
-            self.dew.restricted_value(filename,
-                                      'INSTREAM', header, ['JCMT'])
-            if self.dew.expect_keyword(filename,
-                                       'OBSID',
-                                       header,
-                                       mandatory=True):
-                algorithm = 'exposure'
-                self.observationID = header['OBSID']
+            self.validation.restricted_value(filename,
+                                             'INSTREAM', header, ['JCMT'])
+            self.validation.expect_keyword(filename,
+                                           'OBSID',
+                                           header)
+            algorithm = 'exposure'
+            self.observationID = header['OBSID']
         else:
             # any other value for algorithm indicates a composite observation
-            if self.dew.expect_keyword(filename,
-                                       'ASN_ID',
-                                       header,
-                                       mandatory=True):
-                self.observationID = header['ASN_ID']
+            self.validation.expect_keyword(filename,
+                                           'ASN_ID',
+                                           header)
+            self.observationID = header['ASN_ID']
 
-                # TAP query to find if the observationID is in use.  Do not do
-                # this for obs products, since the raw data can be ingested
-                # before or after the processed data.
-                tapcmd = '\n'.join([
-                    "SELECT Observation.collection",
-                    "FROM caom2.Observation AS Observation",
-                    "WHERE Observation.observationID='" +
-                    self.observationID + "'"])
-                results = self.tap.query(tapcmd)
-                if results:
-                    # Check for duplicate observationIDs.
-                    # This is always OK in the SANDBOX.
-                    # In JCMT, --replace is never needed for observations in
-                    # the JCMT collection because replacement is expected.
-                    # Otherwise,
-                    #  issue an error if --replace is not specified and
-                    # the observation exists in the collection, or if --replace
-                    # is specified and the observation does not already exist,
-                    # or a warning if the observation pre-exists in another
-                    # collection.
-                    for (coll,) in results:
-                        # Do not raise errors for ingestions into the SANDBOX
-                        # or into JCMT if coll is also JCMT.
-                        if coll == self.collection:
-                            if self.collection in ('JCMTLS', 'JCMTUSER'):
-                                if not self.replace:
-                                    # Raise an error if --replace not is
-                                    # specified but the observation already
-                                    # exists in the collection
-                                    self.dew.error(
-                                        filename,
-                                        'Must specify --replace if' +
-                                        'observationID = "' +
-                                        self.observationID +
-                                        '" already exists in collection = "' +
-                                        self.collection + '"')
-                        elif self.collection != 'SANDBOX':
-                            # Complain if the observation matches
-                            # an observation in a different collection
-                            self.dew.warning(
-                                filename,
-                                'observationID = "' + self.observationID +
-                                '" is also in use in collection = "' +
-                                coll + '"')
+            # TAP query to find if the observationID is in use.  Do not do
+            # this for obs products, since the raw data can be ingested
+            # before or after the processed data.
+            tapcmd = '\n'.join([
+                "SELECT Observation.collection",
+                "FROM caom2.Observation AS Observation",
+                "WHERE Observation.observationID='" +
+                self.observationID + "'"])
+            results = self.tap.query(tapcmd)
+            if results:
+                # Check for duplicate observationIDs.
+                # This is always OK in the SANDBOX.
+                # In JCMT, --replace is never needed for observations in
+                # the JCMT collection because replacement is expected.
+                # Otherwise,  issue an error if --replace is not specified and
+                # the observation exists in the collection, or if the
+                # observation pre-exists in another collection.
+                for (coll,) in results:
+                    # Do not raise errors for ingestions into the SANDBOX
+                    # or into JCMT if coll is also JCMT.
+                    if coll == self.collection:
+                        if self.collection in ('JCMTLS', 'JCMTUSER'):
+                            if not self.replace:
+                                # Raise an error if --replace not is
+                                # specified but the observation already
+                                # exists in the collection
+                                raise CAOMError(
+                                    'file: {0}: Must specify --replace if'
+                                    ' observationID = "{1}" already exists'
+                                    ' in collection = "{2}"'.format(
+                                        filename, self.observationID,
+                                        self.collection))
+                    elif self.collection != 'SANDBOX':
+                        # Complain if the observation matches
+                        # an observation in a different collection
+                        raise CAOMError(
+                            'file: {0}, observationID = "{1}" is also in use'
+                            ' in collection = "{2}"'.format(
+                                filename, self.observationID, coll))
 
         self.add_to_plane_dict('algorithm.name', algorithm)
 
@@ -1377,8 +1373,8 @@ class jcmt2caom2ingest(object):
         # We may need the proposal_project for the data processing project,
         # even if the PROJECT is ambiguous.
         if (is_defined('SURVEY', header) and
-            self.dew.restricted_value(filename, 'SURVEY', header,
-                                      survey_acronyms)):
+            self.validation.restricted_value(filename, 'SURVEY', header,
+                                             survey_acronyms)):
             proposal_project = header['SURVEY']
 
         if is_defined('PROJECT', header):
@@ -1437,19 +1433,16 @@ class jcmt2caom2ingest(object):
                 for n in range(mbrcnt):
                     # verify that the expected membership headers are present
                     mbrkey = 'MBR' + str(n+1)
-                    if self.dew.expect_keyword(filename, mbrkey, header):
-                        mbrn_str = header[mbrkey]
-                        # mbrn contains a caom observation uri
-                        mbr_coll, obsid = mbrn_str.split('/')
-                        if mbr_coll != 'caom:JCMT':
-                            self.dew.error(
-                                filename,
-                                mbrkey + ' must point to an '
-                                'observation in the JCMT collection: ' +
-                                mbrn_str)
-                            continue
-                    else:
-                        continue
+                    self.validation.expect_keyword(filename, mbrkey, header)
+                    mbrn_str = header[mbrkey]
+                    # mbrn contains a caom observation uri
+                    mbr_coll, obsid = mbrn_str.split('/')
+                    if mbr_coll != 'caom:JCMT':
+                        raise CAOMError(
+                            'file {0}: {1} must point to an observation in'
+                            ' the JCMT collection: {2}'.format(
+                                filename, mbrkey, mbrn_str))
+
                     mbrn = self.observationURI('JCMT', obsid)
                     mbr_date_obs = None
                     mbr_date_end = None
@@ -1572,11 +1565,9 @@ class jcmt2caom2ingest(object):
                     mbr_date_end = None
                     obskey = 'OBS' + str(n+1)
                     # verify that the expected membership headers are present
-                    if self.dew.expect_keyword(filename, obskey, header):
-                        # This is the obsid_subsysnr of a plane of raw data
-                        obsn = header[obskey]
-                    else:
-                        continue
+                    self.validation.expect_keyword(filename, obskey, header)
+                    # This is the obsid_subsysnr of a plane of raw data
+                    obsn = header[obskey]
 
                     # Only get here if obsn has a defined value
                     if obsn in self.member_cache:
@@ -1613,13 +1604,11 @@ class jcmt2caom2ingest(object):
                             # unique to each observation
                             obsid_pattern = m.group(1) + '%' + m.group(2)
                         else:
-                            self.dew.error(
-                                filename,
-                                obskey + ' = "' + obsn + '" does not '
+                            raise CAOMError(
+                                'file {0}: {1} = "{2}" does not '
                                 'match the pattern expected for the '
-                                'observationID of a member: ' +
-                                raw_regex)
-                            continue
+                                'observationID of a member: {3}'.format(
+                                    filename, obskey, obsn, raw_regex))
 
                         tapquery = '\n'.join([
                             "SELECT",
@@ -1662,13 +1651,11 @@ class jcmt2caom2ingest(object):
                                         latest_release_date = release_date
 
                                 elif obsid != obsid_solitary:
-                                    self.dew.error(
-                                        obskey + ' = ' + obsn +
-                                        ' with obsid_pattern = ' +
-                                        obsid_pattern + ' matched ' +
-                                        obsid_solitary + ' and ' +
-                                        obsid)
-                                    break
+                                    raise CAOMError(
+                                        '{0} = {1} with obsid_pattern = {2}'
+                                        ' matched {3} and {4}'.format(
+                                            obskey, obsn, obsid_pattern,
+                                            obsid_solitary, obsid))
 
                                 if re.match(r'raw.*', prodid):
                                     # Only cache member date_obs, date_end and
@@ -1701,9 +1688,9 @@ class jcmt2caom2ingest(object):
                                     self.input_cache[inURI.uri] = inURI
 
                     if mbrn is None:
-                        self.dew.error(filename,
-                                       obskey + ' = ' + obsn +
-                                       ' is not present in the JSA')
+                        raise CAOMError('file {0}: {1} = {2}'
+                                        ' is not present in the JSA'.format(
+                                            filename, obskey, obsn))
                     else:
                         # At this point we have mbrn, date_obs, date_end and
                         # release_date either from the member_cache or from
@@ -1764,11 +1751,11 @@ class jcmt2caom2ingest(object):
 
             obs_type = raw_obs_type
             if obs_type in ('flatfield', 'noise', 'setup', 'skydip'):
-                self.dew.error(
-                    filename,
+                raise CAOMError(
+                    'file {0}: '
                     'observation types in (flatfield, noise, setup, '
                     'skydip) contain no astronomical data and cannot '
-                    'be ingested')
+                    'be ingested'.format(filename))
 
             if is_defined('SAM_MODE', header) and raw_obs_type == "science":
                 if header["SAM_MODE"] == "raster":
@@ -1805,10 +1792,10 @@ class jcmt2caom2ingest(object):
                 instrument = header['INSTRUME'].strip().upper()
             if is_defined('INBEAM', header):
                 inbeam = header['INBEAM'].strip().upper()
-            if self.dew.restricted_value(filename,
-                                         'BACKEND', header,
-                                         ('SCUBA-2', 'ACSIS', 'DAS', 'AOSC')):
-                backend = header['BACKEND'].strip().upper()
+            self.validation.restricted_value(
+                filename, 'BACKEND', header,
+                ('SCUBA-2', 'ACSIS', 'DAS', 'AOSC'))
+            backend = header['BACKEND'].strip().upper()
 
             instrument_fullname = instrument_name(instrument,
                                                   backend,
@@ -1820,28 +1807,28 @@ class jcmt2caom2ingest(object):
         # Only do these tests if the backend is OK
         if backend in ('ACSIS', 'DAS', 'AOS-C'):
             if inbeam and inbeam != 'POL':
-                self.dew.error(filename, 'INBEAM can only be blank or POL '
-                                         'for heterodyne observations')
+                raise CAOMError('file {0}: INBEAM can only be blank or POL '
+                                'for heterodyne observations'.format(filename))
 
             if is_defined('OBS_TYPE', header):
-                self.dew.restricted_value(
+                self.validation.restricted_value(
                     filename, 'OBS_TYPE', header,
                     ['pointing', 'science', 'focus', 'skydip'])
 
             if is_defined('SAM_MODE', header):
-                self.dew.restricted_value(
+                self.validation.restricted_value(
                     filename, 'SAM_MODE', header,
                     ['jiggle', 'grid', 'raster', 'scan'])
 
         elif backend == 'SCUBA-2':
             if is_defined('OBS_TYPE', header):
-                self.dew.restricted_value(
+                self.validation.restricted_value(
                     filename, 'OBS_TYPE', header,
                     ['pointing', 'science', 'focus', 'skydip',
                         'flatfield', 'setup', 'noise'])
 
             if is_defined('SAM_MODE', header):
-                self.dew.restricted_value(
+                self.validation.restricted_value(
                     filename, 'SAM_MODE', header,
                     ['scan', 'stare'])
 
@@ -1869,19 +1856,19 @@ class jcmt2caom2ingest(object):
                                                     keyword_dict)
         self.instrument_keywords = ''
         if thisBad:
-            self.dew.error(filename,
-                           'instrument_keywords could not be '
-                           'constructed from ' + repr(keyword_dict))
+            raise CAOMError('instrument_keywords for file {0} could not be '
+                            'constructed from {1!r}'.format(
+                                filename, keyword_dict))
         else:
             self.instrument_keywords = ' '.join(keyword_list)
             self.add_to_plane_dict('instrument.keywords',
                                    self.instrument_keywords)
 
         # Telescope metadata. geolocation is optional.
-        self.dew.restricted_value(filename, 'TELESCOP', header, ['JCMT'])
+        self.validation.restricted_value(filename, 'TELESCOP', header, ['JCMT'])
 
         # Target metadata
-        if self.dew.expect_keyword(filename, 'OBJECT', header):
+        if self.validation.expect_keyword(filename, 'OBJECT', header):
             self.add_to_plane_dict('target.name', header['OBJECT'])
 
         if backend != 'SCUBA-2' and is_defined('ZSOURCE', header):
@@ -1890,7 +1877,7 @@ class jcmt2caom2ingest(object):
 
         target_type = None
         if is_defined('TARGTYPE', header):
-            if self.dew.restricted_value(
+            if self.validation.restricted_value(
                     filename,
                     'TARGTYPE', header, ['FIELD', 'OBJECT']):
                 target_type = header['TARGTYPE']
@@ -1934,23 +1921,17 @@ class jcmt2caom2ingest(object):
 
         # Plane metadata
         # metadata needed to create productID
-        product = None
-        if self.dew.expect_keyword(filename, 'PRODUCT', header,
-                                   mandatory=True):
-            product = header['PRODUCT']
+        self.validation.expect_keyword(filename, 'PRODUCT', header)
+        product = header['PRODUCT']
 
         # The standard and legacy pipelines must have some standard keywords
         if (self.collection == 'JCMT' or instream == 'JCMT'):
             if backend == 'SCUBA-2':
-                self.dew.expect_keyword(filename, 'FILTER', header,
-                                        mandatory=True)
+                self.validation.expect_keyword(filename, 'FILTER', header)
             else:
-                self.dew.expect_keyword(filename, 'RESTFRQ', header,
-                                        mandatory=True)
-                self.dew.expect_keyword(filename, 'SUBSYSNR', header,
-                                        mandatory=True)
-                self.dew.expect_keyword(filename, 'BWMODE', header,
-                                        mandatory=True)
+                self.validation.expect_keyword(filename, 'RESTFRQ', header)
+                self.validation.expect_keyword(filename, 'SUBSYSNR', header)
+                self.validation.expect_keyword(filename, 'BWMODE', header)
 
         science_product = None
         filter = None
@@ -1983,13 +1964,12 @@ class jcmt2caom2ingest(object):
             # Externally generated data products must define PRODID, which
             # will be used to fill productID and to define science_product
             # as the first dash-separated token in the string
-            if self.dew.expect_keyword(filename, 'PRODID', header,
-                                       mandatory=True):
-                self.productID = header['PRODID']
-                if re.search(r'-', self.productID):
-                    science_product = self.productID.split('-')[0]
-                else:
-                    science_product = self.productID
+            self.validation.expect_keyword(filename, 'PRODID', header)
+            self.productID = header['PRODID']
+            if re.search(r'-', self.productID):
+                science_product = self.productID.split('-')[0]
+            else:
+                science_product = self.productID
 
         else:
             # Pipeline products must define the science_product as a function
@@ -2011,9 +1991,10 @@ class jcmt2caom2ingest(object):
             if product in science_product_dict:
                 science_product = science_product_dict[product]
             else:
-                self.dew.error(filename, 'product = "' + product +
-                               '" is not one of the pipeline products: ' +
-                               repr(sorted(science_product_dict.keys())))
+                raise CAOMError('file: {0} product = "{1}" is not one of the'
+                                ' pipeline products: {2!r}'.format(
+                                    filename, product,
+                                    sorted(science_product_dict.keys())))
 
             if filter:
                 self.productID = product_id(backend,
@@ -2045,10 +2026,10 @@ class jcmt2caom2ingest(object):
                     self.add_to_plane_dict('plane.dataRelease',
                                            latest_release_date)
                 else:
-                    self.dew.error(filename,
-                                   'Release date could not be '
-                                   'calculated from membership: ' +
-                                   self.observationID)
+                    raise CAOMError('file {0}: '
+                                    'Release date could not be '
+                                    'calculated from membership: '.format(
+                                        filename, self.observationID))
 
         calibrationLevel = None
         # The calibration lelvel needs to be defined for all science products
@@ -2057,11 +2038,11 @@ class jcmt2caom2ingest(object):
                 callevel_dict = \
                     {'calibrated': str(CalibrationLevel.CALIBRATED.value),
                      'product':    str(CalibrationLevel.PRODUCT.value)}
-                if self.dew.restricted_value(filename,
-                                             'CALLEVEL',
-                                             header,
-                                             sorted(callevel_dict)):
-                    calibrationLevel = callevel_dict[header['CALLEVEL']]
+                self.validation.restricted_value(filename,
+                                                 'CALLEVEL',
+                                                 header,
+                                                 sorted(callevel_dict))
+                calibrationLevel = callevel_dict[header['CALLEVEL']]
             else:
                 callevel_dict = \
                     {'cube':       str(CalibrationLevel.RAW_STANDARD.value),
@@ -2073,10 +2054,10 @@ class jcmt2caom2ingest(object):
                 if science_product in callevel_dict:
                     calibrationLevel = callevel_dict[science_product]
                 else:
-                    self.dew.error(
-                        filename,
-                        'science product "' + science_product +
-                        '" is not in ' + repr(sorted(callevel_dict)))
+                    raise CAOMError(
+                        'file {0} '
+                        'science product "{1}" is not in {2}!r'.format(
+                            filename, science_product, (sorted(callevel_dict))))
 
             if calibrationLevel:
                 self.add_to_plane_dict('plane.calibrationLevel',
@@ -2095,8 +2076,7 @@ class jcmt2caom2ingest(object):
             if product and product == science_product and inpcnt > 0:
                 for n in range(inpcnt):
                     inpkey = 'INP' + str(n + 1)
-                    if not self.dew.expect_keyword(filename, inpkey, header):
-                        continue
+                    self.validation.expect_keyword(filename, inpkey, header)
                     inpn_str = header[inpkey]
                     logger.debug('%s = %s', inpkey, inpn_str)
                     pm = re.match(planeURI_regex, inpn_str)
@@ -2108,9 +2088,10 @@ class jcmt2caom2ingest(object):
                                              pm.group(3))
                         self.inputset.add(inpn)
                     else:
-                        self.dew.error(inpkey + ' = ' + inpn_str + ' does not '
-                                       'match the regex for a plane URI: ' +
-                                       planeURI_regex)
+                        raise CAOMError(
+                            'file {0}: {1} = {2} does not '
+                            'match the regex for a plane URI: {3}'.format(
+                                filename, inpkey, inpn_str, planeURI_regex))
 
         elif is_defined('PRVCNT', header):
             # Translate the PRV1..PRV<PRVCNT> headers into plane URIs
@@ -2121,8 +2102,7 @@ class jcmt2caom2ingest(object):
                     # Verify that files in provenance are being ingested
                     # or have already been ingested.
                     prvkey = 'PRV' + str(i + 1)
-                    if not self.dew.expect_keyword(filename, prvkey, header):
-                        continue
+                    self.validation.expect_keyword(filename, prvkey, header)
                     prvn = header[prvkey]
                     logger.debug('%s = %s', prvkey, prvn)
 
@@ -2142,10 +2122,9 @@ class jcmt2caom2ingest(object):
                     prvn_id = self.make_file_id(prvn)
                     if prvn_id == file_id:
                         # add a warning and skip this entry
-                        self.dew.warning(
-                            filename,
-                            'file_id = ' + file_id + ' includes itself '
-                            'in its provenance as ' + prvkey)
+                        logger.warning(
+                            'file_id = %s includes itself '
+                            'in its provenance as %s', file_id, prvkey)
                         continue
                     elif prvn_id in self.input_cache:
                         # The input cache should already have uri's for
@@ -2160,10 +2139,9 @@ class jcmt2caom2ingest(object):
 
         dataProductType = None
         if is_defined('DATAPROD', header):
-            if not self.dew.restricted_value(
-                    filename, 'DATAPROD', header,
-                    ('image', 'spectrum', 'cube', 'catalog')):
-                dataProductType = None
+            self.validation.restricted_value(
+                filename, 'DATAPROD', header,
+                ('image', 'spectrum', 'cube', 'catalog'))
         elif product == science_product:
             # Assume these are like standard pipeline products
             # Axes are always in the order X, Y, Freq, Pol
@@ -2185,9 +2163,8 @@ class jcmt2caom2ingest(object):
             self.add_to_plane_dict('plane.dataProductType', dataProductType)
 
         # Provenance_name
-        if self.dew.expect_keyword(filename, 'RECIPE', header,
-                                   mandatory=True):
-            self.add_to_plane_dict('provenance.name', header['RECIPE'])
+        self.validation.expect_keyword(filename, 'RECIPE', header)
+        self.add_to_plane_dict('provenance.name', header['RECIPE'])
 
         # Provenance_project
         dpproject = None
@@ -2206,16 +2183,17 @@ class jcmt2caom2ingest(object):
                 # healpix and catalogs are from the legacy project
                 dpproject = 'JCMT_LEGACY_PIPELINE'
             else:
-                self.dew.error(filename,
-                               'UNKNOWN PRODUCT in collection=JCMT: ' +
-                               product + ' must be one of ' +
-                               repr(standard_products + legacy_products))
+                raise CAOMError(
+                    'file {0}: UNKNOWN PRODUCT in collection=JCMT: {1}'
+                    ' must be one of {2!r}'.format(
+                        filename, product,
+                        (standard_products + legacy_products)))
 
         if dpproject:
             self.add_to_plane_dict('provenance.project', dpproject)
         else:
-            self.dew.error(filename,
-                           'data processing project is undefined')
+            raise CAOMError('file {0}: data processing project '
+                            'is undefined'.format(filename))
 
         # Provenance_reference - likely to be overwritten
         if is_defined('REFERENC', header):
@@ -2238,30 +2216,29 @@ class jcmt2caom2ingest(object):
                                    header['PRODUCER'])
 
         self.dprcinst = None
-        if self.dew.expect_keyword(filename, 'DPRCINST', header,
-                                   mandatory=True):
-            if isinstance(header['DPRCINST'], str):
-                m = re.match(r'jac-([1-9][0-9]*)', header['DPRCINST'])
-                if m:
-                    # dprcinst is a JAC recipe instance
-                    self.dprcinst = 'jac-%09d' % (eval(m.group(1)),)
+        self.validation.expect_keyword(filename, 'DPRCINST', header)
+        if isinstance(header['DPRCINST'], str):
+            m = re.match(r'jac-([1-9][0-9]*)', header['DPRCINST'])
+            if m:
+                # dprcinst is a JAC recipe instance
+                self.dprcinst = 'jac-%09d' % (eval(m.group(1)),)
 
-                elif re.match(r'^0x[0-9a-fA-F]+$', header['DPRCINST']):
-                    # dprcinst is an old-style hex recipe_instance_id
-                    self.dprcinst = str(eval(header['DPRCINST']))
-                else:
-                    # dprcinst is an arbitrary string; use without modification
-                    self.dprcinst = header['DPRCINST']
+            elif re.match(r'^0x[0-9a-fA-F]+$', header['DPRCINST']):
+                # dprcinst is an old-style hex recipe_instance_id
+                self.dprcinst = str(eval(header['DPRCINST']))
             else:
-                # dprcisnt is an identity_instance_id integer; convert to
-                # string
-                self.dprcinst = str(header['DPRCINST'])
+                # dprcinst is an arbitrary string; use without modification
+                self.dprcinst = header['DPRCINST']
+        else:
+            # dprcisnt is an identity_instance_id integer; convert to
+            # string
+            self.dprcinst = str(header['DPRCINST'])
 
         if self.dprcinst:
             self.add_to_plane_dict('provenance.runID', self.dprcinst)
             self.build_remove_dict(self.dprcinst)
         else:
-            self.dew.error(filename, 'could not calculate dprcinst')
+            raise CAOMError('could not calculate dprcinst')
 
         # Report the earliest UTDATE
         if earliest_utdate and self.dprcinst:
@@ -2272,12 +2249,12 @@ class jcmt2caom2ingest(object):
                 rcinstprefix,
                 self.dprcinst)
 
-        if self.dew.expect_keyword(filename, 'DPDATE', header, mandatory=True):
-            # DPDATE is a characteristic datetime when the data was processed
-            dpdate = header['DPDATE']
-            if isinstance(dpdate, datetime.datetime):
-                dpdate = header['DPDATE'].isoformat()
-            self.add_to_plane_dict('provenance.lastExecuted', dpdate)
+        self.validation.expect_keyword(filename, 'DPDATE', header)
+        # DPDATE is a characteristic datetime when the data was processed
+        dpdate = header['DPDATE']
+        if isinstance(dpdate, datetime.datetime):
+            dpdate = header['DPDATE'].isoformat()
+        self.add_to_plane_dict('provenance.lastExecuted', dpdate)
 
         # Chunk
         bandpassName = None
@@ -2346,8 +2323,8 @@ class jcmt2caom2ingest(object):
                                      'artifact.productType',
                                      prodtype_default)
         else:
-            self.dew.error(filename,
-                           'ProductType is not defined')
+            raise CAOMError(
+                'file {0}: ProductType is not defined'.format(filename))
 
         if product == science_product and len(obstimes):
             self.add_fitsuri_dict(self.uri)
@@ -2413,22 +2390,13 @@ class jcmt2caom2ingest(object):
                         logger.debug('inputs: %s: %s', fid, thisInputURI.uri)
 
         if inputURI is None:
-            self.dew.warning(
-                filename,
-                'provenance input is neither '
+            logger.warning(
+                'file %s: provenance input is neither '
                 'in the JSA already nor in the '
-                'current release')
+                'current release',
+                filename)
 
         return inputURI
-
-    def verifyFileInAD(self, filename, file_id):
-        """
-        Use the data_web client to verify that file_id is in self.archive
-        """
-        if not self.data_web.info(self.archive, file_id):
-            self.dew.error(filename,
-                           'file_id = ' + file_id +
-                           ' has not yet been stored in ' + self.archive)
 
     def checkProvenanceInputs(self):
         """
@@ -2661,9 +2629,9 @@ class jcmt2caom2ingest(object):
                                                  self.archive,
                                                  file_id,
                                                  self.stream):
-                            self.dew.error(filepath,
-                                           'failed to push into AD using the '
-                                           'data_web_client')
+                            raise CAOMError(
+                                'failed to push {0} into AD using the '
+                                'data_web_client'.format(filepath))
                     finally:
                         if not self.local and os.path.exists(tempfile):
                             os.remove(tempfile)
@@ -2935,29 +2903,28 @@ class jcmt2caom2ingest(object):
             # Read list of files from VOspace and do things
             self.data_web = data_web_client(self.workdir)
 
-            with delayed_error_warning(self.workdir,
-                                       self.archive,
-                                       self.fileid_regex_dict,
-                                       self.make_file_id).gather() as self.dew:
+            # Construct validation object
+            self.validation = CAOMValidation(self.workdir,
+                                             self.archive,
+                                             self.fileid_regex_dict,
+                                             self.make_file_id)
 
-                self.commandLineContainers()
-                for c in self.containerlist:
-                    logger.info('PROGRESS: container = %s', c.name)
-                    self.fillMetadict(c)
-                    self.checkProvenanceInputs()
-                    if self.dew.error_count() == 0:
-                        if self.store:
-                            self.storeFiles()
-                        if self.ingest:
-                            self.ingestPlanesFromMetadict()
-                    else:
-                        self.errors = True
-                    if self.dew.warning_count():
-                        self.warnings = True
+            self.commandLineContainers()
+            for c in self.containerlist:
+                logger.info('PROGRESS: container = %s', c.name)
+                self.fillMetadict(c)
+                self.checkProvenanceInputs()
+                if self.store:
+                    self.storeFiles()
+                if self.ingest:
+                    self.ingestPlanesFromMetadict()
 
             # declare we are DONE
             logger.info('DONE')
 
+        except CAOMError as e:
+            self.errors = True
+            logger.exception(str(e))
 
         except Exception as e:
             self.errors = True
