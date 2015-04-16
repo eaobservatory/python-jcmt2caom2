@@ -113,7 +113,6 @@ from tools4caom2.error import CAOMError
 from tools4caom2.fits2caom2 import run_fits2caom2
 from tools4caom2.mjd import utc2mjd
 from tools4caom2.tapclient import tapclient
-from tools4caom2.timezone import UTC
 from tools4caom2.utdate_string import UTDATE_REGEX
 from tools4caom2.utdate_string import utdate_string
 from tools4caom2.util import make_file_id_no_ext
@@ -336,8 +335,6 @@ class jcmt2caom2ingest(object):
         else:
             raise RuntimeError('The default file ' + defaultpath +
                                ' does not exist')
-
-        self.UTC = UTC()
 
         # Connection to database
         self.conn = None
