@@ -347,7 +347,6 @@ class jcmt2caom2ingest(object):
 
         # Are any errors or warnings recorded in this log file?
         self.errors = False
-        self.warnings = False
         self.dprcinst = None
 
         # Read recipe instance mapping file.
@@ -2475,7 +2474,6 @@ class jcmt2caom2ingest(object):
                                                 RefCoord(1.5, date_end)))
 
                                 else:
-                                    self.warnings = True
                                     logger.warning(
                                         'no time ranges defined  for %s',
                                         fitsuri.uri)
@@ -2521,7 +2519,6 @@ class jcmt2caom2ingest(object):
                     uri = self.planeURI(self.collection,
                                         observationID,
                                         prod)
-                    self.warnings = True
                     logger.warning('CLEANUP: remove obsolete plane: %s',
                                    uri.uri)
 
@@ -2557,7 +2554,6 @@ class jcmt2caom2ingest(object):
                 if all(self.remove_dict[obsid].values()):
                     # all planes come from the same recipe instance
                     # so delete the whole observation
-                    self.warnings = True
                     logger.warning(
                         'CLEANUP: remove obsolete observation: %s',
                         uri.uri)
@@ -2574,7 +2570,6 @@ class jcmt2caom2ingest(object):
                                     uri = self.planeURI(coll,
                                                         obsid,
                                                         prod)
-                                    self.warnings = True
                                     logger.warning(
                                         'CLEANUP: remove plane: %s',
                                         uri.uri)
