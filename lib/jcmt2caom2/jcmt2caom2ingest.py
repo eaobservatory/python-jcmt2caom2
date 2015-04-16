@@ -2139,6 +2139,7 @@ class jcmt2caom2ingest(object):
             self.validation.restricted_value(
                 filename, 'DATAPROD', header,
                 ('image', 'spectrum', 'cube', 'catalog'))
+            dataProductType = header['DATAPROD']
         elif product == science_product:
             # Assume these are like standard pipeline products
             # Axes are always in the order X, Y, Freq, Pol
