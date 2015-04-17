@@ -113,6 +113,3 @@ class testThreeD(unittest.TestCase):
 
                 self.assertTrue(abs(90.0 - ThreeD.included_angle(a, b, c)) <
                                 1.0e-9)
-
-if __name__ == '__main__':
-    unittest.main()

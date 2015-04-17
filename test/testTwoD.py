@@ -84,6 +84,3 @@ class testTwoD(unittest.TestCase):
         yy.x = 3.0
         self.assertEqual(xx.x, 1.0)
         self.assertEqual(yy.x, 3.0)
-
-if __name__ == '__main__':
-    unittest.main()
