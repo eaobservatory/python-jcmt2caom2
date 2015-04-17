@@ -482,9 +482,6 @@ class jcmt2caom2ingest(object):
             help='(optional) show all messages, pass --debug to fits2caom2,'
             ' and retain all xml and override files')
 
-    # ************************************************************************
-    # Process the custom command line switchs
-    # ************************************************************************
     def processCommandLineSwitches(self):
         """
         Generic routine to process the command line arguments
@@ -592,9 +589,6 @@ class jcmt2caom2ingest(object):
         if self.args.ingest:
             self.ingest = self.args.ingest
 
-    # ************************************************************************
-    # Include the custom command line switch in the log
-    # ************************************************************************
     def logCommandLineSwitches(self):
         """
         Generic method to log the command line switch values
@@ -783,9 +777,6 @@ class jcmt2caom2ingest(object):
         """
         logger.info('fillMetadictFromFile: %s %s', file_id, filepath)
 
-        # ****************************************************************
-        # Call build_dict to fill plane_dict and fitsuri_dict
-        # ****************************************************************
         self.clear()
         # If the file is not a FITS file or is in serious violation of the FITS
         # standard, substitute an empty dictionary for the headers.  This is
@@ -1080,9 +1071,7 @@ class jcmt2caom2ingest(object):
 
         # If the plane_dict is completely empty, skip further processing
         if self.override_items:
-            # ****************************************************************
-            # fetch the required keys from self.plane_dict
-            # ****************************************************************
+            # Fetch the required keys from self.plane_dict
             if not self.collection:
                 if raise_exception:
                     raise CAOMError(filepath + ' does not define the required'
@@ -1116,35 +1105,27 @@ class jcmt2caom2ingest(object):
                 'PROGRESS: collection="%s" observationID="%s" productID="%s"',
                 self.collection, self.observationID, self.productID)
 
-            # ****************************************************************
             # Build the dictionary structure
-            # ****************************************************************
             if self.observationID not in self.metadict:
                 self.metadict[self.observationID] = OrderedDict()
             thisObservation = self.metadict[self.observationID]
 
-            # ****************************************************************
             # If memberset is not empty, the observation is a composite.
             # The memberset is the union of the membersets from all the
             # files in the observation.
-            # ****************************************************************
             if 'memberset' not in thisObservation:
                 thisObservation['memberset'] = set([])
             if self.memberset:
                 thisObservation['memberset'] |= self.memberset
 
-            # ****************************************************************
             # Create the plane-level structures
-            # ****************************************************************
             if self.productID not in thisObservation:
                 thisObservation[self.productID] = OrderedDict()
             thisPlane = thisObservation[self.productID]
 
-            # ****************************************************************
             # Items in the plane_dict accumulate so a key will be defined for
             # the plane if it is defined by any file.  If a key is defined
             # by several files, the definition from the last file is used.
-            # ****************************************************************
             if 'plane_dict' not in thisPlane:
                 thisPlane['plane_dict'] = OrderedDict()
             if self.plane_dict:
@@ -1156,30 +1137,24 @@ class jcmt2caom2ingest(object):
                         continue
                     thisPlane['plane_dict'][key] = self.plane_dict[key]
 
-            # ****************************************************************
             # If inputset is not empty, the provenance should be filled.
             # The inputset is the union of the inputsets from all the files
             # in the plane.  Beware that files not yet classified into
             # inputURI's may still remain in fileset, and will be
             # resolved if possible in checkProvenanceInputs.
-            # ****************************************************************
             if 'inputset' not in thisPlane:
                 thisPlane['inputset'] = set([])
             if self.inputset:
                 thisPlane['inputset'] |= self.inputset
 
-            # ****************************************************************
             # The fileset is the set of input files that have not yet been
             # identified as being recorded in any plane yet.
-            # ****************************************************************
             if 'fileset' not in thisPlane:
                 thisPlane['fileset'] = set([])
             if self.fileset:
                 thisPlane['fileset'] |= self.fileset
 
-            # ****************************************************************
             # Record the uri and (optionally) the filepath
-            # ****************************************************************
             if 'uri_dict' not in thisPlane:
                 thisPlane['uri_dict'] = OrderedDict()
             if self.uri not in thisPlane['uri_dict']:
@@ -1188,21 +1163,15 @@ class jcmt2caom2ingest(object):
                 else:
                     thisPlane['uri_dict'][self.uri] = None
 
-            # ****************************************************************
             # Foreach fitsuri in fitsuri_dict, record the metadata
-            # ****************************************************************
             for fitsuri in self.fitsuri_dict:
-                # ********************************************************
                 # Create the fitsuri-level structures
-                # ********************************************************
                 if fitsuri not in thisPlane:
                     thisPlane[fitsuri] = OrderedDict()
                     thisPlane[fitsuri]['custom'] = OrderedDict()
                 thisFitsuri = thisPlane[fitsuri]
 
-                # ********************************************************
                 # Copy the fitsuri dictionary
-                # ********************************************************
                 for key in self.fitsuri_dict[fitsuri]:
                     if key == 'custom':
                         thisCustom = thisFitsuri[key]
@@ -1212,9 +1181,10 @@ class jcmt2caom2ingest(object):
                     else:
                         thisFitsuri[key] = self.fitsuri_dict[fitsuri][key]
 
-    # Discover observations and planes to remove
     def build_remove_dict(self, run_id):
         """
+        Discover observations and planes to remove.
+
         If identity_instance_id has not already been checked, read back a
         complete list of existing collections, observations and planes,
         which will be deleted if they are not replaced or updated by the
@@ -1261,9 +1231,6 @@ class jcmt2caom2ingest(object):
                         if prodid not in self.remove_dict[obsid]:
                             self.remove_dict[obsid][prodid] = eq
 
-    # ************************************************************************
-    # archive-specific structures to write override files
-    # ************************************************************************
     def build_dict(self, header):
         '''Archive-specific code to read the common dictionary from the
                file header.
@@ -2766,9 +2733,7 @@ class jcmt2caom2ingest(object):
                         override = self.prepare_override_info(
                             observationID, productID)
 
-                        # *******************************************
                         # Run fits2caom2
-                        # *******************************************
                         urilist = sorted(thisPlane['uri_dict'].keys())
                         if urilist:
                             if self.local:

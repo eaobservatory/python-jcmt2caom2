@@ -269,13 +269,11 @@ class raw(object):
         INGESTIBILITY.GOOD if observation is OK
         INGESTIBILITY.BAD  if observation should be skipped
         """
-        # -----------------------------------------------------------------
-        #  Validity checking for raw ACSIS and SCUBA-2 data
-        # -----------------------------------------------------------------
-        # Check that mandatory fields do not have NULL values
+
         nullvalues = []
         ingestibility = INGESTIBILITY.GOOD
 
+        # Check that mandatory fields do not have NULL values
         for field in raw.MANDATORY:
             if common[field] is None:
                 nullvalues.append(field)
@@ -329,17 +327,16 @@ class raw(object):
         """
         Construct a simple observation from the available metadata
 
+        Since we are dealing with raw data, the algorithm = "exposure"
+        by default, a change in notation for the JCMT.
+
         Arguments:
         obsid       obsid from COMMON to be used as the observationID
         common      dictionary containing fields common to the observation
         subsystem   dictionary containing fields from ACSIS or SCUBA2
         files       dictionary containing the lists of artifact filenames
         """
-        # ------------------------------------------------------------
-        # Build (or rebuild) a simple observation
-        # Since we are dealing with raw data, the algorithm = "exposure"
-        # by default, a change in notation for the JCMT.
-        # ------------------------------------------------------------
+
         collection = self.collection
         observationID = self.obsid
         logger.debug('PROGRESS: build observationID = %s', self.obsid)
