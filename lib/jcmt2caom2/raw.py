@@ -143,7 +143,6 @@ class raw(object):
         self.checkmode = None
 
         self.errors = False
-        self.junk = False
 
         self.voscopy = None
         self.vosroot = 'vos:jsaops'
