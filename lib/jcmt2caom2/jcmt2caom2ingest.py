@@ -358,8 +358,6 @@ class jcmt2caom2ingest(object):
         self.remove_dict = {}
         self.remove_id = []
 
-        # Are any errors or warnings recorded in this log file?
-        self.errors = False
         self.dprcinst = None
 
         # Read recipe instance mapping file.
@@ -1241,7 +1239,6 @@ class jcmt2caom2ingest(object):
         '''
 
         if 'file_id' not in header:
-            self.errors = True
             raise CAOMError('No file_id in ' + repr(header))
 
         file_id = header['file_id']
@@ -2765,15 +2762,6 @@ class jcmt2caom2ingest(object):
                                 'INGESTED: observationID=%s productID="%s"',
                                 observationID, productID)
 
-                        except CAOMError:
-                            # Transitional code: before run_fits2caom2 was
-                            # extracted from this class, it set
-                            # self.errors and raised this exception.
-                            # TODO: remove self.errors and just use
-                            # exception handling.
-                            self.errors = True
-                            raise
-
                         for fitsuri in thisPlane:
                             if fitsuri not in ('plane_dict',
                                                'uri_dict',
@@ -2885,16 +2873,15 @@ class jcmt2caom2ingest(object):
             logger.info('DONE')
 
         except CAOMError as e:
-            self.errors = True
             logger.exception(str(e))
+            return False
 
-        except Exception as e:
-            self.errors = True
-
+        except:
             # Log this previously uncaught error, but let it pass
             logger.exception('Error during ingestion')
+            return False
 
         finally:
             self.conn.close()
 
-        return not self.errors
+        return True
