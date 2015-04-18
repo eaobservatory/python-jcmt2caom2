@@ -1,6 +1,7 @@
 #!/usr/bin/env python2.7
 
 import logging
+import sys
 
 from tools4caom2.util import configure_logger
 
@@ -9,4 +10,5 @@ from jcmt2caom2.setfield import setfield
 configure_logger(level=logging.INFO)
 
 mysetfield = setfield()
-mysetfield.run()
+if not mysetfield.run():
+    sys.exit(1)

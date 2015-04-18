@@ -250,6 +250,8 @@ class setfield(object):
             self.tap = tapclient(self.proxy)
             self.update()
             logger.info('DONE')
-        except Exception:
-            self.errors = True
+        except:
             logger.exception('ERROR')
+            return False
+
+        return True
