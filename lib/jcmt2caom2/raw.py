@@ -142,8 +142,6 @@ class raw(object):
 
         self.checkmode = None
 
-        self.errors = False
-
         self.voscopy = None
         self.vosroot = 'vos:jsaops'
 
@@ -685,7 +683,6 @@ class raw(object):
                             sign4 = math.copysign(
                                 1, ThreeD.included_angle(bl3d, tl3d, tr3d))
                         except ValueError as e:
-                            self.errors = True
                             raise CAOMError('The bounding box for obsid = ' +
                                              self.obsid + ' is degenerate')
 
@@ -815,7 +812,6 @@ class raw(object):
         if len(common):
             common = common[0]
         else:
-            self.errors = True
             raise CAOMError('There is no observation with '
                             'obsid = %s' % (self.obsid,))
 
@@ -862,7 +858,6 @@ class raw(object):
 
         ingestibility = self.check_observation(common, subsystem)
         if ingestibility == INGESTIBILITY.BAD:
-            self.errors = True
             logger.error('SERIOUS ERRORS were found in %s', self.obsid)
             raise CAOMError('Serious errors found')
 
@@ -878,7 +873,6 @@ class raw(object):
         # get the list of files for this observation
         files = self.conn.get_files(self.obsid)
         if files is None:
-            self.errors = True
             raise CAOMError('No rows in FILES for obsid = ' + self.obsid)
 
         with repository.process(uri) as wrapper:
@@ -905,11 +899,11 @@ class raw(object):
 
             logger.info('DONE')
 
-        except Exception as e:
-            self.errors = True
+        except:
             logger.exception('Error during ingestion')
+            return False
 
         finally:
             self.conn.close()
 
-        return not self.errors
+        return True
