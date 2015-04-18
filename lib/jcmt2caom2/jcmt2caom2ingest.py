@@ -195,13 +195,6 @@ class jcmt2caom2ingest(object):
     speedOfLight = 2.99792485e8  # Speed of light in m/s
     freq_csotau = 225.0e9  # Frequency of CSO tau meter in Hz
     lambda_csotau = '%12.9f' % (speedOfLight / freq_csotau)
-    proc_acsis_regex = \
-        r'jcmth(20[\d]{2})(0[1-9]|1[012])(0[1-9]|[12][0-9]|3[01])_' +\
-        r'([\d]{5})_(0[0-4])_(cube[\d]{3}|reduced[\d]{3}|rimg|rsp|rvel|' + \
-        r'linteg[\d]{3}|sp[\d]{3}|std)_(obs|nit|pro|pub)_([\d]{3})$'
-    proc_scuba2_regex = \
-        r'jcmts(20[\d]{2})(0[1-9]|1[012])(0[1-9]|[12][0-9]|3[01])_' +\
-        r'([\d]{5})_([48]50)_(reduced[\d]{3})_(obs|nit|pro|pub)_([\d]{3})$'
     productType = {'cube': '0=science,1=noise,auxiliary',
                    'reduced': '0=science,1=noise,auxiliary',
                    'rsp': '0=preview,1=noise,auxiliary',
