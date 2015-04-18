@@ -143,7 +143,6 @@ class raw(object):
         self.checkmode = None
 
         self.errors = False
-        self.warnings = False
         self.junk = False
 
         self.voscopy = None
@@ -278,7 +277,6 @@ class raw(object):
             if common[field] is None:
                 nullvalues.append(field)
         if nullvalues:
-            self.warnings = True
             logger.warning('The following mandatory fields are NULL: %s',
                            ', '.join(sorted(nullvalues)))
             ingestibility = INGESTIBILITY.BAD
@@ -286,7 +284,6 @@ class raw(object):
         if common['obs_type'] in ('phase', 'RAMP'):
             # do not ingest observations with bogus obs_type
             # this is not an error, but log a warning
-            self.warnings = True
             logger.warning(
                 'Observation %s is being skipped because obs_type = %s',
                 self.obsid, common['obs_type'])
@@ -697,7 +694,6 @@ class raw(object):
                         # were recorded in a bowtie order.  Swap any two.
                         if (sign1 != sign2 or sign2 != sign3 or
                                 sign3 != sign4):
-                            self.warnings = True
                             logger.warning(
                                 'For observation %s the bounds are in a'
                                 ' bowtie order',
@@ -853,7 +849,6 @@ class raw(object):
                 subsystem[subsysnr] = row
 
         else:
-            self.warnings = True
             logger.warning(
                 'backend = "%s" is not one of '
                 '["ACSIS", "DAS", "AOSC", "SCUBA", "SCUBA-2"]',
