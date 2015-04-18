@@ -2740,27 +2740,26 @@ class jcmt2caom2ingest(object):
 
                         arg = thisPlane.get('fits2caom2_arg', None)
 
-                        try:
-                            wrapper.observation = run_fits2caom2(
-                                collection=self.collection,
-                                observationID=observationID,
-                                productID=productID,
-                                observation=wrapper.observation,
-                                override_info=override,
-                                file_uris=urilist,
-                                local_files=filepathlist,
-                                workdir=self.workdir,
-                                config_file=self.config,
-                                default_file=self.default,
-                                caom2_reader=self.repository.reader,
-                                caom2_writer=self.repository.writer,
-                                arg=arg,
-                                debug=self.debug,
-                                big=self.big,
-                                dry_run=self.test)
-                            logger.info(
-                                'INGESTED: observationID=%s productID="%s"',
-                                observationID, productID)
+                        wrapper.observation = run_fits2caom2(
+                            collection=self.collection,
+                            observationID=observationID,
+                            productID=productID,
+                            observation=wrapper.observation,
+                            override_info=override,
+                            file_uris=urilist,
+                            local_files=filepathlist,
+                            workdir=self.workdir,
+                            config_file=self.config,
+                            default_file=self.default,
+                            caom2_reader=self.repository.reader,
+                            caom2_writer=self.repository.writer,
+                            arg=arg,
+                            debug=self.debug,
+                            big=self.big,
+                            dry_run=self.test)
+                        logger.info(
+                            'INGESTED: observationID=%s productID="%s"',
+                            observationID, productID)
 
                         for fitsuri in thisPlane:
                             if fitsuri not in ('plane_dict',
