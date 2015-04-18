@@ -209,9 +209,12 @@ class jcmt2caom2ingest(object):
                    'healpix': '0=science,1=noise,auxiliary',
                    'hpxrsp': '0=preview,1=noise,auxiliary',
                    'hpxrimg': '0=preview,1=noise,auxiliary',
-                   'peak-cat': '0=catalog,auxiliary',
-                   'extent-cat': '0=catalog,auxiliary',
-                   'point-cat': '0=catalog,auxiliary'}
+                   'peak-cat': '0=science,auxiliary',
+                   'extent-cat': '0=science,auxiliary',
+                   'extent-mask': '0=science,auxiliary',
+                   'extent-moc': '0=science,auxiliary',
+                   'tile-moc': '0=science,auxiliary',
+                   }
 
     def __init__(self):
         """
@@ -1957,9 +1960,12 @@ class jcmt2caom2ingest(object):
                                     'healpix': 'healpix',
                                     'hpxrsp': 'healpix',
                                     'hpxrimg': 'healpix',
-                                    'peak-cat': 'peak-cat',
-                                    'extent-cat': 'extent-cat',
-                                    'point-cat': 'point-cat'}
+                                    'tile-moc': 'extent',
+                                    'extent-moc': 'extent',
+                                    'extent-mask': 'extent',
+                                    'extent-cat': 'extent',
+                                    'peak-cat': 'peak',
+                                    }
 
             science_product = None
             if product in science_product_dict:
@@ -2022,9 +2028,9 @@ class jcmt2caom2ingest(object):
                     {'cube':       str(CalibrationLevel.RAW_STANDARD.value),
                      'reduced':    str(CalibrationLevel.CALIBRATED.value),
                      'healpix':    str(CalibrationLevel.CALIBRATED.value),
-                     'point-cat':  str(CalibrationLevel.PRODUCT.value),
-                     'extent-cat': str(CalibrationLevel.PRODUCT.value),
-                     'peak-cat':   str(CalibrationLevel.PRODUCT.value)}
+                     'peak':       str(CalibrationLevel.PRODUCT.value),
+                     'extent':     str(CalibrationLevel.PRODUCT.value),
+                     }
                 if science_product in callevel_dict:
                     calibrationLevel = callevel_dict[science_product]
                 else:
@@ -2132,8 +2138,8 @@ class jcmt2caom2ingest(object):
                         dataProductType = 'image'
                     else:
                         dataProductType = 'cube'
-                elif product in ('peak-cat', 'extent-cat', 'point-cat'):
-                    dataProductType = 'catalog'
+        elif product in ('tile-moc', 'peak-cat'):
+            dataProductType = 'catalog'
         if dataProductType:
             self.add_to_plane_dict('plane.dataProductType', dataProductType)
 
@@ -2150,7 +2156,8 @@ class jcmt2caom2ingest(object):
         elif instream == 'JCMT':
             standard_products = ['reduced', 'cube', 'rsp', 'rimg']
             legacy_products = ['healpix', 'hpxrsp', 'hpxrimg',
-                               'peak-cat', 'extent-cat']
+                               'peak-cat', 'extent-cat', 'extent-mask',
+                               'extent-moc', 'tile-moc']
             if product in standard_products:
                 # This is the complete list of standard pipeline FITS products
                 dpproject = 'JCMT_STANDARD_PIPELINE'
