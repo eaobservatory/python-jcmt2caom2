@@ -2498,8 +2498,7 @@ class jcmt2caom2ingest(object):
                     logger.warning('CLEANUP: remove obsolete plane: %s',
                                    uri.uri)
 
-                    if not self.dry_run:
-                        del observation.planes[prod]
+                    del observation.planes[prod]
                     del self.remove_dict[observationID][prod]
 
     def remove_old_observations_and_planes(self):
@@ -2531,7 +2530,7 @@ class jcmt2caom2ingest(object):
                         self.repository.remove(uri.uri)
                     del self.remove_dict[obsid]
                 else:
-                    with repository.process(uri) as wrapper:
+                    with repository.process(uri, dry_run=self.dry_run) as wrapper:
                         if wrapper.observation is not None:
                             obs = wrapper.observation
                             for prod in self.remove_dict[obsid]:
@@ -2546,8 +2545,6 @@ class jcmt2caom2ingest(object):
 
                                     del obs.planes[prod]
                                     del self.remove_dict[obsid][prod]
-                        if self.dry_run:
-                            wrapper.observation = None
 
     def storeFiles(self):
         """
@@ -2703,7 +2700,7 @@ class jcmt2caom2ingest(object):
             obsuri = self.observationURI(self.collection,
                                          observationID)
 
-            with self.repository.process(obsuri) as wrapper:
+            with self.repository.process(obsuri, dry_run=self.dry_run) as wrapper:
                 if wrapper.observation is not None:
                     self.remove_excess_parts(wrapper.observation)
 
@@ -2758,7 +2755,7 @@ class jcmt2caom2ingest(object):
                             verbose=self.verbose,
                             retain=False,
                             big=self.big,
-                            dry_run=self.dry_run)
+                            dry_run=False)
                         logger.info(
                             'INGESTED: observationID=%s productID="%s"',
                             observationID, productID)
