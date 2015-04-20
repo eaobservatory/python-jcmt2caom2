@@ -140,7 +140,7 @@ class raw(object):
         self.collection = None
         self.obsid = None
 
-        self.checkmode = None
+        self.dry_run = None
 
         self.voscopy = None
         self.vosroot = 'vos:jsaops'
@@ -157,7 +157,7 @@ class raw(object):
         """
         ap = argparse.ArgumentParser()
         ap.add_argument(
-            '--key',
+            '--obsid',
             required=True,
             help='obsid, primary key in COMMON table')
         ap.add_argument(
@@ -171,13 +171,13 @@ class raw(object):
             help='collection to use for ingestion')
 
         ap.add_argument(
-            '--check',
+            '--dry-run', '-n',
             action='store_true',
-            dest='checkmode',
+            dest='dry_run',
             help='Check the validity of metadata for this'
                  ' observation and file, then exit')
         ap.add_argument(
-            '--debug',
+            '--verbose', '-v',
             dest='loglevel',
             action='store_const',
             const=logging.DEBUG)
@@ -186,7 +186,7 @@ class raw(object):
         if args.collection:
             self.collection = args.collection
 
-        self.obsid = args.key
+        self.obsid = args.obsid
 
         if args.outdir:
             self.outdir = os.path.abspath(
@@ -198,7 +198,7 @@ class raw(object):
         if args.loglevel:
             logging.getLogger().setLevel(args.loglevel)
 
-        self.checkmode = args.checkmode
+        self.dry_run = args.dry_run
 
     def logCommandLineSwitches(self):
         """
@@ -212,7 +212,7 @@ class raw(object):
         logger.info('tools4caom2version   = %s', tools4caom2version)
         logger.info('obsid = %s', self.obsid)
         logger.info('outdir = %s', self.outdir)
-        logger.info('checkmode = %s', self.checkmode)
+        logger.info('dry run = %s', self.dry_run)
 
     def get_proposal(self, project_id):
         """
@@ -861,7 +861,7 @@ class raw(object):
             logger.error('SERIOUS ERRORS were found in %s', self.obsid)
             raise CAOMError('Serious errors found')
 
-        if self.checkmode:
+        if self.dry_run:
             if ingestibility == INGESTIBILITY.GOOD:
                 logger.info('SUCCESS: Observation %s is ready for ingestion',
                             self.obsid)

@@ -248,7 +248,7 @@ class jcmt2caom2ingest(object):
         self.workdir = None
 
         # Ingestion parameters and structures
-        self.debug = False
+        self.verbose = False
         self.prefix = ''         # ingestible files must start with this prefix
         self.indir = ''          # path to indir
         self.replace = False     # True if observations in JCMTLS or JCMTUSER
@@ -396,9 +396,9 @@ class jcmt2caom2ingest(object):
         --workdir    : (optional) working directory (default = cwd)
 
         # debugging options
-        --debug      : (optional) log all messages and retain temporary files
+        --verbose, -v: (optional) log all messages and retain temporary files
                        on error
-        --test       : (optional) simulate operation of fits2caom2
+        --dry-run, -n: (optional) simulate operation of fits2caom2
         """
 
         # Optional user configuration
@@ -467,11 +467,12 @@ class jcmt2caom2ingest(object):
 
         # debugging options
         self.ap.add_argument(
-            '--test',
+            '--dry-run', '-n',
             action='store_true',
+            dest='dry_run',
             help='(optional) simulate operation of fits2caom2')
         self.ap.add_argument(
-            '--debug',
+            '--verbose', '-v',
             action='store_true',
             help='(optional) show all messages, pass --debug to fits2caom2,'
             ' and retain all xml and override files')
@@ -566,11 +567,11 @@ class jcmt2caom2ingest(object):
         if self.args.replace:
             self.replace = self.args.replace
 
-        self.test = self.args.test
+        self.dry_run = self.args.dry_run
 
-        if self.args.debug:
+        if self.args.verbose:
             logging.getLogger().setLevel(logging.DEBUG)
-            self.debug = True
+            self.verbose = True
 
         # create workdir if it does not already exist
         if not os.path.exists(self.workdir):
@@ -2497,7 +2498,7 @@ class jcmt2caom2ingest(object):
                     logger.warning('CLEANUP: remove obsolete plane: %s',
                                    uri.uri)
 
-                    if not self.test:
+                    if not self.dry_run:
                         del observation.planes[prod]
                     del self.remove_dict[observationID][prod]
 
@@ -2526,7 +2527,7 @@ class jcmt2caom2ingest(object):
                     logger.warning(
                         'CLEANUP: remove obsolete observation: %s',
                         uri.uri)
-                    if not self.test:
+                    if not self.dry_run:
                         self.repository.remove(uri.uri)
                     del self.remove_dict[obsid]
                 else:
@@ -2545,7 +2546,7 @@ class jcmt2caom2ingest(object):
 
                                     del obs.planes[prod]
                                     del self.remove_dict[obsid][prod]
-                        if self.test:
+                        if self.dry_run:
                             wrapper.observation = None
 
     def storeFiles(self):
@@ -2754,9 +2755,9 @@ class jcmt2caom2ingest(object):
                             caom2_reader=self.repository.reader,
                             caom2_writer=self.repository.writer,
                             arg=arg,
-                            debug=self.debug,
+                            debug=self.verbose,
                             big=self.big,
-                            dry_run=self.test)
+                            dry_run=self.dry_run)
                         logger.info(
                             'INGESTED: observationID=%s productID="%s"',
                             observationID, productID)

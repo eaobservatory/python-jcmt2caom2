@@ -110,11 +110,12 @@ class setfield(object):
             help='reference URl to set for the planes and observations')
 
         ap.add_argument(
-            '--test',
+            '--dry-run', '-n',
             action='store_true',
+            dest='dry_run',
             help='report observations and planes but do not execute commands')
         ap.add_argument(
-            '--debug',
+            '--verbose', '-v',
             dest='loglevel',
             action='store_const',
             const=logging.DEBUG)
@@ -157,7 +158,7 @@ class setfield(object):
         if self.args.loglevel:
             logging.getLogger().setLevel(self.args.loglevel)
 
-        self.test = self.args.test
+        self.dry_run = self.args.dry_run
 
     def logCommandLineSwitches(self):
         """
@@ -230,7 +231,7 @@ class setfield(object):
                                 if self.reference:
                                     plane.provenance_reference = self.reference
 
-                        if self.test:
+                        if self.dry_run:
                             wrapper.observation = None
 
                     except:
