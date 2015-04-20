@@ -2755,7 +2755,8 @@ class jcmt2caom2ingest(object):
                             caom2_reader=self.repository.reader,
                             caom2_writer=self.repository.writer,
                             arg=arg,
-                            debug=self.verbose,
+                            verbose=self.verbose,
+                            retain=False,
                             big=self.big,
                             dry_run=self.dry_run)
                         logger.info(
