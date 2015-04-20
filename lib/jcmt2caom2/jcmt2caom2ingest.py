@@ -2530,7 +2530,7 @@ class jcmt2caom2ingest(object):
                         self.repository.remove(uri.uri)
                     del self.remove_dict[obsid]
                 else:
-                    with repository.process(uri, dry_run=self.dry_run) as wrapper:
+                    with self.repository.process(uri, dry_run=self.dry_run) as wrapper:
                         if wrapper.observation is not None:
                             obs = wrapper.observation
                             for prod in self.remove_dict[obsid]:
