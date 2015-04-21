@@ -2030,11 +2030,19 @@ class jcmt2caom2ingest(object):
                 callevel_dict = \
                     {'cube':       str(CalibrationLevel.RAW_STANDARD.value),
                      'reduced':    str(CalibrationLevel.CALIBRATED.value),
-                     'healpix':    str(CalibrationLevel.CALIBRATED.value),
                      'peak':       str(CalibrationLevel.PRODUCT.value),
                      'extent':     str(CalibrationLevel.PRODUCT.value),
                      }
-                if science_product in callevel_dict:
+
+                if science_product == 'healpix':
+                    # We have "healpix" products both for individual
+                    # observations and as co-adds -- only the latter should
+                    # be level "PRODUCT".
+                    if algorithm == 'public':
+                        calibrationLevel = str(CalibrationLevel.PRODUCT.value)
+                    else:
+                        calibrationLevel = str(CalibrationLevel.CALIBRATED.value)
+                elif science_product in callevel_dict:
                     calibrationLevel = callevel_dict[science_product]
                 else:
                     raise CAOMError(
