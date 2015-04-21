@@ -359,6 +359,8 @@ class jcmt2caom2ingest(object):
         # Read recipe instance mapping file.
         self.recipe_instance_mapping = read_recipe_instance_mapping()
 
+        self.xmloutdir = None
+
     def defineCommandLineSwitches(self):
         """
         Generic routine to build the standard list of command line arguments.
@@ -386,6 +388,8 @@ class jcmt2caom2ingest(object):
                        authorization)
         --ingest     : (optional) ingest new files (requires CADC
                        authorization)
+        --xmloutdir  : (optional) directory into which to write the new/updated
+                       CAOM-2 documents for debugging purposes
 
         # fits2caom2 arguments
         --collection : (required) collection to use for ingestion
@@ -476,6 +480,9 @@ class jcmt2caom2ingest(object):
             action='store_true',
             help='(optional) show all messages, pass --debug to fits2caom2,'
             ' and retain all xml and override files')
+        self.ap.add_argument(
+            '--xmloutdir',
+            help='(optional) directory into which to write XML files')
 
     def processCommandLineSwitches(self):
         """
@@ -583,6 +590,8 @@ class jcmt2caom2ingest(object):
 
         if self.args.ingest:
             self.ingest = self.args.ingest
+
+        self.xmloutdir = self.args.xmloutdir
 
     def logCommandLineSwitches(self):
         """
@@ -2774,6 +2783,12 @@ class jcmt2caom2ingest(object):
                 logger.info('Removing old planes from this observation')
                 self.remove_old_planes(wrapper.observation,
                                        observationID)
+
+                if self.xmloutdir:
+                    with open(os.path.join(self.xmloutdir, re.sub(
+                            '[^-_A-Za-z0-9]', '_', observationID)) + '.xml',
+                            'wb') as f:
+                        self.repository.writer.write(wrapper.observation, f)
 
             logger.info('SUCCESS observationID="%s"', observationID)
 
