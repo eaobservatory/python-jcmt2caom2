@@ -788,13 +788,13 @@ class jcmt2caom2ingest(object):
                 self.artifact_part_count[self.fitsfileURI(
                     self.archive, file_id)] = len(f)
 
-            head.update('file_id', file_id)
-            head.update('filepath', filepath)
+            head['file_id'] = file_id
+            head['filepath'] = filepath
             if isinstance(container, vos_container):
-                head.update('VOSPATH', container.vosroot)
-                head.update('SRCPATH', container.uri(file_id))
+                head['VOSPATH'] = container.vosroot
+                head['SRCPATH'] = container.uri(file_id)
             else:
-                head.update('SRCPATH', filepath)
+                head['SRCPATH'] = filepath
 
             logger.debug('...got primary header from %s', filepath)
 
