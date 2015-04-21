@@ -2571,7 +2571,7 @@ class jcmt2caom2ingest(object):
                     basefile = os.path.basename(filepath)
                     file_id = self.make_file_id(basefile)
                     logger.info('LINK: %s', filepath)
-                    if transfer_dir:
+                    if transfer_dir and not self.dry_run:
                         self.vosclient.link(filepath,
                                             transfer_dir + '/' + basefile)
 
@@ -2581,22 +2581,23 @@ class jcmt2caom2ingest(object):
                     basefile = os.path.basename(filepath)
                     file_id = self.make_file_id(basefile)
                     logger.info('PUT: %s', filepath)
-                    if self.local:
-                        tempfile = filepath
-                    else:
-                        tempfile = os.path.join(self.workdir, basefile)
-                        self.vosclient.copy(filepath, tempfile)
-                    try:
-                        if not self.data_web.put(tempfile,
-                                                 self.archive,
-                                                 file_id,
-                                                 self.stream):
-                            raise CAOMError(
-                                'failed to push {0} into AD using the '
-                                'data_web_client'.format(filepath))
-                    finally:
-                        if not self.local and os.path.exists(tempfile):
-                            os.remove(tempfile)
+                    if not self.dry_run:
+                        if self.local:
+                            tempfile = filepath
+                        else:
+                            tempfile = os.path.join(self.workdir, basefile)
+                            self.vosclient.copy(filepath, tempfile)
+                        try:
+                            if not self.data_web.put(tempfile,
+                                                     self.archive,
+                                                     file_id,
+                                                     self.stream):
+                                raise CAOMError(
+                                    'failed to push {0} into AD using the '
+                                    'data_web_client'.format(filepath))
+                        finally:
+                            if not self.local and os.path.exists(tempfile):
+                                os.remove(tempfile)
         else:
             raise CAOMError('storemethod = ' + self.storemethod +
                             'has not been implemented')
