@@ -2193,16 +2193,15 @@ class jcmt2caom2ingest(object):
             self.add_to_plane_dict('provenance.reference',
                                    header['REFERENC'])
 
-        # ENGVERS and PIPEVERS are optional
-        if is_defined('PROCVERS', header):
+        # ENGVERS, PIPEVERS and PROCVERS are optional
+        if (is_defined('ENGVERS', header) and
+                is_defined('PIPEVERS', header)):
+            self.add_to_plane_dict('provenance.version',
+                                   'ENGINE:' + header['ENGVERS'][:20] +
+                                       ' PIPELINE:' + header['PIPEVERS'][:20])
+        elif is_defined('PROCVERS', header):
             self.add_to_plane_dict('provenance.version',
                                    header['PROCVERS'])
-        else:
-            if (is_defined('ENGVERS', header) and
-                    is_defined('PIPEVERS', header)):
-                self.add_to_plane_dict('provenance.version',
-                                       'ENG:' + header['ENGVERS'][:25] +
-                                       ' PIPE:' + header['PIPEVERS'][:25])
 
         if is_defined('PRODUCER', header):
             self.add_to_plane_dict('provenance.producer',
