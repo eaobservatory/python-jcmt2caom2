@@ -2771,12 +2771,14 @@ class jcmt2caom2ingest(object):
                                     wrapper.observation,
                                     observationID, productID, fitsuri)
 
-                        self.remove_old_planes(wrapper.observation,
-                                               observationID)
-
-                self.remove_old_observations_and_planes()
+                logger.info('Removing old planes from this observation')
+                self.remove_old_planes(wrapper.observation,
+                                       observationID)
 
             logger.info('SUCCESS observationID="%s"', observationID)
+
+        logger.info('Removing old observations and planes')
+        self.remove_old_observations_and_planes()
 
     def remove_excess_parts(self, observation, excess_parts=50):
         """
