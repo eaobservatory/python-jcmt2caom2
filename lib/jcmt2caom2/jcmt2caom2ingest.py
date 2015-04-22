@@ -2342,7 +2342,7 @@ class jcmt2caom2ingest(object):
                 "        ON Plane.planeID=Artifact.planeID",
                 "    INNER JOIN caom2.Artifact AS Artifact2",
                 "        ON Plane.planeID=Artifact2.planeID",
-                "WHERE Artifact2.uri like 'ad:%/" + file_id + "'"])
+                "WHERE Artifact2.uri='ad:JCMT/" + file_id + "'"])
             answer = self.tap.query(tapquery)
 
             if answer and len(answer[0]):
