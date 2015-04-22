@@ -138,6 +138,7 @@ from jcmt2caom2.__version__ import version as jcmt2caom2version
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.intent import intent
+from jcmt2caom2.jsa.obsid import obsidss_to_obsid
 from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.project import get_project_pi_title
@@ -1575,20 +1576,7 @@ class jcmt2caom2ingest(object):
                         # re-use.
 
                         # obsn contains an obsid_subsysnr
-                        raw_regex = (r'(scuba2|acsis|DAS|AOSC|scuba)_'
-                                     r'\d+_(\d{8}[tT]\d{6})_\d+')
-                        m = re.match(raw_regex, obsn)
-                        if m:
-                            # obsid_pattern should match a single obsid,
-                            # because the datetime in group(2) should be
-                            # unique to each observation
-                            obsid_pattern = m.group(1) + '%' + m.group(2)
-                        else:
-                            raise CAOMError(
-                                'file {0}: {1} = "{2}" does not '
-                                'match the pattern expected for the '
-                                'observationID of a member: {3}'.format(
-                                    filename, obskey, obsn, raw_regex))
+                        obsid_guess = obsidss_to_obsid(obsn)
 
                         tapquery = '\n'.join([
                             "SELECT",
@@ -1603,10 +1591,14 @@ class jcmt2caom2ingest(object):
                             "             ON Observation.obsID=Plane.obsID",
                             "         INNER JOIN caom2.Artifact AS Artifact",
                             "             ON Plane.planeID=Artifact.planeID",
-                            "WHERE Observation.observationID LIKE '" +
-                            obsid_pattern + "'"])
+                            "WHERE Observation.observationID='" +
+                            obsid_guess + "'"])
                         answer = self.tap.query(tapquery)
                         logger.debug(repr(answer))
+                        # TODO: now that we use obsid_guess rather than
+                        # "LIKE obsid_pattern", it may no longer be necessary
+                        # to check for a "solitary" answer.  Therefore
+                        # consider simplifying the following code.
                         if len(answer) > 0 and len(answer[0]) > 0:
                             obsid_solitary = None
                             for (obsid,
@@ -1632,9 +1624,9 @@ class jcmt2caom2ingest(object):
 
                                 elif obsid != obsid_solitary:
                                     raise CAOMError(
-                                        '{0} = {1} with obsid_pattern = {2}'
+                                        '{0} = {1} with obsid_guess = {2}'
                                         ' matched {3} and {4}'.format(
-                                            obskey, obsn, obsid_pattern,
+                                            obskey, obsn, obsid_guess,
                                             obsid_solitary, obsid))
 
                                 if re.match(r'raw.*', prodid):
