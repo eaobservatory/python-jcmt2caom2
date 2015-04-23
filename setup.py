@@ -39,7 +39,6 @@ setup(
     packages=find_packages(where='lib'),
     scripts=['scripts/jsaingest',
              'scripts/jsaraw',
-             'scripts/jsarawlist',
              'scripts/jsasetfield'],
     # config files are not package data and must be located
     # in ../config relative to the executables in scripts
