@@ -1258,8 +1258,6 @@ class jcmt2caom2ingest(object):
         # even if the ingestion fails before reaching the place where the
         # header would be used.
 
-        someBAD = False
-
         # Check that mandatory file headers exist that validate the FITS
         # file structure
         structural = ('BITPIX',
