@@ -1838,8 +1838,8 @@ class jcmt2caom2ingest(object):
         self.validation.restricted_value(filename, 'TELESCOP', header, ['JCMT'])
 
         # Target metadata
-        if self.validation.expect_keyword(filename, 'OBJECT', header):
-            self.add_to_plane_dict('target.name', header['OBJECT'])
+        self.validation.expect_keyword(filename, 'OBJECT', header)
+        self.add_to_plane_dict('target.name', header['OBJECT'])
 
         if backend != 'SCUBA-2' and is_defined('ZSOURCE', header):
                 self.add_to_plane_dict('target.redshift',
@@ -1847,10 +1847,10 @@ class jcmt2caom2ingest(object):
 
         target_type = None
         if is_defined('TARGTYPE', header):
-            if self.validation.restricted_value(
-                    filename,
-                    'TARGTYPE', header, ['FIELD', 'OBJECT']):
-                target_type = header['TARGTYPE']
+            self.validation.restricted_value(
+                filename,
+                'TARGTYPE', header, ['FIELD', 'OBJECT'])
+            target_type = header['TARGTYPE']
 
         standard_target = 'FALSE'
         if is_defined('STANDARD', header) and header['STANDARD']:
