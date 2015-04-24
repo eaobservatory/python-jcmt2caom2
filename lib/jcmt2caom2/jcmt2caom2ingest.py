@@ -205,7 +205,7 @@ class jcmt2caom2ingest(object):
                    'hpxrimg': '0=preview,1=noise,auxiliary',
                    'peak-cat': '1=science,auxiliary',
                    'extent-cat': '1=science,auxiliary',
-                   'extent-mask': '0=science,auxiliary',
+                   'extent-mask': 'auxiliary',
                    'extent-moc': '1=science,auxiliary',
                    'tile-moc': '1=science,auxiliary',
                    }
