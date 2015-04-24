@@ -1258,13 +1258,18 @@ class jcmt2caom2ingest(object):
         # even if the ingestion fails before reaching the place where the
         # header would be used.
 
+        # Is this a JSA catalog file?
+        is_catalog = is_defined('PRODID', header) and (
+            header['PRODID'].startswith('extent-') or
+            header['PRODID'].startswith('peak-'))
+
         # Check that mandatory file headers exist that validate the FITS
         # file structure
-        structural = ('BITPIX',
-                      'CHECKSUM',
-                      'DATASUM')
-        for key in structural:
-            self.validation.expect_keyword(filename, key, header)
+        if not is_catalog:
+            for key in ('BITPIX',
+                        'CHECKSUM',
+                        'DATASUM'):
+                self.validation.expect_keyword(filename, key, header)
 
         # Observation metadata
         self.validation.restricted_value(filename, 'INSTREAM', header,
@@ -1838,8 +1843,9 @@ class jcmt2caom2ingest(object):
         self.validation.restricted_value(filename, 'TELESCOP', header, ['JCMT'])
 
         # Target metadata
-        self.validation.expect_keyword(filename, 'OBJECT', header)
-        self.add_to_plane_dict('target.name', header['OBJECT'])
+        if not is_catalog:
+            self.validation.expect_keyword(filename, 'OBJECT', header)
+            self.add_to_plane_dict('target.name', header['OBJECT'])
 
         if backend != 'SCUBA-2' and is_defined('ZSOURCE', header):
                 self.add_to_plane_dict('target.redshift',
