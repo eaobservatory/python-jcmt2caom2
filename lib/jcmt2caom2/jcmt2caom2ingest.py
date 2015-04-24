@@ -203,11 +203,11 @@ class jcmt2caom2ingest(object):
                    'healpix': '0=science,1=noise,auxiliary',
                    'hpxrsp': '0=preview,1=noise,auxiliary',
                    'hpxrimg': '0=preview,1=noise,auxiliary',
-                   'peak-cat': '0=science,auxiliary',
-                   'extent-cat': '0=science,auxiliary',
+                   'peak-cat': '1=science,auxiliary',
+                   'extent-cat': '1=science,auxiliary',
                    'extent-mask': '0=science,auxiliary',
-                   'extent-moc': '0=science,auxiliary',
-                   'tile-moc': '0=science,auxiliary',
+                   'extent-moc': '1=science,auxiliary',
+                   'tile-moc': '1=science,auxiliary',
                    }
 
     def __init__(self):
