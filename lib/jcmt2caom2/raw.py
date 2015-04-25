@@ -62,6 +62,7 @@ from tools4caom2.mjd import utc2mjd
 from tools4caom2.tapclient import tapclient
 
 from jcmt2caom2.__version__ import version as jcmt2caom2version
+from jcmt2caom2.instrument.scuba2 import scuba2_spectral_wcs
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.intent import intent
@@ -716,19 +717,7 @@ class raw(object):
 
                 # energy range, which can contain two subranges in DSB
                 if backend == 'SCUBA-2':
-                    energy_axis = CoordAxis1D(Axis('WAVE', 'm'))
-                    wavelength = subsystem[key]['wavelen']
-                    bandwidth = subsystem[key]['bandwid']
-                    energy_axis.range = CoordRange1D(
-                        RefCoord(0.5, wavelength - bandwidth/2.0),
-                        RefCoord(1.5, wavelength + bandwidth/2.0))
-
-                    spectral_axis = SpectralWCS(energy_axis, 'TOPOCENT')
-                    spectral_axis.ssysobs = 'TOPOCENT'
-                    spectral_axis.ssyssrc = 'TOPOCENT'
-                    spectral_axis.resolving_power = abs(wavelength / bandwidth)
-                    spectral_axis.bandpass_name = \
-                        'SCUBA-2-' + subsystem[key]['filter'] + 'um'
+                    spectral_axis = scuba2_spectral_wcs(subsystem[key])
 
                 else:
                     this_hybrid = hybrid[productID]
