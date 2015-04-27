@@ -1843,9 +1843,8 @@ class jcmt2caom2ingest(object):
         self.validation.restricted_value(filename, 'TELESCOP', header, ['JCMT'])
 
         # Target metadata
-        if not is_catalog:
-            self.validation.expect_keyword(filename, 'OBJECT', header)
-            self.add_to_plane_dict('target.name', header['OBJECT'])
+        self.validation.expect_keyword(filename, 'OBJECT', header)
+        self.add_to_plane_dict('target.name', header['OBJECT'])
 
         if backend != 'SCUBA-2' and is_defined('ZSOURCE', header):
                 self.add_to_plane_dict('target.redshift',
