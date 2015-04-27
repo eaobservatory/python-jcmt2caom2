@@ -105,6 +105,7 @@ from vos.vos import Client
 
 from omp.db.part.arc import ArcDB
 
+from caom2.caom2_chunk import Chunk
 from caom2.caom2_composite_observation import CompositeObservation
 from caom2.caom2_enums import CalibrationLevel
 from caom2.caom2_enums import ObservationIntentType
@@ -137,10 +138,12 @@ from tools4caom2.validation import CAOMValidation, CAOMValidationError
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
+from jcmt2caom2.instrument.scuba2 import scuba2_spectral_wcs
 from jcmt2caom2.jsa.intent import intent
 from jcmt2caom2.jsa.obsid import obsidss_to_obsid
 from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.target_name import target_name
+from jcmt2caom2.jsa.tile import jsa_tile_wcs
 from jcmt2caom2.project import get_project_pi_title
 
 logger = logging.getLogger(__name__)
@@ -298,6 +301,9 @@ class jcmt2caom2ingest(object):
         # For the detailed structure of metadict, see the help text for
         # fillMetadictFromFile()
         self.metadict = OrderedDict()
+
+        # Dictionary of explicit WCS infomation, by FITS URI.
+        self.explicit_wcs = {}
 
         # Lists of files to be stored, or to check that they are in storage
         # Data files are added to data_storage iff they report no errors
@@ -2328,6 +2334,15 @@ class jcmt2caom2ingest(object):
                                                 key,
                                                 obstimes[key])
 
+        # If this is a catalog file, generate explicit WCS information as
+        # fits2caom2 may not be able to do it.  For now assume that all
+        # tiles are of SCUBA-2 data.
+        if is_catalog and self.uri not in self.explicit_wcs:
+            self.explicit_wcs[self.uri] = {
+                'spatial': jsa_tile_wcs(header),
+                'spectral': scuba2_spectral_wcs(header),
+            }
+
     def lookup_file_id(self, filename, file_id):
         """
         Given a file_id (and unnecessarily filename), return the URI
@@ -2485,6 +2500,48 @@ class jcmt2caom2ingest(object):
                                              chunk.time.axis.axis)
                                 logger.debug('temporal WCS = %s',
                                              chunk.time)
+
+
+    def set_explicit_wcs(self, observation, planeID):
+        """
+        Customize the CAOM-2 observation with explicit WCS values if any
+        have been stored for its artifacts.
+        """
+
+        plane = observation.planes[planeID]
+
+        for fitsuri in plane.artifacts:
+            if fitsuri not in self.explicit_wcs:
+                continue
+
+            wcs = self.explicit_wcs[fitsuri]
+            artifact = plane.artifacts[fitsuri]
+
+            for partName in artifact.parts:
+                part = artifact.parts[partName]
+
+                if (not (part.product_type in [ProductType.SCIENCE,
+                                               ProductType.NOISE]
+                         or ('_extent-mask' in fitsuri and partName == '0'))):
+                    continue
+
+                if (len(part.chunks)) == 0:
+                    chunk = Chunk()
+                    part.chunks.append(chunk)
+
+                elif len(part.chunks) != 1:
+                    raise CAOMError(
+                        'More than one chunk in explicit WCS part: %i',
+                        len(part.chunks))
+                else:
+                    chunk = part.chunks[0]
+
+                if 'spatial' in wcs:
+                    chunk.position = wcs['spatial']
+
+                if 'spectral' in wcs:
+                    chunk.energy = wcs['spectral']
+
 
     def remove_old_planes(self,
                           observation,
@@ -2788,6 +2845,8 @@ class jcmt2caom2ingest(object):
                                 self.update_time_information(
                                     wrapper.observation,
                                     observationID, productID, fitsuri)
+
+                        self.set_explicit_wcs(wrapper.observation, productID)
 
                 logger.info('Removing old planes from this observation')
                 self.remove_old_planes(wrapper.observation,
