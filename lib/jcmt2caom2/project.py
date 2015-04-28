@@ -44,8 +44,8 @@ def get_project_pi_title(project_id, conn, tap):
             "                Observation.proposal_title",
             "FROM caom2.Observation as Observation",
             "WHERE Observation.collection = 'JCMT'",
-            "      AND Observation.proposal_id = '" +
-            project_id + "'"])
+            "      AND lower(Observation.proposal_id) = '" +
+            project_id.lower() + "'"])
         answer = tap.query(tapcmd)
 
         if answer and len(answer[0]) > 0:
