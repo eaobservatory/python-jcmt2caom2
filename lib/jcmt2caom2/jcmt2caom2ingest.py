@@ -1994,6 +1994,17 @@ class jcmt2caom2ingest(object):
                                    bwmode=bwmode,
                                    subsysnr=subsysnr)
 
+        # Is this the "main" product?  Originally this module just used
+        # (product == science_product) but not all planes have a product
+        # the name of which matches the product ID.  The name "science_product"
+        # doesn't entirely make sense any more either -- some planes have
+        # multiple products containing science data.  Also "tile-moc" isn't
+        # really the "main" product, but it's the only one in its plane which
+        # is guaranteed to exist (if the plane exists at all).
+        is_main_product = ((product == science_product) or
+                           (product == 'tile-moc') or
+                           (product == 'peak-cat'))
+
         # Add this plane to the set of known file_id -> plane translations
         self.input_cache[file_id] = self.planeURI(self.collection,
                                                   self.observationID,
@@ -2024,7 +2035,7 @@ class jcmt2caom2ingest(object):
 
         calibrationLevel = None
         # The calibration lelvel needs to be defined for all science products
-        if product == science_product:
+        if is_main_product:
             if instream in self.external_collections:
                 callevel_dict = \
                     {'calibrated': str(CalibrationLevel.CALIBRATED.value),
@@ -2072,7 +2083,7 @@ class jcmt2caom2ingest(object):
             planeURI_regex = r'^caom:([^\s/]+)/([^\s/]+)/([^\s/]+)$'
             # Copy the INP1..INP<PRVCNT> headers as plane URIs
             inpcnt = int(header['INPCNT'])
-            if product and product == science_product and inpcnt > 0:
+            if product and is_main_product and inpcnt > 0:
                 for n in range(inpcnt):
                     inpkey = 'INP' + str(n + 1)
                     self.validation.expect_keyword(filename, inpkey, header)
@@ -2095,7 +2106,7 @@ class jcmt2caom2ingest(object):
         elif is_defined('PRVCNT', header):
             # Translate the PRV1..PRV<PRVCNT> headers into plane URIs
             prvcnt = int(header['PRVCNT'])
-            if product and product == science_product and prvcnt > 0:
+            if product and is_main_product and prvcnt > 0:
                 logger.info('PRVCNT = %s', prvcnt)
                 for i in range(prvcnt):
                     # Verify that files in provenance are being ingested
@@ -2142,7 +2153,7 @@ class jcmt2caom2ingest(object):
                 filename, 'DATAPROD', header,
                 ('image', 'spectrum', 'cube', 'catalog'))
             dataProductType = header['DATAPROD']
-        elif product == science_product:
+        elif is_main_product:
             # Assume these are like standard pipeline products
             # Axes are always in the order X, Y, Freq, Pol
             # but may be degenerate with length 1.  Only compute the
@@ -2326,7 +2337,7 @@ class jcmt2caom2ingest(object):
             raise CAOMError(
                 'file {0}: ProductType is not defined'.format(filename))
 
-        if product == science_product and len(obstimes):
+        if is_main_product and len(obstimes):
             self.add_fitsuri_dict(self.uri)
             # Record times for science products
             for key in sorted(obstimes, key=lambda t: obstimes[t][0]):
