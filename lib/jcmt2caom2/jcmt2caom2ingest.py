@@ -2014,8 +2014,12 @@ class jcmt2caom2ingest(object):
             if product in ['reduced', 'cube']:
                 # Set release dates for non-healpix products
                 if latest_release_date:
-                    self.add_to_plane_dict('obs.metaRelease',
-                                           latest_release_date)
+                    if algorithm != 'exposure':
+                        # Don't set the Observation level release date for
+                        # "exposures" because the raw data ingestion should
+                        # do that.
+                        self.add_to_plane_dict('obs.metaRelease',
+                                               latest_release_date)
                     self.add_to_plane_dict('plane.metaRelease',
                                            latest_release_date)
                     self.add_to_plane_dict('plane.dataRelease',
@@ -2029,7 +2033,11 @@ class jcmt2caom2ingest(object):
                 # For "healpix" products (i.e. JSA legacy release) use a dummy
                 # release date for now.
                 legacy_release_date = '2020-04-01T00:00:00.000'
-                self.add_to_plane_dict('obs.metaRelease', legacy_release_date)
+                if algorithm != 'exposure':
+                    # Don't set the Observation level release date for
+                    # "exposures" because the raw data ingestion should
+                    # do that.
+                    self.add_to_plane_dict('obs.metaRelease', legacy_release_date)
                 self.add_to_plane_dict('plane.metaRelease', legacy_release_date)
                 self.add_to_plane_dict('plane.dataRelease', legacy_release_date)
 
