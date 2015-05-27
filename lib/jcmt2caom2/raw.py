@@ -59,9 +59,9 @@ from tools4caom2.__version__ import version as tools4caom2version
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.error import CAOMError
 from tools4caom2.mjd import utc2mjd
-from tools4caom2.tapclient import tapclient
 
 from jcmt2caom2.__version__ import version as jcmt2caom2version
+from jcmt2caom2.caom2_tap import CAOM2TAP
 from jcmt2caom2.instrument.scuba2 import scuba2_spectral_wcs
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
@@ -147,7 +147,7 @@ class raw(object):
         self.vosroot = 'vos:jsaops'
 
         self.conn = None
-        self.tap = tapclient()
+        self.tap = CAOM2TAP()
 
     def parse_command_line(self):
         """
