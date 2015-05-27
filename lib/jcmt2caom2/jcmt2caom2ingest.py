@@ -129,13 +129,13 @@ from tools4caom2.data_web_client import data_web_client
 from tools4caom2.error import CAOMError
 from tools4caom2.fits2caom2 import run_fits2caom2
 from tools4caom2.mjd import utc2mjd
-from tools4caom2.tapclient import tapclient
 from tools4caom2.utdate_string import UTDATE_REGEX
 from tools4caom2.utdate_string import utdate_string
 from tools4caom2.util import make_file_id_no_ext
 from tools4caom2.validation import CAOMValidation, CAOMValidationError
 
 from jcmt2caom2.__version__ import version as jcmt2caom2version
+from jcmt2caom2.caom2_tap import CAOM2TAP
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.instrument.scuba2 import scuba2_spectral_wcs
@@ -628,7 +628,7 @@ class jcmt2caom2ingest(object):
         if not self.indir:
             raise CAOMError('--indir = ' + self.args.indir + ' does not exist')
 
-        self.tap = tapclient(self.proxy)
+        self.tap = CAOM2TAP(self.proxy)
         if not os.path.exists(self.proxy):
             raise CAOMError('proxy does not exist: ' + self.proxy)
 
@@ -1207,40 +1207,24 @@ class jcmt2caom2ingest(object):
         """
         if run_id not in self.remove_id:
             self.remove_id.append(run_id)
-            tapcmd = '\n'.join([
-                'SELECT',
-                '    Observation.collection,',
-                '    Observation.observationID,',
-                '    Plane.productID,',
-                '    Plane.provenance_runID',
-                'FROM',
-                '    caom2.Observation AS Observation',
-                '        INNER JOIN caom2.Plane AS Plane',
-                '            ON Observation.obsID=Plane.obsID',
-                '        INNER JOIN caom2.Plane AS Plane2',
-                '            ON observation.obsID=Plane2.obsID',
-                'WHERE',
-                '    Plane2.provenance_runID=' + "'" + run_id + "'",
-                'ORDER BY Observation.collection, ',
-                '         Observation.observationID, ',
-                '         Plane.productID'])
-            result = self.tap.query(tapcmd)
-            if result:
-                for coll, obsid, prodid, run in result:
-                    this_runID = run
-                    eq = (this_runID == run_id)
-                    # If this is a "new" JAC processing job number, check also
-                    # whether the file came from a previous version of the job
-                    # at CADC.
-                    if run_id in self.recipe_instance_mapping:
-                        if this_runID == self.recipe_instance_mapping[run_id]:
-                            eq = True
-                    # Ignore entries in other collections
-                    if coll == self.collection:
-                        if obsid not in self.remove_dict:
-                            self.remove_dict[obsid] = {}
-                        if prodid not in self.remove_dict[obsid]:
-                            self.remove_dict[obsid][prodid] = eq
+
+            for result in self.tap.get_planes_for_obs_with_run_id(run_id):
+                # Is this a plane from the given run ID?
+                eq = (result.run_id == run_id)
+
+                # If this is a "new" JAC processing job number, check also
+                # whether the file came from a previous version of the job
+                # at CADC.
+                if run_id in self.recipe_instance_mapping:
+                    if result.run_id == self.recipe_instance_mapping[run_id]:
+                        eq = True
+
+                # Ignore entries in other collections.
+                if result.collection == self.collection:
+                    if result.obs_id not in self.remove_dict:
+                        self.remove_dict[result.obs_id] = {}
+                    if result.prod_id not in self.remove_dict[result.obs_id]:
+                        self.remove_dict[result.obs_id][result.prod_id] = eq
 
     def build_dict(self, header):
         '''Archive-specific code to read the common dictionary from the
@@ -1312,45 +1296,38 @@ class jcmt2caom2ingest(object):
                                            header)
             self.observationID = header['ASN_ID']
 
-            # TAP query to find if the observationID is in use.  Do not do
-            # this for obs products, since the raw data can be ingested
-            # before or after the processed data.
-            tapcmd = '\n'.join([
-                "SELECT Observation.collection",
-                "FROM caom2.Observation AS Observation",
-                "WHERE Observation.observationID='" +
-                self.observationID + "'"])
-            results = self.tap.query(tapcmd)
-            if results:
-                # Check for duplicate observationIDs.
-                # This is always OK in the SANDBOX.
-                # In JCMT, --replace is never needed for observations in
-                # the JCMT collection because replacement is expected.
-                # Otherwise,  issue an error if --replace is not specified and
-                # the observation exists in the collection, or if the
-                # observation pre-exists in another collection.
-                for (coll,) in results:
-                    # Do not raise errors for ingestions into the SANDBOX
-                    # or into JCMT if coll is also JCMT.
-                    if coll == self.collection:
-                        if self.collection in ('JCMTLS', 'JCMTUSER'):
-                            if not self.replace:
-                                # Raise an error if --replace not is
-                                # specified but the observation already
-                                # exists in the collection
-                                raise CAOMError(
-                                    'file: {0}: Must specify --replace if'
-                                    ' observationID = "{1}" already exists'
-                                    ' in collection = "{2}"'.format(
-                                        filename, self.observationID,
-                                        self.collection))
-                    elif self.collection != 'SANDBOX':
-                        # Complain if the observation matches
-                        # an observation in a different collection
-                        raise CAOMError(
-                            'file: {0}, observationID = "{1}" is also in use'
-                            ' in collection = "{2}"'.format(
-                                filename, self.observationID, coll))
+            # Check for duplicate observationIDs.
+            # Do not do this for obs products, since the raw data can be
+            # ingested before or after the processed data.
+            # This is always OK in the SANDBOX.
+            # In JCMT, --replace is never needed for observations in
+            # the JCMT collection because replacement is expected.
+            # Otherwise,  issue an error if --replace is not specified and
+            # the observation exists in the collection, or if the
+            # observation pre-exists in another collection.
+            for coll in self.tap.get_collections_with_obs_id(
+                    self.observationID):
+                # Do not raise errors for ingestions into the SANDBOX
+                # or into JCMT if coll is also JCMT.
+                if coll == self.collection:
+                    if self.collection in ('JCMTLS', 'JCMTUSER'):
+                        if not self.replace:
+                            # Raise an error if --replace not is
+                            # specified but the observation already
+                            # exists in the collection
+                            raise CAOMError(
+                                'file: {0}: Must specify --replace if'
+                                ' observationID = "{1}" already exists'
+                                ' in collection = "{2}"'.format(
+                                    filename, self.observationID,
+                                    self.collection))
+                elif self.collection != 'SANDBOX':
+                    # Complain if the observation matches
+                    # an observation in a different collection
+                    raise CAOMError(
+                        'file: {0}, observationID = "{1}" is also in use'
+                        ' in collection = "{2}"'.format(
+                            filename, self.observationID, coll))
 
         self.add_to_plane_dict('algorithm.name', algorithm)
 
@@ -1462,71 +1439,50 @@ class jcmt2caom2ingest(object):
                         # all the files and planes in this observation, in the
                         # expectation that they will be part of the membership
                         # and provenance inputs for this release.
-                        tapcmd = '\n'.join([
-                            "SELECT"
-                            "       Plane.productID, ",
-                            "       Plane.time_bounds_cval1,",
-                            "       Plane.time_bounds_cval2,",
-                            "       Plane.dataRelease,",
-                            "       Artifact.uri",
-                            "FROM caom2.Observation as Observation",
-                            "         INNER JOIN caom2.Plane AS Plane",
-                            "             ON Observation.obsID=Plane.obsID",
-                            "         INNER JOIN caom2.Artifact AS Artifact",
-                            "             ON Plane.planeID=Artifact.planeID",
-                            "WHERE Observation.collection='JCMT'",
-                            "      AND Observation.observationID='" +
-                            obsid + "'"
-                            ])
-                        answer = self.tap.query(tapcmd)
-                        if len(answer) > 0 and len(answer[0]) > 0:
-                            missing = True
-                            for (prodid,
-                                 date_obs,
-                                 date_end,
-                                 release,
-                                 uri) in answer:
 
-                                if (not date_obs or
-                                        not date_end or
-                                        not release):
-                                    continue
+                        missing = True
+                        for row in self.tap.get_obs_info(obsid):
+                            if (not row.date_obs or
+                                    not row.date_end or
+                                    not row.release):
+                                continue
 
-                                # Only extract date_obs, date_end and release
-                                # raw planes
-                                if missing and re.match(r'raw.*', prodid):
-                                    missing = False
-                                    release_date = release
-                                    if (latest_release_date is None or
-                                            release_date >
-                                            latest_release_date):
+                            # Only extract date_obs, date_end and release
+                            # raw planes
+                            if missing and re.match(r'raw.*', row.prod_id):
+                                missing = False
+                                if (latest_release_date is None or
+                                        row.release >
+                                        latest_release_date):
 
-                                        latest_release_date = release_date
-                                    # cache mbrn, start, end and release
-                                    # caching mbrn is NOT needlessly repetitive
-                                    # because with obsn headers it will be
-                                    # different
-                                    logger.debug(
-                                        'cache member_cache[%s] ='
-                                        ' [%s, %s, %s, %s]',
-                                        mbrn,
-                                        mbrn, date_obs, date_end, release_date)
-                                    self.member_cache[mbrn] = (mbrn,
-                                                               date_obs,
-                                                               date_end,
-                                                               release_date)
-                                    mbr_date_obs = date_obs
-                                    mbr_date_end = date_end
+                                    latest_release_date = row.release
+                                # cache mbrn, start, end and release
+                                # caching mbrn is NOT needlessly repetitive
+                                # because with obsn headers it will be
+                                # different
+                                logger.debug(
+                                    'cache member_cache[%s] ='
+                                    ' [%s, %s, %s, %s]',
+                                    mbrn,
+                                    mbrn, row.date_obs, row.date_end,
+                                    row.release)
+                                self.member_cache[mbrn] = (mbrn,
+                                                           row.date_obs,
+                                                           row.date_end,
+                                                           row.release)
+                                mbr_date_obs = row.date_obs
+                                mbr_date_end = row.date_end
 
-                                # Cache provenance input candidates
-                                # Do NOT rewrite the file_id
-                                if uri not in self.input_cache:
-                                    filecoll, this_file_id = uri.split('/')
-                                    inURI = self.planeURI('JCMT',
-                                                          obsid,
-                                                          prodid)
-                                    self.input_cache[this_file_id] = inURI
-                                    self.input_cache[inURI.uri] = inURI
+                            # Cache provenance input candidates
+                            # Do NOT rewrite the file_id
+                            if row.artifact_uri not in self.input_cache:
+                                filecoll, this_file_id = \
+                                    row.artifact_uri.split('/')
+                                inURI = self.planeURI('JCMT',
+                                                      obsid,
+                                                      row.prod_id)
+                                self.input_cache[this_file_id] = inURI
+                                self.input_cache[inURI.uri] = inURI
 
                     # At this point we have mbrn, mbr_date_obs, mbr_date_end
                     # and release_date either from the member_cache or from
@@ -1583,72 +1539,49 @@ class jcmt2caom2ingest(object):
                         # obsn contains an obsid_subsysnr
                         obsid_guess = obsidss_to_obsid(obsn)
 
-                        tapquery = '\n'.join([
-                            "SELECT",
-                            "       Plane.productID,",
-                            "       Plane.time_bounds_cval1,",
-                            "       Plane.time_bounds_cval2,",
-                            "       Plane.dataRelease,",
-                            "       Artifact.uri",
-                            "FROM caom2.Observation as Observation",
-                            "         INNER JOIN caom2.Plane AS Plane",
-                            "             ON Observation.obsID=Plane.obsID",
-                            "         INNER JOIN caom2.Artifact AS Artifact",
-                            "             ON Plane.planeID=Artifact.planeID",
-                            "WHERE Observation.observationID='" +
-                            obsid_guess + "'"])
-                        answer = self.tap.query(tapquery)
-                        logger.debug(repr(answer))
+                        for row in self.tap.get_obs_info(obsid_guess):
+                            if (not row.date_obs or
+                                    not row.date_end or
+                                    not row.release):
+                                continue
 
-                        if len(answer) > 0 and len(answer[0]) > 0:
-                            for (prodid,
-                                 date_obs,
-                                 date_end,
-                                 release,
-                                 uri) in answer:
+                            if (latest_release_date is None or
+                                    row.release >
+                                    latest_release_date):
 
-                                if (not date_obs or
-                                        not date_end or
-                                        not release):
-                                    continue
+                                latest_release_date = row.release
 
-                                release_date = release
-                                if (latest_release_date is None or
-                                        release_date >
-                                        latest_release_date):
+                            if re.match(r'raw.*', row.prod_id):
+                                # Only cache member date_obs, date_end and
+                                # release_date from raw planes
+                                mbrn = self.observationURI('JCMT',
+                                                           obsid_guess)
+                                # cache the members start and end times
+                                logger.debug(
+                                    'cache member_cache[%s] ='
+                                    ' [%s, %s, %s, %s]',
+                                    obsn, mbrn.uri, row.date_obs, row.date_end,
+                                    row.release)
+                                if mbrn not in self.member_cache:
+                                    self.member_cache[obsn] = \
+                                        (obsid_guess,
+                                         mbrn,
+                                         row.date_obs,
+                                         row.date_end,
+                                         row.release)
+                                    mbr_date_obs = row.date_obs
+                                    mbr_date_end = row.date_end
 
-                                    latest_release_date = release_date
-
-                                if re.match(r'raw.*', prodid):
-                                    # Only cache member date_obs, date_end and
-                                    # release_date from raw planes
-                                    mbrn = self.observationURI('JCMT',
-                                                               obsid_guess)
-                                    # cache the members start and end times
-                                    logger.debug(
-                                        'cache member_cache[%s] ='
-                                        ' [%s, %s, %s, %s]',
-                                        obsn, mbrn.uri, date_obs, date_end,
-                                        release_date)
-                                    if mbrn not in self.member_cache:
-                                        self.member_cache[obsn] = \
-                                            (obsid_guess,
-                                             mbrn,
-                                             date_obs,
-                                             date_end,
-                                             release_date)
-                                        mbr_date_obs = date_obs
-                                        mbr_date_end = date_end
-
-                                # Cache provenance input candidates
-                                # Do NOT rewrite the file_id!
-                                if uri not in self.input_cache:
-                                    filecoll, this_file_id = uri.split('/')
-                                    inURI = self.planeURI('JCMT',
-                                                          obsid_guess,
-                                                          prodid)
-                                    self.input_cache[this_file_id] = inURI
-                                    self.input_cache[inURI.uri] = inURI
+                            # Cache provenance input candidates
+                            # Do NOT rewrite the file_id!
+                            if row.artifact_uri not in self.input_cache:
+                                filecoll, this_file_id = \
+                                    row.artifact_uri.split('/')
+                                inURI = self.planeURI('JCMT',
+                                                      obsid_guess,
+                                                      row.prod_id)
+                                self.input_cache[this_file_id] = inURI
+                                self.input_cache[inURI.uri] = inURI
 
                     if mbrn is None:
                         raise CAOMError('file {0}: {1} = {2}'
@@ -2353,48 +2286,31 @@ class jcmt2caom2ingest(object):
         else:
             # use TAP to find the collection, observation and plane
             # for all files in the observation containing file_id
-            tapquery = '\n'.join([
-                "SELECT Observation.collection,",
-                "       Observation.observationID,",
-                "       Plane.productID,",
-                "       Artifact.uri",
-                "FROM caom2.Observation AS Observation",
-                "    INNER JOIN caom2.Plane as Plane",
-                "        ON Observation.obsID=Plane.obsID",
-                "    INNER JOIN caom2.Artifact AS Artifact",
-                "        ON Plane.planeID=Artifact.planeID",
-                "    INNER JOIN caom2.Artifact AS Artifact2",
-                "        ON Plane.planeID=Artifact2.planeID",
-                "WHERE Artifact2.uri='ad:JCMT/" + file_id + "'"])
-            answer = self.tap.query(tapquery)
+            for row in self.tap.get_artifacts_for_plane_with_artifact_uri(
+                    self.fitsfileURI(self.archive, file_id)):
 
-            if answer and len(answer[0]):
-                for row in answer:
+                # Search for 'ad:<anything that isn't a slash>/'
+                # and replace with nothing with in row.artifact_uri
+                fid = re.sub(r'ad:[^/]+/', '', row.artifact_uri)
 
-                    # Collection, obsid, productid and uri
-                    c, o, p, u = row
+                if (row.collection in (self.collection,
+                                       'JCMT',
+                                       'JCMTLS',
+                                       'JCMTUSER')):
 
-                    # Search for 'ad:<anything that isn't a slash>/'
-                    # and replace with nothing with in u
-                    fid = re.sub(r'ad:[^/]+/', '', u)
+                    # URI for this plane
+                    thisInputURI = self.planeURI(row.collection, row.obs_id,
+                                                 row.prod_id)
 
-                    if (c in (self.collection,
-                              'JCMT',
-                              'JCMTLS',
-                              'JCMTUSER')):
+                    # If the ad URI is the same as file_id, set
+                    # inputURI to thisInputURI
+                    if fid == file_id:
+                        inputURI = thisInputURI
 
-                        # URI for this plane
-                        thisInputURI = self.planeURI(c, o, p)
+                    # add to cache
+                    self.input_cache[fid] = thisInputURI
 
-                        # If the ad URI is the same as file_id, set
-                        # inputURI to thisInputURI
-                        if fid == file_id:
-                            inputURI = thisInputURI
-
-                        # add to cache
-                        self.input_cache[fid] = thisInputURI
-
-                        logger.debug('inputs: %s: %s', fid, thisInputURI.uri)
+                    logger.debug('inputs: %s: %s', fid, thisInputURI.uri)
 
         if inputURI is None:
             logger.warning(

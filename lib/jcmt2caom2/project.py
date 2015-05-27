@@ -39,19 +39,13 @@ def get_project_pi_title(project_id, conn, tap):
         # Some of the information was missing, so try a TAP query
         # to see if the project information is already in CAOM-2.
         logger.debug('Fetching project "%s" details from CAOM-2', project_id)
-        tapcmd = '\n'.join([
-            "SELECT DISTINCT Observation.proposal_pi, ",
-            "                Observation.proposal_title",
-            "FROM caom2.Observation as Observation",
-            "WHERE Observation.collection = 'JCMT'",
-            "      AND lower(Observation.proposal_id) = '" +
-            project_id.lower() + "'"])
-        answer = tap.query(tapcmd)
 
-        if answer and len(answer[0]) > 0:
-            if (project_pi is None) and answer[0][0]:
-                project_pi = answer[0][0]
-            if (project_title is None) and answer[0][1]:
-                project_title = answer[0][1]
+        (caom2_pi, caom2_title) = tap.get_proposal_info(project_id)
+
+        if project_pi is None and caom2_pi is not None:
+            project_pi = caom2_pi
+
+        if project_title is None and caom2_title is not None:
+            project_title = caom2_title
 
     return (project_pi, project_title)
