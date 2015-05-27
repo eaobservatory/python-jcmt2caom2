@@ -1391,12 +1391,9 @@ class jcmt2caom2ingest(object):
 
         # Observation membership headers, which are optional
         earliest_utdate = None
-        earliest_obs = None
         if algorithm == 'exposure':
             if is_defined('DATE-OBS', header):
                 earliest_utdate = Time(header['DATE-OBS']).mjd
-            if is_defined('OBSID', header):
-                earliest_obs = header['OBSID']
 
         obscnt = None
         mbrcnt = None
@@ -1539,7 +1536,6 @@ class jcmt2caom2ingest(object):
                                 mbr_date_obs < earliest_utdate):
 
                             earliest_utdate = mbr_date_obs
-                            earliest_obs = obsid
 
                         if mbrn not in obstimes:
                             obstimes[mbrn] = (mbr_date_obs, mbr_date_end)
@@ -1589,7 +1585,6 @@ class jcmt2caom2ingest(object):
 
                         tapquery = '\n'.join([
                             "SELECT",
-                            "       Observation.observationID,",
                             "       Plane.productID,",
                             "       Plane.time_bounds_cval1,",
                             "       Plane.time_bounds_cval2,",
@@ -1604,14 +1599,9 @@ class jcmt2caom2ingest(object):
                             obsid_guess + "'"])
                         answer = self.tap.query(tapquery)
                         logger.debug(repr(answer))
-                        # TODO: now that we use obsid_guess rather than
-                        # "LIKE obsid_pattern", it may no longer be necessary
-                        # to check for a "solitary" answer.  Therefore
-                        # consider simplifying the following code.
+
                         if len(answer) > 0 and len(answer[0]) > 0:
-                            obsid_solitary = None
-                            for (obsid,
-                                 prodid,
+                            for (prodid,
                                  date_obs,
                                  date_end,
                                  release,
@@ -1622,26 +1612,18 @@ class jcmt2caom2ingest(object):
                                         not release):
                                     continue
 
-                                if obsid_solitary is None:
-                                    obsid_solitary = obsid
-                                    release_date = release
-                                    if (latest_release_date is None or
-                                            release_date >
-                                            latest_release_date):
+                                release_date = release
+                                if (latest_release_date is None or
+                                        release_date >
+                                        latest_release_date):
 
-                                        latest_release_date = release_date
-
-                                elif obsid != obsid_solitary:
-                                    raise CAOMError(
-                                        '{0} = {1} with obsid_guess = {2}'
-                                        ' matched {3} and {4}'.format(
-                                            obskey, obsn, obsid_guess,
-                                            obsid_solitary, obsid))
+                                    latest_release_date = release_date
 
                                 if re.match(r'raw.*', prodid):
                                     # Only cache member date_obs, date_end and
                                     # release_date from raw planes
-                                    mbrn = self.observationURI('JCMT', obsid)
+                                    mbrn = self.observationURI('JCMT',
+                                                               obsid_guess)
                                     # cache the members start and end times
                                     logger.debug(
                                         'cache member_cache[%s] ='
@@ -1650,7 +1632,7 @@ class jcmt2caom2ingest(object):
                                         release_date)
                                     if mbrn not in self.member_cache:
                                         self.member_cache[obsn] = \
-                                            (obsid,
+                                            (obsid_guess,
                                              mbrn,
                                              date_obs,
                                              date_end,
@@ -1663,7 +1645,7 @@ class jcmt2caom2ingest(object):
                                 if uri not in self.input_cache:
                                     filecoll, this_file_id = uri.split('/')
                                     inURI = self.planeURI('JCMT',
-                                                          obsid,
+                                                          obsid_guess,
                                                           prodid)
                                     self.input_cache[this_file_id] = inURI
                                     self.input_cache[inURI.uri] = inURI
@@ -1681,7 +1663,6 @@ class jcmt2caom2ingest(object):
                                     mbr_date_obs < earliest_utdate):
 
                                 earliest_utdate = mbr_date_obs
-                                earliest_obs = obsid
 
                             if mbrn not in obstimes:
                                 obstimes[mbrn] = (mbr_date_obs, mbr_date_end)
@@ -2261,11 +2242,9 @@ class jcmt2caom2ingest(object):
 
         # Report the earliest UTDATE
         if earliest_utdate and self.dprcinst:
-            rcinstprefix = 'caom-' + self.collection + '-' + earliest_obs
             logger.info(
-                'Earliest utdate: %s for %s_vlink-%s',
+                'Earliest utdate: %s for %s',
                 Time(earliest_utdate, format='mjd', out_subfmt='date').iso,
-                rcinstprefix,
                 self.dprcinst)
 
         self.validation.expect_keyword(filename, 'DPDATE', header)
