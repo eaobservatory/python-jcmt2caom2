@@ -1,0 +1,232 @@
+#!/usr/bin/env python2
+
+# Copyright (C) 2015 East Asian Observatory
+# All Rights Reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc.,51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA
+
+# Author: SF Graves
+
+"""
+caomcheck: check the state of JCMT observations in CAOM2
+
+This script attempts to find for all JCMT observations (matching the
+instrument and date constraints):
+  a) if they have a record in CAOM and
+  b) if the release date in CAOM matches the release date in COMMON
+
+It defaults to checking all SCUBA-2/HARP/RxWD2/RxA3 observations for all time.
+
+CAOM instrument_name fields frequently do not match the COMMON
+instrume field (e.g. POL2-SCUBA2 and HARP-ACSIS have instrume values of
+'SCUBA-2' and 'HARP'). The instrument name will therefore be checked
+in a 'LIKE %<name.upper()>%' clause, so will match any record contains
+the given string (in uppercase).
+
+
+Usage:
+    caomcheck [-v | -q ] [--date-start=<start>] [--date-end=<end>] [--instrument=<inst> ...] [--non-acsis]
+    caomcheck --help
+    caomcheck
+
+Options:
+    --help, -h                Show usage information
+
+    --verbose, -v              Print debugging information.
+    --quiet, -q                Omit informational messages.
+
+    --date-start, -s <start>  Only check observations taken on and after this date, YYYYMMDD
+    --date-end, -e <end>      Only check for observations taken on and before this date, YYYYMMDD
+
+    --instrument, -i <inst>   Check for observations taken with this instrument name (can be given multiple times)
+
+"""
+
+import datetime
+import logging
+import os
+
+from docopt import docopt
+
+
+from omp.db.part.arc import ArcDB
+from tools4caom2 import tapclient
+from tools4caom2.util import configure_logger
+
+
+script_name = 'caomcheck'
+logger = logging.getLogger(script_name)
+
+def main():
+    """
+    Main routine for the caomcheck script.
+    """
+
+    args = docopt(__doc__)
+
+    # Determine logging level from the --quiet and --verbose options.
+    loglevel = logging.INFO
+    if args['--verbose']:
+        loglevel = logging.DEBUG
+    elif args['--quiet']:
+        loglevel = logging.WARNING
+
+    if not args['--verbose']:
+        # Don't pass on info messages from the requests package unless
+        # verbose.
+        logging.getLogger('requests').setLevel(logging.WARNING)
+
+    logging.basicConfig(level=loglevel)
+
+    # If no instruments were specified, use the default list.
+    if not args['--instrument']:
+        instrumentlist = ['SCUBA-2', 'HARP', 'RxWD2', 'RxA3']
+    else:
+        instrumentlist = args['--instrument']
+
+    # If no end date was specified, use tomorrow.
+    if args['--date-end'] is None:
+        end = int(datetime.date.today().strftime('%Y%m%d')) + 1
+    else:
+        end = int(args['--date-end'])
+
+    # If no start date was specified, set it to 0.
+    if args['--date-start'] is None:
+        start = 0
+    else:
+        start = int(args['--date-start'])
+
+    # Get a connection to the omp.
+    ompdb = ArcDB()
+
+
+    # Now go through each instrument.
+    for instrument in instrumentlist:
+
+        # Get the release dates from COMMON as a dictionary (obsids as keys).
+        releasedates = ompdb.find_releasedates(utstart=start, utend=end,
+                                               instrument=instrument)
+        releasedates = dict(releasedates)
+        logger.info('%s: %i observations found in COMMON' % (instrument, len(releasedates.keys())))
+
+        # Get the release dates from CAOM @ CADC in a similar
+        # dictionary.  Note: use a 'like 'as instrument_names at CADC
+        # may include POL, ACSIS etc.  Also all CAOM instrument names
+        # are upper case for JCMT.
+        caom2query = ("SELECT caom2.Observation.observationID, "
+                      " caom2.Observation.metaRelease "
+                      " FROM caom2.Observation "
+                      " WHERE collection='JCMT' "
+                      " AND algorithm_name='exposure' "
+                      " AND instrument_name LIKE '%" + instrument.upper() + "%';")
+
+        tap = tapclient.tapclient()
+        table = tap.query(caom2query, timeout=60)
+
+        metaReleases = [datetime.datetime.strptime(i, '%Y-%m-%dT%H:%M:%S.%f')
+                        if i else None
+                        for i in table['metaRelease']]
+
+        caom2releasedates = dict(zip(table['observationID'], metaReleases))
+
+
+        # Now find any observations that are a) not in CAOM-2
+        # or b) have the wrong release date.
+
+        # To do this quickly, use sets & intersects.
+        ompkeys = set(releasedates.keys())
+        caomkeys = set(caom2releasedates.keys())
+        obsid_intersect = caomkeys.intersection(ompkeys)
+
+        # Any obsids in releasedates but not in caom2releasedates are missing.
+        missing_obs = ompkeys - obsid_intersect
+
+        if missing_obs:
+            # Find the date range of the missing observations -- this
+            # assumes all obsids have %s_%S_DATETIME.
+            m = [i.split('_')[-1] for i in missing_obs]
+            m.sort()
+            mindate = m[0][0:8]
+            maxdate = m[-1][0:8]
+
+            #Write out a summary to the log.
+            logger.warning('%s: %i observations are missing from CAOM between %s and %s.' % (
+                    instrument, len(missing_obs), mindate, maxdate))
+
+            # Write out all the details to a file
+            logfile = 'MissingObservations_' + instrument+'.csv'
+
+            # Write out a file with the list of obsids missing from CAOM
+            with open(logfile, 'w') as logfile:
+                logfile.write('obsid\n')
+                for i in missing_obs:
+                    logfile.write(i + '\n')
+                logfile_path = os.path.abspath(logfile.name)
+
+            logger.info('%s: list of missing observations written to %s' % (instrument, logfile_path))
+        else:
+            logger.info('%s: no observations are missing from CAOM.', instrument)
+
+
+        # If there are any obsids in CAOM that aren't in the OMP, raise a warning:
+        extra_obs = caomkeys - obsid_intersect
+
+        if extra_obs:
+            logger.warning('%s: %i observations were found in CAOM that are not in the OMP!\n' % (
+                    instrument, len(extra_obs)))
+
+            logfile = 'ExtraObservationsInCAOM_' + instrument+'.csv'
+
+            # Write out a file with the list of obsids missing from CAOM
+            with open(logfile, 'w') as logfile:
+                logfile.write('obsid\n')
+                for i in extra_obs:
+                    logfile.write(i + '\n')
+                logfile_path = os.path.abspath(logfile.name)
+
+            logger.info('%s: list of extra observations in CAOM written to %s' % (instrument, logfile_path))
+
+        # Any dates that are different in caom2releasedates from releasedates are wrong.
+        wrong_release_dates = set(o for o in obsid_intersect if releasedates[o] != caom2releasedates[o])
+
+        if wrong_release_dates:
+            # Find the date range of the wrong release date observations
+            # -- this assumes all obsids have %s_%S_DATETIME.
+            m = [i.split('_')[-1] for i in wrong_release_dates]
+            m.sort()
+            mindate = m[0][0:8]
+            maxdate = m[-1][0:8]
+
+            #Write out a summary to the log
+            logger.warning('%s: %i observations have the wrong release date in CAOM between %s and %s.' % (
+                    instrument, len(wrong_release_dates), mindate, maxdate))
+
+            logfile = 'WrongReleaseDates_' + instrument+'.csv'
+
+            # Write out a file with the list of obsids, correct release date, caom releasedate
+            with open(logfile, 'w') as logfile:
+                logfile.write('obsid, true_release_date, caom_release_date\n')
+                for i in wrong_release_dates:
+                    logfile.write(', '.join([i, str(releasedates[i]), str(caom2releasedates[i])]) + '\n')
+                logfile_path = os.path.abspath(logfile.name)
+
+            logger.info('%s: wrong release date information written to %s' % (instrument, logfile_path))
+        else:
+            logger.info('%s: no observations in CAOM have the wrong release date.', instrument)
+
+
+if __name__ == '__main__':
+    main()
