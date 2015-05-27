@@ -39,7 +39,8 @@ setup(
     packages=find_packages(where='lib'),
     scripts=['scripts/jsaingest',
              'scripts/jsaraw',
-             'scripts/jsasetfield'],
+             'scripts/jsasetfield',
+             'scripts/caomcheck'],
     # config files are not package data and must be located
     # in ../config relative to the executables in scripts
     data_files=[(configdir, configfiles)],
