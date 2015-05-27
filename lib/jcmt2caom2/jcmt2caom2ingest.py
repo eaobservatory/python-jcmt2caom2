@@ -1545,15 +1545,15 @@ class jcmt2caom2ingest(object):
                                     not row.release):
                                 continue
 
-                            if (latest_release_date is None or
-                                    row.release >
-                                    latest_release_date):
-
-                                latest_release_date = row.release
-
+                            # Only cache member date_obs, date_end and
+                            # release_date from raw planes
                             if re.match(r'raw.*', row.prod_id):
-                                # Only cache member date_obs, date_end and
-                                # release_date from raw planes
+                                if (latest_release_date is None or
+                                        row.release >
+                                        latest_release_date):
+
+                                    latest_release_date = row.release
+
                                 mbrn = self.observationURI('JCMT',
                                                            obsid_guess)
                                 # cache the members start and end times
