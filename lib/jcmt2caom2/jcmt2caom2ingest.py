@@ -1924,8 +1924,9 @@ class jcmt2caom2ingest(object):
                                                   self.observationID,
                                                   self.productID)
 
+        # TODO: do we only need to do this for the "main" product?
         if instream == 'JCMT':
-            if product in ['reduced', 'cube']:
+            if science_product in ['reduced', 'cube']:
                 # Set release dates for non-healpix products
                 if latest_release_date:
                     if algorithm != 'exposure':
