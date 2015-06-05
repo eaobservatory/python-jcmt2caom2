@@ -127,7 +127,7 @@ def main():
         # Get the release dates from CAOM @ CADC in a similar
         # dictionary.  Note: use a 'like 'as instrument_names at CADC
         # may include POL, ACSIS etc.  Also all CAOM instrument names
-        # are upper case for JCMT.
+        # are upper case for JCMT. This is not limited by time.
         caom2query = ("SELECT caom2.Observation.observationID, "
                       " caom2.Observation.metaRelease "
                       " FROM caom2.Observation "
@@ -142,8 +142,14 @@ def main():
                         if i else None
                         for i in table['metaRelease']]
 
-        caom2releasedates = dict(zip(table['observationID'], metaReleases))
 
+        #Now remove any observation that are not from the specified date range.
+        caom2utdates = [int(i.split('_')[-1].split('T')[0]) for i in table['observationID']]
+        caom2releasedates={}
+
+        for i in range(len(table['observationID'])):
+            if (caom2utdates[i] <= end) and (caom2utdates[i] >=start):
+                caom2releasedates[table['observationID'][i]] = metaReleases[i]
 
         # Now find any observations that are a) not in CAOM-2
         # or b) have the wrong release date.
