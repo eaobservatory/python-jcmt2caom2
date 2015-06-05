@@ -28,7 +28,8 @@ instrument and date constraints):
   a) if they have a record in CAOM and
   b) if the release date in CAOM matches the release date in COMMON
 
-It defaults to checking all SCUBA-2/HARP/RxWD2/RxA3/RxWB observations for all time.
+It defaults to checking all SCUBA-2/HARP/RxWD2/RxA3/RxWB observations up
+until yesterday.
 
 CAOM instrument_name fields frequently do not match the COMMON
 instrume field (e.g. POL2-SCUBA2 and HARP-ACSIS have instrume values of
@@ -97,9 +98,9 @@ def main():
     else:
         instrumentlist = args['--instrument']
 
-    # If no end date was specified, use tomorrow.
+    # If no end date was specified, use yesterday.
     if args['--date-end'] is None:
-        end = int(datetime.date.today().strftime('%Y%m%d')) + 1
+        end = int(datetime.date.today().strftime('%Y%m%d')) -1
     else:
         end = int(args['--date-end'])
 
@@ -120,7 +121,8 @@ def main():
         releasedates = ompdb.find_releasedates(utstart=start, utend=end,
                                                instrument=instrument)
         releasedates = dict(releasedates)
-        logger.info('%s: %i observations found in COMMON' % (instrument, len(releasedates.keys())))
+        logger.info('%s: %i observations found in COMMON from %i to %i ' % (
+                instrument, len(releasedates.keys()), start, end))
 
         # Get the release dates from CAOM @ CADC in a similar
         # dictionary.  Note: use a 'like 'as instrument_names at CADC
