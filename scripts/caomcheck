@@ -227,6 +227,8 @@ def main():
         else:
             logger.info('%s: no observations in CAOM have the wrong release date.', instrument)
 
+        print("") # neaten up the output on screen.
+
 
 if __name__ == '__main__':
     main()
