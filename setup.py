@@ -40,7 +40,8 @@ setup(
     scripts=['scripts/jsaingest',
              'scripts/jsaraw',
              'scripts/jsasetfield',
-             'scripts/caomcheck'],
+             'scripts/caomcheck',
+             'scripts/remove_products'],
     # config files are not package data and must be located
     # in ../config relative to the executables in scripts
     data_files=[(configdir, configfiles)],
