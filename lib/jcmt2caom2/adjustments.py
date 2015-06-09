@@ -35,7 +35,7 @@ up information in CAOM2 when changes are made.
 logger = logging.getLogger()
 
 
-def remove_planes(productID, obsids, collection='JCMT', dry_run=False):
+def remove_planes(productID, obsids, collection='JCMT', dry_run=False, allow_remove=False):
     """
 
     Removes planes with given productID from a list of observations.
@@ -49,6 +49,8 @@ def remove_planes(productID, obsids, collection='JCMT', dry_run=False):
 
       dry_run (opt, Bool): if True, then don't actually remove anything.
 
+      allow_remove (opt, Bool): If True, allow removal of observations with no planes remaining.
+
     """
 
     logger.info('Removing planes with productID=%s', productID)
@@ -57,18 +59,21 @@ def remove_planes(productID, obsids, collection='JCMT', dry_run=False):
     for obsid in obsids:
         logger.info('Attempting to remove plane from %s', obsid)
         uri = 'caom:' + collection + '/' + obsid
-        with repository.process(uri, dry_run=dry_run) as wrapper:
+        with repository.process(uri, dry_run=dry_run, allow_remove=True) as wrapper:
             observation = wrapper.observation
-            if observation.planes.has_key(productID):
+            if observation and observation.planes.has_key(productID):
                 try:
                     del observation.planes[productID]
                 except:
                     logger.exception('Cannot remove plane from  %s', uri)
                     raise
+
+            elif not observation:
+                logger.warning('Observation %s does not exist in CAOM DB', obsid)
             else:
                 logger.warning('Observation %s has no %s plane to remove' % (obsid, productID))
 
             if dry_run:
-                logger.info('No planes removed from %s as DRY RUN mode enabled', obsid)
+                logger.debug('No planes will be removed from %s as DRY RUN mode enabled', obsid)
 
         logger.info('Finished with observation %s', obsid)

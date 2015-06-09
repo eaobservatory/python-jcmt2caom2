@@ -86,6 +86,7 @@ def main():
     # Was dry run requested?
     if args['--dryrun']:
         dry_run = True
+        logger.warning('DRY RUN mode enabled: no CAOM records will be altered')
     else:
         dry_run = False
 
@@ -114,7 +115,7 @@ def main():
     obsids = results['observationID']
 
     # Remove the planes from that list of observations.
-    remove_planes(productID, obsids, collection='JCMT', dry_run=dry_run)
+    remove_planes(productID, obsids, collection='JCMT', dry_run=dry_run, allow_remove=True)
 
 
 
