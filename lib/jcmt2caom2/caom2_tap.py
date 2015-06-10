@@ -26,7 +26,7 @@ ObsInfo = namedtuple('ObsInfo',
                       'artifact_uri'))
 
 PlaneInfo = namedtuple('PlaneInfo',
-                       ('collection', 'obs_id', 'prod_id', 'run_id'))
+                       ('obs_id', 'prod_id'))
 
 FileInfo = namedtuple('FileInfo',
                       ('collection', 'obs_id', 'prod_id', 'artifact_uri'))
@@ -119,35 +119,38 @@ class CAOM2TAP(object):
 
         return result
 
-    def get_planes_for_obs_with_run_id(self, run_id):
+    def get_planes_with_run_id(self, collection, run_ids):
         """
-        Get information on observations which have a plane featuring the
-        given (provenance) run ID.
+        Get information on planes featuring a (provenance) run ID
+        from the given list.
+        """
 
-        Returns all planes of the matching observations.
-        """
+        conditions = ['Observation.collection=\'{0}\'']
+        params = [collection]
+
+
+        run_id_conditions = []
+
+        n = 1
+        for run_id in run_ids:
+            run_id_conditions.append('Plane.provenance_runID=\'{' + str(n) +
+                                     '}\'')
+            params.append(run_id)
+            n += 1
+
+        conditions.append('(' + ' OR '.join(run_id_conditions) + ')')
 
         result = []
 
         for row in self.tap.query(
-                'SELECT'
-                ' Observation.collection,'
+                ('SELECT'
                 ' Observation.observationID,'
-                ' Plane.productID,'
-                ' Plane.provenance_runID '
+                ' Plane.productID '
                 'FROM'
                 ' caom2.Observation AS Observation'
-                ' INNER JOIN caom2.Plane AS Plane'
-                '   ON Observation.obsID=Plane.obsID'
-                ' INNER JOIN caom2.Plane AS Plane2'
-                '   ON observation.obsID=Plane2.obsID '
-                'WHERE'
-                ' Plane2.provenance_runID=\'{0}\' '
-                'ORDER BY'
-                ' Observation.collection, '
-                ' Observation.observationID, '
-                ' Plane.productID'.format(
-                    run_id)):
+                ' JOIN caom2.Plane AS Plane'
+                '   ON Observation.obsID=Plane.obsID '
+                'WHERE ' + ' AND '.join(conditions)).format(*params)):
 
             result.append(PlaneInfo(*row))
 

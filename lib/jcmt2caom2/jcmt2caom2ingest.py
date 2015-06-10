@@ -1194,7 +1194,7 @@ class jcmt2caom2ingest(object):
 
     def build_remove_dict(self, run_id):
         """
-        Discover observations and planes to remove.
+        Discover planes to remove.
 
         If identity_instance_id has not already been checked, read back a
         complete list of existing collections, observations and planes,
@@ -1202,29 +1202,30 @@ class jcmt2caom2ingest(object):
         current recipe instance.
 
         Arguments:
-        run_id: an identity_instance_id as a decimal string to be compared
-                with Plane.provenance_runID
+        run_id: a run identifer as a string to be compared with
+                Plane.provenance_runID
         """
-        if run_id not in self.remove_id:
-            self.remove_id.append(run_id)
 
-            for result in self.tap.get_planes_for_obs_with_run_id(run_id):
-                # Is this a plane from the given run ID?
-                eq = (result.run_id == run_id)
+        # Did we already check this run_id?
+        if run_id in self.remove_id:
+            return
 
-                # If this is a "new" JAC processing job number, check also
-                # whether the file came from a previous version of the job
-                # at CADC.
-                if run_id in self.recipe_instance_mapping:
-                    if result.run_id == self.recipe_instance_mapping[run_id]:
-                        eq = True
+        self.remove_id.append(run_id)
 
-                # Ignore entries in other collections.
-                if result.collection == self.collection:
-                    if result.obs_id not in self.remove_dict:
-                        self.remove_dict[result.obs_id] = {}
-                    if result.prod_id not in self.remove_dict[result.obs_id]:
-                        self.remove_dict[result.obs_id][result.prod_id] = eq
+        # Does this job have alternate run_id values we must also check for?
+        run_ids = [run_id]
+        if run_id in self.recipe_instance_mapping:
+            run_ids.append(self.recipe_instance_mapping[run_id])
+
+        # Get all planes with one of these run IDs and store in
+        # self.remove_dict, organized by observation.
+        for result in self.tap.get_planes_with_run_id(self.collection,
+                                                      run_ids):
+            if result.obs_id not in self.remove_dict:
+                self.remove_dict[result.obs_id] = [result.prod_id]
+
+            elif result.prod_id not in self.remove_dict[result.obs_id]:
+                self.remove_dict[result.obs_id].append(result.prod_id)
 
     def build_dict(self, header):
         '''Archive-specific code to read the common dictionary from the
@@ -2479,17 +2480,16 @@ class jcmt2caom2ingest(object):
                 # genrated by this recipe instance, but is not part of the
                 # current ingestion and so is obsolete.
                 if prod in self.remove_dict[observationID] and \
-                        self.remove_dict[observationID][prod] and \
                         prod not in self.metadict[observationID]:
 
-                    uri = self.planeURI(self.collection,
-                                        observationID,
-                                        prod)
-                    logger.warning('CLEANUP: remove obsolete plane: %s',
-                                   uri.uri)
+                    logger.warning(
+                        'removing obsolete plane: %s',
+                        self.planeURI(self.collection, observationID,
+                                      prod).uri)
 
                     del observation.planes[prod]
-                    del self.remove_dict[observationID][prod]
+
+            del self.remove_dict[observationID]
 
     def remove_old_observations_and_planes(self):
         """
@@ -2503,38 +2503,37 @@ class jcmt2caom2ingest(object):
         # log the contents of remove_dict
         for obsid in self.remove_dict:
             for prodid in self.remove_dict[obsid]:
-                logger.info('remove_dict %s: %s = %s',
-                            obsid, prodid, self.remove_dict[obsid][prodid])
+                logger.info('remove_dict %s: %s', obsid, prodid)
 
-        for obsid in self.remove_dict:
+        # Iterate over separate list of keys so that (in Python 3) it will
+        # be safe to delete from the dictionary inside the loop.
+        for obsid in list(self.remove_dict.keys()):
+            # This method should not be processing observations which are
+            # part of this ingestion.
+            if obsid in self.metadict:
+                logger.error(
+                    'current ingestion observation "%s" still in remove_dict',
+                    obsid)
+                continue
+
             uri = self.observationURI(self.collection, obsid)
-            if obsid not in self.metadict:
-                # Delete the whole observation or just some planes?
-                if all(self.remove_dict[obsid].values()):
-                    # all planes come from the same recipe instance
-                    # so delete the whole observation
-                    logger.warning(
-                        'CLEANUP: remove obsolete observation: %s',
-                        uri.uri)
-                    if not self.dry_run:
-                        self.repository.remove(uri.uri)
-                    del self.remove_dict[obsid]
-                else:
-                    with self.repository.process(uri, dry_run=self.dry_run) as wrapper:
-                        if wrapper.observation is not None:
-                            obs = wrapper.observation
-                            for prod in self.remove_dict[obsid]:
-                                if self.remove_dict[obsid][prod] \
-                                        and prod in obs.planes:
-                                    uri = self.planeURI(coll,
-                                                        obsid,
-                                                        prod)
-                                    logger.warning(
-                                        'CLEANUP: remove plane: %s',
-                                        uri.uri)
 
-                                    del obs.planes[prod]
-                                    del self.remove_dict[obsid][prod]
+            # Process the observation, with the "allow_remove" flag
+            # enabled in case we are removing everything from it.
+            with self.repository.process(uri, allow_remove=True,
+                                         dry_run=self.dry_run) as wrapper:
+                if wrapper.observation is not None:
+                    obs = wrapper.observation
+
+                    for prod in self.remove_dict[obsid]:
+                        if prod in obs.planes:
+                            logger.warning(
+                                'removing old plane: %s',
+                                self.planeURI(coll, obsid, prod).uri)
+
+                            del obs.planes[prod]
+
+            del self.remove_dict[obsid]
 
     def storeFiles(self):
         """
