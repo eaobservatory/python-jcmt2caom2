@@ -2529,7 +2529,7 @@ class jcmt2caom2ingest(object):
                         if prod in obs.planes:
                             logger.warning(
                                 'removing old plane: %s',
-                                self.planeURI(coll, obsid, prod).uri)
+                                self.planeURI(self.collection, obsid, prod).uri)
 
                             del obs.planes[prod]
 
