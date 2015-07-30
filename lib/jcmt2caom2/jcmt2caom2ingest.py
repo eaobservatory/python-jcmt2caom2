@@ -1956,12 +1956,14 @@ class jcmt2caom2ingest(object):
             else:
                 # For "healpix" products (i.e. JSA legacy release) use a dummy
                 # release date for now.
-                if not (backend == 'SCUBA-2' and filter == '850'):
+                if backend == 'SCUBA-2' and filter == '850':
+                    legacy_release_date = '2015-09-01T00:00:00.000'
+                elif backend == 'ACSIS':
+                    legacy_release_date = '2020-01-01T00:00:00.000'
+                else:
                     raise CAOMError(
-                        'Don\'t know release date for "HEALPix" product '
-                        'other than SCUBA-2 850um')
+                        'Don\'t know release date for this "HEALPix" product')
 
-                legacy_release_date = '2015-08-01T00:00:00.000'
                 if algorithm != 'exposure':
                     # Don't set the Observation level release date for
                     # "exposures" because the raw data ingestion should
