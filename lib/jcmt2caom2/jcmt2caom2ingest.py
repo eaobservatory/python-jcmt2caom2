@@ -1909,7 +1909,8 @@ class jcmt2caom2ingest(object):
                                             filter=filter)
 
             elif (restfreq and bwmode and subsysnr):
-                if product in ['reduced', 'rimg', 'rsp', 'cube']:
+                if product in ['reduced', 'rimg', 'rsp', 'cube',
+                               'healpix', 'hpxrsp', 'hpxrimg']:
                     self.productID = \
                         product_id(backend,
                                    product=science_product,
