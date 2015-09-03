@@ -2292,6 +2292,29 @@ class jcmt2caom2ingest(object):
                 'spectral': scuba2_spectral_wcs(header),
             }
 
+        # Temporary workaround for HEALPix co-adds for which
+        # the CAOM-2 repository rejects the WCS information
+        # written by fits2caom2, while awaiting a response to our
+        # inquiries to CADC about this problem.
+        is_healpix_850 = (is_defined('PRODID', header) and
+            header['PRODID'] == 'healpix-850um')
+        if (is_healpix_850 and (algorithm == 'public') and
+                (self.uri not in self.explicit_wcs) and (header['TILENUM'] in [
+                    3054,
+                    3055,
+                    3066,
+                    3067,
+                    3755,
+                    14301,
+                    14303,
+                    14325,
+                    14327,
+                    15703,
+                ])):
+            self.explicit_wcs[self.uri] = {
+                'spatial': jsa_tile_wcs(header),
+            }
+
     def lookup_file_id(self, filename, file_id):
         """
         Given a file_id (and unnecessarily filename), return the URI
