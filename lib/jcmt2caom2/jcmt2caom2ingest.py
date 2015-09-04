@@ -2108,8 +2108,8 @@ class jcmt2caom2ingest(object):
                         dataProductType = 'image'
                     else:
                         dataProductType = 'cube'
-        elif product in ('tile-moc', 'peak-cat'):
-            dataProductType = 'catalog'
+            elif product in ('tile-moc', 'peak-cat'):
+                dataProductType = 'catalog'
         if dataProductType:
             self.add_to_plane_dict('plane.dataProductType', dataProductType)
 
