@@ -2314,6 +2314,47 @@ class jcmt2caom2ingest(object):
             self.explicit_wcs[self.uri] = {
                 'spatial': jsa_tile_wcs(header),
             }
+        # Also temporarily work around problems for HEALPix obs products.
+        if (is_healpix_850 and (algorithm == 'exposure') and
+                (self.uri not in self.explicit_wcs) and (header['OBSID'] in [
+                    'scuba2_00013_20121214T051903',
+                    'scuba2_00018_20121214T061802',
+                    'scuba2_00019_20130621T144346',
+                    'scuba2_00021_20120224T065458',  # IndexOutOfBoundsException
+                    'scuba2_00021_20121214T071005',
+                    'scuba2_00022_20130714T075458',  # IndexOutOfBoundsException
+                    'scuba2_00024_20130112T072839',  # IndexOutofBoundsException
+                    'scuba2_00024_20130420T134525',  # IndexOutOfBoundsException
+                    'scuba2_00025_20130420T135344',
+                    'scuba2_00026_20120221T101229',  # IndexOutOfBoundsException
+                    'scuba2_00026_20130420T140153',  # IndexOutOfBoundsException
+                    'scuba2_00027_20130420T140955',  # IndexOutOfBoundsException
+                    'scuba2_00027_20130619T170927',
+                    'scuba2_00028_20120821T091459',
+                    'scuba2_00029_20120306T074028',  # IndexOutOfBoundsException
+                    'scuba2_00031_20130103T080345',  # IndexOutOfBoundsException
+                    'scuba2_00032_20120306T083508',  # IndexOutOfBoundsException
+                    'scuba2_00035_20120123T102512',
+                    'scuba2_00035_20120819T101300',
+                    'scuba2_00037_20120821T103044',
+                    'scuba2_00038_20120819T110220',
+                    'scuba2_00039_20120322T081516',  # IndexOutOfBoundsException
+                    'scuba2_00040_20120821T111756',
+                    'scuba2_00041_20120707T130932',  # IndexOutOfBoundsException
+                    'scuba2_00046_20120816T110937',
+                    'scuba2_00047_20130520T160621',
+                    'scuba2_00047_20130702T132200',  # IndexOutOfBoundsException
+                    'scuba2_00049_20120829T140642',
+                    'scuba2_00051_20120910T131905',
+                    'scuba2_00051_20130601T151439',  # IndexOutOfBoundsException
+                    'scuba2_00058_20130105T165836',  # getConvexHull: not implemented
+                    'scuba2_00061_20120831T115647',
+                    'scuba2_00069_20120831T134429',
+                    'scuba2_00072_20120831T143630',
+                ])):
+            self.explicit_wcs[self.uri] = {
+                'spatial': jsa_tile_wcs(header),
+            }
 
     def lookup_file_id(self, filename, file_id):
         """
