@@ -1,0 +1,133 @@
+#!/usr/bin/env python2
+
+# Copyright (C) 2015 East Asian Observatory
+# All Rights Reserved.
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc.,51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA
+
+# Author: SF Graves
+
+"""
+jsa-set-releasedate: set the release date for all planes with a specific product ID.
+
+This will first execute a tapquery to find all observations in the JCMT archive
+with planes with the specific productID, and then it will go through each observation,
+fetch the xml from CADC, update the release date and reput it into CAOM-2.
+
+USE WITH CAUTION: THIS SCRIPT MODIFIES IMPORTANT METADATA IN THE JSA!
+
+
+Usage:
+    jsa-set-releasedate [-v | -q] --productID=<productID> --releasedate=<releasedate> [--dryrun] [--limit=<limit>]
+    jsa-set-releasedate --help
+
+Options:
+    --help, -h                      Show usage information
+
+    --verbose, -v                   Print debugging information
+    --quiet, -q                     Omit INFO and DEUBG messages
+
+    --productID, -p <productID>     Name of products to remove from CAOM.
+    --releasedate, -r <releasedate>   Date to release products (YYYY-MM-DD format)
+    --limit, -l <limit>             Number of observations to attempt to fix. (optional)
+
+    --dry-run                       Show information, but don't actually change anything.
+
+"""
+
+import logging
+
+from datetime import datetime
+from docopt import docopt
+
+from tools4caom2.tapclient import tapclient
+from jcmt2caom2.adjustments import set_release_date
+
+script_name='jsa-set-releasedate'
+
+logger = logging.getLogger(script_name)
+
+
+def main():
+    """
+    Main routine for remove_products script.
+    """
+    args = docopt(__doc__)
+
+    # Determine logging level from the --quiet and --verbose options.
+    loglevel = logging.INFO
+    if args['--verbose']:
+        loglevel = logging.DEBUG
+    elif args['--quiet']:
+        loglevel = logging.WARNING
+
+    if not args['--verbose']:
+        # Don't pass on info messages from the requests package unless
+        # verbose.
+        logging.getLogger('requests').setLevel(logging.WARNING)
+        # Also similar for caom2repoclient.
+        logging.getLogger('caom2repoClient').setLevel(logging.WARNING)
+
+    logging.basicConfig(level=loglevel)
+
+    # Was dry run requested?
+    if args['--dryrun']:
+        dry_run = True
+        logger.warning('DRY RUN mode enabled: no CAOM records will be altered')
+    else:
+        dry_run = False
+
+    # Check if a limit n the number of observations to alter was requested.
+    if args['--limit']:
+        limit = int(args['--limit'])
+        limquery = ' TOP ' + str(limit) + ' '
+    else:
+        limit = None
+        limquery = ''
+
+    # Get the productID.
+    productID = args['--productID']
+
+    # Get the release date
+    releasedate = args['--releasedate']
+    try:
+        releasedate = datetime.strptime(releasedate, '%Y-%m-%dT%H:%M:%S')
+    except:
+        raise ValueError('Please provide releasedate in format YYYY-MM-DDTHH:MM:SS')
+
+
+
+    # Find all (or number=LIMIT) observations in the JCMT collection
+    # with the given productID.
+    caom2query = '\n'.join([
+        'SELECT ' + limquery + ' o.observationID ',
+        'FROM caom2.Observation as o JOIN caom2.Plane as p ON o.obsid=p.obsid ',
+        'WHERE o.collection=\'JCMT\' ',
+        'AND p.productID=\'' + productID + '\'',
+        'AND o.observationID like \'scuba2_%\'',
+    ])
+
+    tap = tapclient()
+    results = tap.query(caom2query, timeout=60)
+    obsids = results['observationID']
+
+    # Actually update the productIDs.
+    set_release_date(productID, obsids, releasedate, collection='JCMT', dry_run=dry_run)
+
+
+
+if __name__ == '__main__':
+    main()
