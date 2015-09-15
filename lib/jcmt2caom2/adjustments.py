@@ -77,3 +77,41 @@ def remove_planes(productID, obsids, collection='JCMT', dry_run=False, allow_rem
                 logger.debug('No planes will be removed from %s as DRY RUN mode enabled', obsid)
 
         logger.info('Finished with observation %s', obsid)
+
+
+def set_release_date(productID, obsids, releasedate, collection='JCMT', dry_run=False):
+    """
+    Set the release date of given productIDs contained in a list of obsids.
+
+    productID: string, productID at CADC.
+    obsids: list of observationIDs at CADc.
+    releasedate: datetime object
+
+
+    """
+    logger.info('Setting new releasedate to be %s.' % (str(releasedate)))
+    logger.info('Updating releasedates for all planes in given observations with productid=%s' % productID)
+    if dry_run:
+        logger.warning('DRY RUN mode enabled: CAOM will not be updated')
+    repository = Repository()
+
+    for obsid in obsids:
+        logger.info('Attempting to update plane from %s', obsid)
+        uri = 'caom:' + collection + '/' + obsid
+        with repository.process(uri, dry_run=dry_run, allow_remove=True) as wrapper:
+            observation = wrapper.observation
+            if observation and observation.planes.has_key(productID):
+                plane = observation.planes[productID]
+                plane.data_release = releasedate
+                plane.meta_release = releasedate
+
+            elif not observation:
+                logger.warning('Observation %s does not exist in CAOM DB', obsid)
+            else:
+                logger.warning('Observation %s has no %s plane to remove' % (obsid, productID))
+
+            if dry_run:
+                logger.debug('observation %s not updated as DRY RUN mode enabled', obsid)
+
+            else:
+                logger.info('obsid: %s, plane: %s has a releasedate of %s' % (obsid, productID, str(releasedate)))
