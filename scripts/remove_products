@@ -32,7 +32,7 @@ THIS IS VERY DANGEROUS AND COULD REMOVE IMPORTANT INFORMATION FROM THE JSA!
 USE WITH CAUTION!
 
 Usage:
-    remove_products [-v | -q] --productID=<productID> [--dryrun] [--limit=<limit>]
+    remove_products [-v | -q] --productID=<productID> [--dryrun] [--limit=<limit>] [--like]
     remove_products --help
 
 Options:
@@ -44,6 +44,8 @@ Options:
     --productID, -p <productID>  The name of the products to be removed from CAOM.
 
     --limit, -l <limit>          Only try to remove planes from this number of obs.
+
+    --like                       Use 'LIKE' matching on productIDs (use % as wildcard).
 
 """
 
@@ -98,24 +100,42 @@ def main():
         limit = None
         limquery = ''
 
+    # Check if 'LIKE' matching was requested.
+    if args['--like']:
+        like = True
+    else:
+        like = None
     # Get the productID.
     productID = args['--productID']
 
     # Find all (or number=LIMIT) observations in the JCMT collection
     # with the given productID.
-    caom2query = '\n'.join([
-        'SELECT ' + limquery + ' o.observationID ',
-        'FROM caom2.Observation as o JOIN caom2.Plane as p ON o.obsid=p.obsid ',
-        'WHERE o.collection=\'JCMT\' ',
-        'AND p.productID=\'' + productID + '\'',
+    if not like:
+        caom2query = '\n'.join([
+            'SELECT ' + limquery + ' o.observationID ',
+            'FROM caom2.Observation as o JOIN caom2.Plane as p ON o.obsid=p.obsid ',
+            'WHERE o.collection=\'JCMT\' ',
+            'AND p.productID=\'' + productID + '\'',
+        ])
+
+    if like:
+        caom2query = '\n'.join([
+            'SELECT ' + limquery + ' o.observationID, p.productID ',
+            'FROM caom2.Observation as o JOIN caom2.Plane as p ON o.obsid=p.obsid ',
+            'WHERE o.collection=\'JCMT\' ',
+            'AND p.productID like \'' + productID + '\'',
         ])
 
     tap = tapclient()
     results = tap.query(caom2query, timeout=60)
     obsids = results['observationID']
 
-    # Remove the planes from that list of observations.
-    remove_planes(productID, obsids, collection='JCMT', dry_run=dry_run, allow_remove=True)
+    if like:
+        productids = results['productID']
+        for o, p in zip(obsids, productids):
+            remove_planes(p, [o], collection='JCMT', dry_run=dry_run, allow_remove=True)
+    else:
+        remove_planes(productID, obsids, collection='JCMT', dry_run=dry_run, allow_remove=True)
 
 
 
