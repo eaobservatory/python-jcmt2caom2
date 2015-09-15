@@ -39,7 +39,7 @@ the given string (in uppercase).
 
 
 Usage:
-    caomcheck [-v | -q ] [--date-start=<start>] [--date-end=<end>] [--instrument=<inst> ...] [--non-acsis]
+    caomcheck [-v | -q ] [--date-start=<start>] [--date-end=<end>] [--instrument=<inst> ...] [--backend=<bckend> ...]
     caomcheck --help
     caomcheck
 
@@ -53,6 +53,7 @@ Options:
     --date-end, -e <end>      Only check for observations taken on and before this date, YYYYMMDD
 
     --instrument, -i <inst>   Check for observations taken with this instrument name (can be given multiple times)
+    --backend, -b <bckend>    use this backend; default is to assume backend is same as instrument name.
 
 """
 
@@ -95,8 +96,19 @@ def main():
     # If no instruments were specified, use the default list.
     if not args['--instrument']:
         instrumentlist = ['SCUBA-2', 'HARP', 'RxWD2', 'RxA3', 'RxWB']
+        backendlist = ['SCUBA-2', 'ACSIS', 'ACSIS', 'ACSIS', 'ACSIS']
+        giveninstrument=len(instrumentlist)
     else:
         instrumentlist = args['--instrument']
+        backendlist = args['--backend']
+        givenbackend = len(backendlist)
+        giveninstrument =len(instrumentlist)
+        if givenbackend< giveninstrument:
+            for i in range(giveninstrument - givenbackend):
+                backendlist.append(instrumentlist[givenbackend+i])
+
+    instrum  = zip(instrumentlist, backendlist[0:giveninstrument])
+    logging.info('Looking up for ' + ', '.join([i[0]+'-'+i[1] for i in instrum]))
 
     # If no end date was specified, use yesterday.
     if args['--date-end'] is None:
@@ -115,25 +127,32 @@ def main():
 
 
     # Now go through each instrument.
-    for instrument in instrumentlist:
+    for instrument, backend in instrum:
+
+        if instrument.upper() != backend.upper():
+            cadcinstrument = instrument + '-' + backend
+        else:
+            cadcinstrument = instrument
 
         # Get the release dates from COMMON as a dictionary (obsids as keys).
         releasedates = ompdb.find_releasedates(utstart=start, utend=end,
-                                               instrument=instrument)
+                                               instrument=instrument,
+                                               backend=backend)
         releasedates = dict(releasedates)
-        logger.info('%s: %i observations found in COMMON from %i to %i ' % (
-                instrument, len(releasedates.keys()), start, end))
+        logger.info('%s-%s: %i observations found in COMMON from %i to %i ' % (
+                instrument, backend, len(releasedates.keys()), start, end))
 
         # Get the release dates from CAOM @ CADC in a similar
         # dictionary.  Note: use a 'like 'as instrument_names at CADC
-        # may include POL, ACSIS etc.  Also all CAOM instrument names
+        # may include POL, FTS etc.  Also all CAOM instrument names
         # are upper case for JCMT. This is not limited by time.
         caom2query = ("SELECT caom2.Observation.observationID, "
                       " caom2.Observation.metaRelease "
                       " FROM caom2.Observation "
                       " WHERE collection='JCMT' "
                       " AND algorithm_name='exposure' "
-                      " AND instrument_name LIKE '%" + instrument.upper() + "%';")
+                      " AND instrument_name like '%" + cadcinstrument.upper() + "%'"
+                      " AND proposal_id !='JCMT-LR1';")
 
         tap = tapclient.tapclient()
         table = tap.query(caom2query, timeout=60)
