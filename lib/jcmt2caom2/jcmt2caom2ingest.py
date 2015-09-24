@@ -2954,7 +2954,7 @@ class jcmt2caom2ingest(object):
             logger.exception(str(e))
             return False
 
-        except:
+        except Exception:
             # Log this previously uncaught error, but let it pass
             logger.exception('Error during ingestion')
             return False
