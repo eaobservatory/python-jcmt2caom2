@@ -37,6 +37,7 @@ setup(
     author_email='russell.o.redman@gmail.com',
     package_dir={'': 'lib'},
     packages=find_packages(where='lib'),
+    package_data={'jcmt2caom2': ['data/ignoredobs/*.lis']},
     scripts=['scripts/jsaingest',
              'scripts/jsaraw',
              'scripts/jsasetfield',
