@@ -62,6 +62,7 @@ import logging
 import os
 
 from docopt import docopt
+from pkgutil import get_data
 
 
 from omp.db.part.arc import ArcDB
@@ -141,6 +142,29 @@ def main():
         releasedates = dict(releasedates)
         logger.info('%s-%s: %i observations found in COMMON from %i to %i ' % (
                 instrument, backend, len(releasedates.keys()), start, end))
+
+        # Get the list of observations to ignore (if it exists).  These
+        # has to be saved into the lib/jmct2caom2/data/ignoredobs
+        # directory, in a file named by instrument-backend where case
+        # matters. The file should consist of a list of obsids, one
+        # per line.
+        try:
+            import jcmt2caom2
+            ignoredobs = get_data('jcmt2caom2', 'data/ignoredobs/' + instrument + '-' + backend + '.lis')
+            ignoredobs = ignoredobs.split('\n')
+            ignoredobs = [i.strip() for i in ignoredobs]
+            count = 0
+            for i in ignoredobs:
+                try:
+                    del releasedates[i]
+                    count += 1
+                except KeyError:
+                    pass
+            logger.info('%i COMMON observations are being ignored, leaving %i obs.' % (
+                count, len(releasedates.keys())))
+        except:
+            logger.info('Did not succesfully find any observations to ignore')
+            pass
 
         # Get the release dates from CAOM @ CADC in a similar
         # dictionary.  Note: use a 'like 'as instrument_names at CADC
