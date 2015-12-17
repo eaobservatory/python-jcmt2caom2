@@ -47,10 +47,6 @@ permitted = {
         'switching_mode': ["NONE", "SELF", "SPIN"]
     }
 }
-receiver_sideband_modes = {'HARP': ['SSB'],
-                           'RXA3': ['DSB', 'SSB'],
-                           'RXWB': ['DSB', 'SSB'],
-                           'RXWD2': ['DSB', 'SSB']}
 
 
 def instrument_keywords(strictness, frontend, backend, keyword_dict):
