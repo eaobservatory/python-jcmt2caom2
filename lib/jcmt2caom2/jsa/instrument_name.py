@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # global dictionary of permitted combinations of values by backend
 frontends = {
-    'ACSIS': ('HARP', 'RXA3', 'RXWB', 'RXWD2'),
+    'ACSIS': ('HARP', 'RXA3', 'RXA3M', 'RXWB', 'RXWD2'),
     'DAS': ('RXA', 'RXA2', 'RXA3', 'RXB', 'RXB2', 'RXB3I', 'RXB3',
             'RXC', 'RXC2', 'RXWCD', 'RXWD', 'MPIRXE'),
     'AOS-C': ('RXA', 'RXA2', 'RXB', 'RXB2', 'RXB3', 'RXC', 'RXC2')
