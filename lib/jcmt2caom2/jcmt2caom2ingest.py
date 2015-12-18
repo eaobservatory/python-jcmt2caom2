@@ -1959,7 +1959,7 @@ class jcmt2caom2ingest(object):
                 # release date for now.
                 if backend == 'SCUBA-2' and filter == '850':
                     legacy_release_date = '2016-04-01T00:00:00.000'
-                if backend == 'SCUBA-2' and filter == '450':
+                elif backend == 'SCUBA-2' and filter == '450':
                     legacy_release_date = '2016-04-01T00:00:00.000'
                 elif backend == 'ACSIS':
                     legacy_release_date = '2020-01-01T00:00:00.000'
