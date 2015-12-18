@@ -1958,7 +1958,7 @@ class jcmt2caom2ingest(object):
                 # For "healpix" products (i.e. JSA legacy release) use a dummy
                 # release date for now.
                 if backend == 'SCUBA-2' and filter == '850':
-                    legacy_release_date = '2015-09-04T00:00:00.000'
+                    legacy_release_date = '2016-04-01T00:00:00.000'
                 if backend == 'SCUBA-2' and filter == '450':
                     legacy_release_date = '2016-04-01T00:00:00.000'
                 elif backend == 'ACSIS':
