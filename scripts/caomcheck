@@ -28,7 +28,7 @@ instrument and date constraints):
   a) if they have a record in CAOM and
   b) if the release date in CAOM matches the release date in COMMON
 
-It defaults to checking all SCUBA-2/HARP/RxWD2/RxA3/RxWB observations up
+It defaults to checking all SCUBA-2/HARP/RxWD2/RxA3/RxA3m/RxWB observations up
 until yesterday.
 
 CAOM instrument_name fields frequently do not match the COMMON
@@ -96,8 +96,8 @@ def main():
 
     # If no instruments were specified, use the default list.
     if not args['--instrument']:
-        instrumentlist = ['SCUBA-2', 'HARP', 'RxWD2', 'RxA3', 'RxWB']
-        backendlist = ['SCUBA-2', 'ACSIS', 'ACSIS', 'ACSIS', 'ACSIS']
+        instrumentlist = ['SCUBA-2', 'HARP', 'RxWD2', 'RxA3', 'RxA3m','RxWB']
+        backendlist = ['SCUBA-2', 'ACSIS', 'ACSIS', 'ACSIS', 'ACSIS', 'ACSIS']
         giveninstrument=len(instrumentlist)
     else:
         instrumentlist = args['--instrument']
