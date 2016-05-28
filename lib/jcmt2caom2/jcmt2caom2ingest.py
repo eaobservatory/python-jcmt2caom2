@@ -92,10 +92,7 @@ from contextlib import closing
 import datetime
 import logging
 import os
-try:
-    from astropy.io import fits
-except:
-    import pyfits as fits
+from astropy.io import fits
 import re
 import shutil
 import subprocess
