@@ -47,6 +47,11 @@ setup(
     # in ../config relative to the executables in scripts
     data_files=[(configdir, configfiles)],
     provides=['jcmt2caom2'],
-    install_requires=['distribute'],
+    install_requires=['astropy',
+                      'caom2',
+                      'docopt',
+                      'healpy',
+                      'tools4caom2',
+                      'vos'],
     zip_safe=False
 )
