@@ -31,7 +31,7 @@ from caom2.caom2_chunk import Chunk
 from caom2.caom2_data_quality import DataQuality
 from caom2.caom2_energy_transition import EnergyTransition
 from caom2.caom2_enums import CalibrationLevel, ObservationIntentType, \
-    ProductType, Quality, Status
+    ProductType, Quality, ReleaseType, Status
 from caom2.caom2_environment import Environment
 from caom2.caom2_instrument import Instrument
 from caom2.caom2_part import Part
@@ -550,11 +550,14 @@ class raw(object):
             for jcmt_file_id in files[obsid_subsysnr]:
                 file_id = os.path.splitext(jcmt_file_id)[0]
                 uri = 'ad:JCMT/' + file_id
-                artifact = Artifact(uri)
+
                 if observation.intent == ObservationIntentType.SCIENCE:
-                    artifact.product_type = ProductType.SCIENCE
+                    artifact_product_type = ProductType.SCIENCE
                 else:
-                    artifact.product_type = ProductType.CALIBRATION
+                    artifact_product_type = ProductType.CALIBRATION
+
+                artifact = Artifact(uri, product_type=artifact_product_type,
+                                    release_type=ReleaseType.DATA)
 
                 artifact.meta_release = common['release_date']
 
