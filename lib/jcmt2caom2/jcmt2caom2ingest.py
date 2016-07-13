@@ -2312,6 +2312,7 @@ class jcmt2caom2ingest(object):
                 ])):
             self.explicit_wcs[self.uri] = {
                 'spatial': jsa_tile_wcs(header),
+                'replace_only': True,
             }
         # Also temporarily work around problems for HEALPix obs products.
         if (is_healpix_850 and (algorithm == 'exposure') and
@@ -2634,6 +2635,7 @@ class jcmt2caom2ingest(object):
                 ])):
             self.explicit_wcs[self.uri] = {
                 'spatial': jsa_tile_wcs(header),
+                'replace_only': True,
             }
 
     def lookup_file_id(self, filename, file_id):
@@ -2796,9 +2798,19 @@ class jcmt2caom2ingest(object):
             for partName in artifact.parts:
                 part = artifact.parts[partName]
 
-                if (not (part.product_type in [ProductType.SCIENCE,
-                                               ProductType.NOISE]
-                         or ('_extent-mask' in fitsuri and partName == '0'))):
+                # In replacement mode, replace existing bad WCS information
+                # if it is present rather than attempting to determine
+                # which parts should have it.  Note: we currently only
+                # check for the presence of spatial WCS in this mode.
+                if wcs.get('replace_only', False):
+                    if ((len(part.chunks) == 0)
+                            or (part.chunks[0].position is None)):
+                        continue
+
+                elif (not (
+                        part.product_type in [ProductType.SCIENCE,
+                                              ProductType.NOISE]
+                        or ('_extent-mask' in fitsuri and partName == '0'))):
                     continue
 
                 if (len(part.chunks)) == 0:
