@@ -2632,6 +2632,7 @@ class jcmt2caom2ingest(object):
                     'scuba2_00092_20141123T223540',
                     'scuba2_00088_20141213T224015',
                     'scuba2_00085_20150109T224720',
+                    'scuba2_00014_20111215T061536',
                 ])):
             self.explicit_wcs[self.uri] = {
                 'spatial': jsa_tile_wcs(header),
