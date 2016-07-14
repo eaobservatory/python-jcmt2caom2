@@ -2637,6 +2637,7 @@ class jcmt2caom2ingest(object):
                 'spatial': jsa_tile_wcs(header),
                 'replace_only': True,
             }
+            logger.warning('Using explicit spatial wcs for this observation')
 
     def lookup_file_id(self, filename, file_id):
         """
