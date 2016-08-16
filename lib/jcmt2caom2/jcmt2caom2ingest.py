@@ -14,58 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-"""
-The jcmt2caom2ingest class immplements methods to collect metadata from a set
-of FITS files and from the jcmt database that will be passed to fits2caom2 to
-construct a caom2 observation.  Once completed, it is serialized to a temporary
-xml file in workdir and copied to the CAOM-2 repository.
-
-By default, it runs a set of file verification tests, creates a report of
-errors and warnings and exits.  This is referred to as "check mode" and anyone
-can run caom2ingest in check mode.
-
-Check mode implements several of the checks that would be done during a CADC
-e-transfer operation, such as rejecting zero-length files, running fitsverify
-on FITS files to verify that they do not generate error messages,
-and verifying that names match the regex required for the archive.  Other
-checks include metadata checks for mandatory keywords or keywords that must
-have one of a restricted set of values, and verifying whether the file is
-already present in the archive (sometimes forbidden, sometimes mandatory).
-
-With the --ingest switch, caom2ingest will ingest the files into CAOM-2.
-However it is managed, the transfer of files into AD must already have occurred
-before --ingest is invoked.  In addition, all raw observations in the
-membership must already have been successfully ingested.
-
-Original documentation from ingest2caom2:
-
- - __init__         : supply archive-specific default values
- - build_dict       : given the headers from a FITS file, define plane and
-                      uri dependent data structures
-Optionally, it may be useful to customize the methods:
- - build_observation_custom : modify the xml file after all fits2caom2
-                              operations on an observation are complete
- - build_plane_custom : modify the xml file after each fits2caom2
-                        operations is complete
-The latter two calls allow, for example, the time bounds derived from raw
-data to be added to the science chunks within a composite observation.
-
-It might also be useful to define filter and comparison functions (outside
-the class):
- - archivefilter(f)                : return True if f is a file to ingest,
-                                            False otherwise
-
-This can be used to initialize the field filterfunc in the __init__ method of
-the derived class.  The tools4caom.container.util module supplies examples of
-these functions that are adequate for mamny purposes:
- - fitsfilter(f)                   : return True if f is a FITS file,
-                                            False otherwise
- - nofilter(f)                     : return True always, i.e. no filtering
-
-It is sometimes also useful to supply a custom function
- - make_file_id(f)                 : given a file name, return an AD file_id
-"""
-
 __author__ = "Russell O. Redman"
 
 import argparse
@@ -168,6 +116,11 @@ def read_recipe_instance_mapping():
 class jcmt2caom2ingest(object):
     """
     A class to ingest reduced data products into the JSA.
+
+    The jcmt2caom2ingest class implements methods to collect metadata from a
+    set of FITS files and from the JCMT database that will be passed to
+    fits2caom2 to construct a CAOM-2 observation.  Once completed, it is
+    serialized as XML and uploaded to the CAOM-2 repository.
     """
 
     speedOfLight = 2.99792485e8  # Speed of light in m/s
@@ -836,13 +789,16 @@ class jcmt2caom2ingest(object):
                 self.remove_dict[result.obs_id].append(result.prod_id)
 
     def build_dict(self, header, first_extension=None):
-        '''Archive-specific code to read the common dictionary from the
-               file header.
-           The following keys must be defined:
-               collection
-               observationID
-               productID
-        '''
+        """
+        Given the headers from a FITS file, define plane and URI-dependent
+        data structures.
+
+        The following keys must be defined:
+
+        * collection
+        * observationID
+        * productID
+        """
 
         if 'file_id' not in header:
             raise CAOMError('No file_id in ' + repr(header))
@@ -2769,7 +2725,26 @@ class jcmt2caom2ingest(object):
     def run(self):
         """Perform ingestion.
 
-        Returns True on success, False otherwise.
+        By default, it runs a set of file verification tests, creates a
+        report of errors and warnings and exits.  This is referred to as
+        "check mode" and anyone can run `jsaingest` in check mode.
+
+        Check mode implements several of the checks that would be done
+        during a CADC e-transfer operation, such as rejecting zero-length
+        files, running fitsverify on FITS files to verify that they do not
+        generate error messages, and verifying that names match the regex
+        required for the archive.  Other checks include metadata checks for
+        mandatory keywords or keywords that must have one of a restricted
+        set of values, and verifying whether the file is already present
+        in the archive (sometimes forbidden, sometimes mandatory).
+
+        With the --ingest switch, caom2ingest will ingest the files into
+        CAOM-2.  However it is managed, the transfer of files into AD must
+        already have occurred before --ingest is invoked.  In addition,
+        all raw observations in the membership must already have been
+        successfully ingested.
+
+        :return: True on success, False otherwise.
         """
 
         progname = os.path.basename(os.path.splitext(sys.argv[0])[0])
