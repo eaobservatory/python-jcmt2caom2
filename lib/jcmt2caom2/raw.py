@@ -1,5 +1,5 @@
 # Copyright (C) 2014-2015 Science and Technology Facilities Council.
-# Copyright (C) 2015 East Asian Observatory.
+# Copyright (C) 2015-2016 East Asian Observatory.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -133,8 +133,6 @@ class raw(object):
         Arguments:
         outdir:      working directory for output files
         """
-        self.exedir = os.path.abspath(os.path.dirname(sys.path[0]))
-        self.configpath = os.path.abspath(self.exedir + '/../config')
 
         self.outdir = None
 
@@ -143,77 +141,8 @@ class raw(object):
 
         self.dry_run = None
 
-        self.voscopy = None
-        self.vosroot = 'vos:jsaops'
-
         self.conn = None
         self.tap = CAOM2TAP()
-
-    def parse_command_line(self):
-        """
-        Parse command line arguments
-
-        Arguments:
-        <None>
-        """
-        ap = argparse.ArgumentParser()
-        ap.add_argument(
-            '--obsid',
-            required=True,
-            help='obsid, primary key in COMMON table')
-        ap.add_argument(
-            '--outdir',
-            help='working directory for output files')
-
-        ap.add_argument(
-            '--collection',
-            choices=('JCMT', 'SANDBOX'),
-            default='JCMT',
-            help='collection to use for ingestion')
-
-        ap.add_argument(
-            '--dry-run', '-n',
-            action='store_true',
-            dest='dry_run',
-            help='Check the validity of metadata for this'
-                 ' observation and file, then exit')
-        ap.add_argument(
-            '--verbose', '-v',
-            dest='loglevel',
-            action='store_const',
-            const=logging.DEBUG)
-        args = ap.parse_args()
-
-        if args.collection:
-            self.collection = args.collection
-
-        self.obsid = args.obsid
-
-        if args.outdir:
-            self.outdir = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(args.outdir)))
-        else:
-            self.outdir = os.getcwd()
-
-        if args.loglevel:
-            logging.getLogger().setLevel(args.loglevel)
-
-        self.dry_run = args.dry_run
-
-    def logCommandLineSwitches(self):
-        """
-        Log the internal configuration.
-
-        Arguments:
-        <None>
-        """
-        logger.info(sys.argv[0])
-        logger.info('jcmt2caom2version    = %s', jcmt2caom2version)
-        logger.info('tools4caom2version   = %s', tools4caom2version)
-        logger.info('obsid = %s', self.obsid)
-        logger.info('outdir = %s', self.outdir)
-        logger.info('dry run = %s', self.dry_run)
 
     def get_proposal(self, project_id):
         """
@@ -880,11 +809,62 @@ class raw(object):
 
         Returns True on success, False otherwise.
         """
-        self.parse_command_line()
+
+        ap = argparse.ArgumentParser()
+
+        ap.add_argument(
+            '--obsid',
+            required=True,
+            help='obsid, primary key in COMMON table')
+        ap.add_argument(
+            '--outdir',
+            help='working directory for output files')
+
+        ap.add_argument(
+            '--collection',
+            choices=('JCMT', 'SANDBOX'),
+            default='JCMT',
+            help='collection to use for ingestion')
+
+        ap.add_argument(
+            '--dry-run', '-n',
+            action='store_true',
+            dest='dry_run',
+            help='Check the validity of metadata for this'
+                 ' observation and file, then exit')
+        ap.add_argument(
+            '--verbose', '-v',
+            dest='loglevel',
+            action='store_const',
+            const=logging.DEBUG)
+
+        args = ap.parse_args()
+
+        if args.collection:
+            self.collection = args.collection
+
+        self.obsid = args.obsid
+
+        if args.outdir:
+            self.outdir = os.path.abspath(
+                os.path.expanduser(
+                    os.path.expandvars(args.outdir)))
+        else:
+            self.outdir = os.getcwd()
+
+        if args.loglevel:
+            logging.getLogger().setLevel(args.loglevel)
+
+        self.dry_run = args.dry_run
+
+        logger.info(sys.argv[0])
+        logger.info('jcmt2caom2version    = %s', jcmt2caom2version)
+        logger.info('tools4caom2version   = %s', tools4caom2version)
+        logger.info('obsid                = %s', self.obsid)
+        logger.info('outdir               = %s', self.outdir)
+        logger.info('dry run              = %s', self.dry_run)
 
         try:
-            self.logCommandLineSwitches()
-
             self.conn = ArcDB()
 
             self.ingest()
