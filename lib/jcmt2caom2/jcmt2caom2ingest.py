@@ -1148,9 +1148,10 @@ class jcmt2caom2ingest(object):
             if self.plane_dict:
                 for key in self.plane_dict:
                     # Handle release_date as a special case
-                    if (key == 'release_date' and key in thisPlane and
-                            self.plane_dict[key] <=
-                            thisPlane['plane_dict'][key]):
+                    if ((key == 'release_date')
+                            and (key in thisPlane['plane_dict'])
+                            and (self.plane_dict[key]
+                                 <= thisPlane['plane_dict'][key])):
                         continue
 
                     elif (key == 'metrics.sourceNumberDensity'
