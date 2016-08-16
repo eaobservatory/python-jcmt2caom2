@@ -100,7 +100,6 @@ from caom2.wcs.caom2_temporal_wcs import TemporalWCS
 
 from tools4caom2.__version__ import version as tools4caom2version
 from tools4caom2.caom2repo_wrapper import Repository
-from tools4caom2.container.filelist import filelist_container
 from tools4caom2.error import CAOMError
 from tools4caom2.fits2caom2 import run_fits2caom2
 from tools4caom2.mjd import utc2mjd
@@ -212,7 +211,6 @@ class jcmt2caom2ingest(object):
         # Ingestion parameters and structures
         self.verbose = False
         self.prefix = ''         # ingestible files must start with this prefix
-        self.indir = ''          # path to indir
         self.replace = False     # True if observations in JCMTLS or JCMTUSER
                                  # can replace each other
         self.big = False         # True to use larger memory for fits2caom2
@@ -256,9 +254,6 @@ class jcmt2caom2ingest(object):
 
         # Dictionary of explicit WCS infomation, by FITS URI.
         self.explicit_wcs = {}
-
-        # list of containers for input files
-        self.containerlist = []
 
         # Validation object
         self.validation = None
@@ -338,36 +333,6 @@ class jcmt2caom2ingest(object):
 
         return mylist
 
-    def commandLineContainers(self):
-        """
-        Process the input directory.  Unlike previous versions of this code,
-        caom2ingest handles only one container at a time.  This might revert
-        to processing multiple containers again in the future, so the
-        container list is retained.
-
-        Arguments:
-        <None>
-        """
-        # Find the list of containers to ingest.
-        self.containerlist = []
-        try:
-            if os.path.isdir(self.indir):
-                filelist = self.getfilelist(self.indir)
-                self.containerlist.append(
-                    filelist_container(
-                        self.indir,
-                        filelist,
-                        lambda f: True,
-                        self.make_file_id))
-
-            else:
-                raise CAOMError('indir is not a directory: ' +
-                                self.indir)
-
-        except Exception as e:
-            logger.exception('Error configuring containers')
-            raise CAOMError(str(e))
-
     def clear(self):
         """
         Clear the local plane and artifact dictionaries before each file is
@@ -385,33 +350,33 @@ class jcmt2caom2ingest(object):
         self.inputset.clear()
         self.override_items = 0
 
-    def fillMetadict(self, container):
+    def fillMetadict(self, files):
         """
         Generic routine to fill the metadict structure by iterating over
-        all containers, extracting the required metadata from each file
+        the given files, extracting the required metadata from each file
         in turn using fillMetadictFromFile().
 
-        Arguments:
-        container: a container of files to read
+        :param files: list of files to read
         """
         self.metadict.clear()
 
-        try:
-            # sort the file_id_list
-            file_id_list = sorted(container.file_id_list())
-            logger.debug('in fillMetadict, file_id_list = %s',
-                         repr(file_id_list))
+        # Organise and sort files by file_id to preserve previous behavior
+        # of this method, in case the order of processing matters.
+        # (This is probably unnecessary.)
+        files_by_id = {self.make_file_id(f): f for f in files}
 
-            # Gather metadata from each file in the container
-            for file_id in file_id_list:
-                logger.debug('In fillMetadict, use %s', file_id)
+        file_ids = sorted(files_by_id.keys())
 
-                with container.use(file_id) as f:
-                    self.fillMetadictFromFile(file_id, f, container)
-        finally:
-            container.close()
+        logger.debug('in fillMetadict, file_ids = %s',
+                     repr(file_ids))
 
-    def fillMetadictFromFile(self, file_id, filepath, container):
+        # Gather metadata from each file.
+        for file_id in file_ids:
+            logger.debug('In fillMetadict, use %s', file_id)
+
+            self.fillMetadictFromFile(file_id, files_by_id[file_id])
+
+    def fillMetadictFromFile(self, file_id, filepath):
         """
         Generic routine to read metadata and fill the internal structure
         metadict (a nested set of dictionaries) that will be used to control
@@ -2901,13 +2866,6 @@ class jcmt2caom2ingest(object):
         else:
             self.workdir = os.getcwd()
 
-        indirpath = os.path.abspath(
-            os.path.expandvars(
-                os.path.expanduser(args.indir)))
-        # is this a local directorory on the disk?
-        if os.path.isdir(indirpath):
-            self.indir = indirpath
-
         if args.replace:
             self.replace = args.replace
 
@@ -2943,7 +2901,12 @@ class jcmt2caom2ingest(object):
                                  'is in ' + repr(self.external_collections))
                     raise CAOMError('error in command line options')
 
-            if not self.indir:
+            indirpath = os.path.abspath(
+                os.path.expandvars(
+                    os.path.expanduser(args.indir)))
+
+            # is this a local directorory on the disk?
+            if not os.path.isdir(indirpath):
                 raise CAOMError('--indir = ' + args.indir + ' does not exist')
 
             if not os.path.exists(proxy):
@@ -2971,13 +2934,10 @@ class jcmt2caom2ingest(object):
                                              self.fileid_regex_dict,
                                              self.make_file_id)
 
-            self.commandLineContainers()
-            for c in self.containerlist:
-                logger.info('PROGRESS: container = %s', c.name)
-                self.fillMetadict(c)
-                self.checkProvenanceInputs()
-                if self.ingest:
-                    self.ingestPlanesFromMetadict()
+            self.fillMetadict(self.getfilelist(indirpath))
+            self.checkProvenanceInputs()
+            if self.ingest:
+                self.ingestPlanesFromMetadict()
 
             # declare we are DONE
             logger.info('DONE')
