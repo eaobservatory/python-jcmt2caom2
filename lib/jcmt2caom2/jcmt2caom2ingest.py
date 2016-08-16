@@ -801,6 +801,15 @@ class jcmt2caom2ingest(object):
                 self.artifact_part_count[self.fitsfileURI(
                     self.archive, file_id)] = len(f)
 
+                # For some files, e.g. catalogs, the primary HDU does not
+                # contain the main data and we may wish to extract information
+                # from the first extension.
+                first_extension = None
+                try:
+                    first_extension = f[1].header
+                except IndexError:
+                    pass
+
             head['file_id'] = file_id
             head['filepath'] = filepath
             if isinstance(container, vos_container):
@@ -821,7 +830,7 @@ class jcmt2caom2ingest(object):
         if self.ingest:
             self.validation.is_in_archive(filepath)
 
-        self.build_dict(head)
+        self.build_dict(head, first_extension)
         self.build_metadict(filepath)
 
         self.data_storage.append(head['SRCPATH'])
@@ -1143,6 +1152,17 @@ class jcmt2caom2ingest(object):
                             self.plane_dict[key] <=
                             thisPlane['plane_dict'][key]):
                         continue
+
+                    elif (key == 'metrics.sourceNumberDensity'
+                            and (key in thisPlane['plane_dict'])
+                            and (self.plane_dict[key] == '0')):
+                        # Don't overwrite an existing
+                        # metrics.sourceNumberDensity value with 0.
+                        # This allows us to assume 0 when a "tile-moc" is
+                        # seen and have the real value from the "extent-cat"
+                        # always take precedence if present.
+                        continue
+
                     thisPlane['plane_dict'][key] = self.plane_dict[key]
 
             # If inputset is not empty, the provenance should be filled.
@@ -1224,7 +1244,7 @@ class jcmt2caom2ingest(object):
             elif result.prod_id not in self.remove_dict[result.obs_id]:
                 self.remove_dict[result.obs_id].append(result.prod_id)
 
-    def build_dict(self, header):
+    def build_dict(self, header, first_extension=None):
         '''Archive-specific code to read the common dictionary from the
                file header.
            The following keys must be defined:
@@ -2639,6 +2659,19 @@ class jcmt2caom2ingest(object):
                 'replace_only': True,
             }
             logger.warning('Using explicit spatial wcs for this observation')
+
+        # Determine plane metrics.
+        if product in ['peak-cat', 'extent-cat']:
+            source_number_density = 0
+            if first_extension is not None:
+                source_number_density = first_extension.get('NAXIS2', 0)
+            self.add_to_plane_dict('metrics.sourceNumberDensity',
+                                   '{0}'.format(source_number_density))
+        elif product in ['tile-moc']:
+            # We see a "tile-moc" but don't know at this point if there is also
+            # an "extent-cat".  Therefore set sourceNumberDensity=0
+            # and let build_metadict select which value to keep.
+            self.add_to_plane_dict('metrics.sourceNumberDensity', '0')
 
     def lookup_file_id(self, filename, file_id):
         """
