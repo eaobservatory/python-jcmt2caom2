@@ -1,5 +1,5 @@
 # Copyright (C) 2014-2015 Science and Technology Facilities Council.
-# Copyright (C) 2015 East Asian Observatory.
+# Copyright (C) 2015-2016 East Asian Observatory.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -70,7 +70,6 @@ __author__ = "Russell O. Redman"
 
 import argparse
 from astropy.time import Time
-from ConfigParser import SafeConfigParser
 from collections import OrderedDict
 from contextlib import closing
 import datetime
@@ -195,30 +194,13 @@ class jcmt2caom2ingest(object):
         storing default values for command line arguments.
         """
 
-        # config object optionally contains a user configuration object
-        # this can be left undefined at the CADC, but is needed at other sites
-        self.userconfig = SafeConfigParser()
-        # userconfigpath can be overridden on the command line or in a
-        # derived class
-        self.userconfigpath = '~/.tools4caom2/tools4caom2.config'
-
-        # -------------------------------------------
-        # placeholders for command line switch values
-        # -------------------------------------------
-        # Command line interface for the ArgumentParser and arguments
-        # Command line options
-        self.progname = os.path.basename(os.path.splitext(sys.argv[0])[0])
-        self.exedir = os.path.abspath(os.path.dirname(sys.path[0]))
         # Derive the config path from the script or bin directory path
         if 'CADC_ROOT' in os.environ:
             self.configpath = os.path.abspath(
                 os.path.join(os.path.expandvars('$CADC_ROOT'), 'config'))
         else:
-            self.configpath = os.path.join(self.exedir, 'config')
-
-        # Argument parser
-        self.ap = None
-        self.args = None
+            exedir = os.path.abspath(os.path.dirname(sys.path[0]))
+            self.configpath = os.path.join(exedir, 'config')
 
         # routine to convert filepaths into file_ids
         # The default routine supplied here should work for most archives.
@@ -294,7 +276,6 @@ class jcmt2caom2ingest(object):
         self.artifact_part_count = {}
 
         self.archive = 'JCMT'
-        self.stream = 'product'
 
         self.collection_choices = ['JCMT', 'JCMTLS', 'JCMTUSER', 'SANDBOX']
         self.external_collections = ['JCMTLS', 'JCMTUSER']
@@ -330,250 +311,6 @@ class jcmt2caom2ingest(object):
         self.recipe_instance_mapping = read_recipe_instance_mapping()
 
         self.xmloutdir = None
-
-    def defineCommandLineSwitches(self):
-        """
-        Generic routine to build the standard list of command line arguments.
-        This routine has been split off from processing and logging to allow
-        additional arguments to be defined for derived classes.
-
-        Subclasses for specific archive can override this method to add new
-        arguments, but should first call
-           self.caom2ingest.defineCommandLineSwitches()
-        to ensure that the standard arguments are always defined.
-
-        Arguments:
-        <none>
-
-        # user config arguments
-        --userconfig : path to user configuration file
-        --proxy      : path to CADC proxy certificate
-
-        # ingestion arguments
-        --prefix     : (required) prefix for files to be ingested
-        --indir      : (required) directory containing the release
-        --replace    : (optional) observations in JCMTLS or JCMTUSER can
-                       replace existing observations
-        --ingest     : (optional) ingest new files (requires CADC
-                       authorization)
-        --xmloutdir  : (optional) directory into which to write the new/updated
-                       CAOM-2 documents for debugging purposes
-
-        # fits2caom2 arguments
-        --collection : (required) collection to use for ingestion
-        --config     : (optional) path to fits2caom2 config file
-        --default    : (optional) path to fits2caom2 default file
-
-        # File and directory options
-        --workdir    : (optional) working directory (default = cwd)
-
-        # debugging options
-        --verbose, -v: (optional) log all messages and retain temporary files
-                       on error
-        --dry-run, -n: (optional) simulate operation of fits2caom2
-        """
-
-        # Optional user configuration
-        if self.userconfigpath:
-            self.ap.add_argument(
-                '--userconfig',
-                default=self.userconfigpath,
-                help='Optional user configuration file '
-                     '(default=' + self.userconfigpath + ')')
-
-        self.ap.add_argument(
-            '--proxy',
-            default='~/.ssl/cadcproxy.pem',
-            help='path to CADC proxy')
-
-        # Ingestion modes
-        self.ap.add_argument('--prefix',
-                             help='file name prefix that identifies files '
-                                  'to be ingested')
-        self.ap.add_argument('--indir',
-                             required=True,
-                             help='path to release data on disk')
-        self.ap.add_argument('--replace',
-                             action='store_true',
-                             help='observations in JCMTLS and JCMTUSER can '
-                                  'replace existing observations')
-        self.ap.add_argument('--ingest',
-                             action='store_true',
-                             help='ingest from AD files that are ready for '
-                                  'ingestion if there are no errors')
-
-        # Basic fits2caom2 options
-        # Optionally, specify explicit paths to the config and default files
-        self.ap.add_argument(
-            '--collection',
-            required=True,
-            choices=self.collection_choices,
-            help='collection to use for ingestion')
-        self.ap.add_argument(
-            '--config',
-            help='(optional) path to fits2caom2 config file')
-        self.ap.add_argument(
-            '--default',
-            help='(optional) path to fits2caom2 default file')
-
-        # Big jobs require extra memory
-        self.ap.add_argument(
-            '--big',
-            action='store_true',
-            help='(optional) request extra heap space and RAM')
-
-        # output directory
-        self.ap.add_argument(
-            '--workdir',
-            help='output directory, (default = current directory')
-
-        # debugging options
-        self.ap.add_argument(
-            '--dry-run', '-n',
-            action='store_true',
-            dest='dry_run',
-            help='(optional) simulate operation of fits2caom2')
-        self.ap.add_argument(
-            '--verbose', '-v',
-            action='store_true',
-            help='(optional) show all messages, pass --debug to fits2caom2,'
-            ' and retain all xml and override files')
-        self.ap.add_argument(
-            '--xmloutdir',
-            help='(optional) directory into which to write XML files')
-
-    def processCommandLineSwitches(self):
-        """
-        Generic routine to process the command line arguments
-        and create workdir if necessary.  This will check the values of the
-        standard arguments defined in defineCommandLineSwitches and will
-        leave the additional arguments in self.args.
-
-        Arguments:
-        <None>
-
-        Returns:
-        The set of command line arguments is stored in self.args and the
-        default arguments are interpreted and stored into individual
-        attributes.
-        """
-        # If the user configuration file exists, read it.
-        if 'userconfig' in self.args:
-            self.userconfigpath = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(
-                        self.args.userconfig)))
-        if self.userconfigpath and os.path.isfile(self.userconfigpath):
-            with open(self.userconfigpath) as UC:
-                self.userconfig.readfp(UC)
-
-        self.proxy = os.path.abspath(
-            os.path.expandvars(
-                os.path.expanduser(self.args.proxy)))
-
-        self.collection = self.args.collection
-
-        if self.args.prefix:
-            self.prefix = self.args.prefix
-            file_id_regex = re.compile(self.prefix + r'.*')
-            self.fileid_regex_dict = {'.fits': [file_id_regex],
-                                      '.fit': [file_id_regex],
-                                      '.log': [file_id_regex],
-                                      '.txt': [file_id_regex]}
-        else:
-            self.fileid_regex_dict = {'.fits': [re.compile(r'.*')],
-                                      '.fit': [re.compile(r'.*')]}
-
-        # Save the values in self
-        # A value on the command line overrides a default set in code.
-        # Options with defaults are always defined by the command line.
-        # It is not necessary to check for their existance.
-        if self.args.big:
-            self.big = self.args.big
-
-        if self.args.config:
-            self.config = os.path.abspath(
-                os.path.expandvars(
-                    os.path.expanduser(self.args.config)))
-        if self.args.default:
-            self.default = os.path.abspath(
-                os.path.expandvars(
-                    os.path.expanduser(self.args.default)))
-
-        if self.args.workdir:
-            self.workdir = os.path.abspath(
-                os.path.expandvars(
-                    os.path.expanduser(self.args.workdir)))
-        else:
-            self.workdir = os.getcwd()
-
-        indirpath = os.path.abspath(
-            os.path.expandvars(
-                os.path.expanduser(self.args.indir)))
-        # is this a local directorory on the disk?
-        if os.path.isdir(indirpath):
-            self.indir = indirpath
-
-        if self.args.replace:
-            self.replace = self.args.replace
-
-        self.dry_run = self.args.dry_run
-
-        if self.args.verbose:
-            logging.getLogger().setLevel(logging.DEBUG)
-            self.verbose = True
-
-        # create workdir if it does not already exist
-        if not os.path.exists(self.workdir):
-            os.makedirs(self.workdir)
-
-        if self.args.ingest:
-            self.ingest = self.args.ingest
-
-        self.xmloutdir = self.args.xmloutdir
-
-    def logCommandLineSwitches(self):
-        """
-        Generic method to log the command line switch values
-
-        Arguments:
-        <none>
-        """
-        # Report switch values
-        logger.info(self.progname)
-        logger.info('*** Arguments for caom2ingest base class ***')
-        logger.info('tools4caom2version = %s', tools4caom2version)
-        logger.info('configpath = ' + self.configpath)
-        for attr in dir(self.args):
-            if attr != 'id' and attr[0] != '_':
-                logger.info('%-15s= %s', attr, str(getattr(self.args, attr)))
-        logger.info('workdir = %s', self.workdir)
-
-        if self.collection in self.external_collections:
-            if not self.prefix:
-                errors = True
-                logger.error('--prefix is mandatory if --collection '
-                             'is in ' + repr(self.external_collections))
-                raise CAOMError('error in command line options')
-
-        if not self.indir:
-            raise CAOMError('--indir = ' + self.args.indir + ' does not exist')
-
-        self.tap = CAOM2TAP(self.proxy)
-        if not os.path.exists(self.proxy):
-            raise CAOMError('proxy does not exist: ' + self.proxy)
-
-        if not os.path.isdir(self.workdir):
-            raise CAOMError('workdir is not a directory: ' + self.workdir)
-
-        if self.config and not os.path.isfile(self.config):
-            raise CAOMError('config file does not exist: ' + str(self.config))
-
-        if self.default and not os.path.isfile(self.default):
-            raise CAOMError('default file does not exist: ' +
-                            str(self.default))
-
-        logger.info('jcmt2caom2version    = %s', jcmt2caom2version)
 
     def getfilelist(self, rootdir):
         """
@@ -3064,26 +2801,169 @@ class jcmt2caom2ingest(object):
                         logger.warning('More than %i parts for %s',
                                        excess_parts, uri)
 
-
     def run(self):
         """Perform ingestion.
 
         Returns True on success, False otherwise.
         """
 
+        progname = os.path.basename(os.path.splitext(sys.argv[0])[0])
+
+        ap = argparse.ArgumentParser(progname)
+
+        ap.add_argument('--proxy',
+                        default='~/.ssl/cadcproxy.pem',
+                        help='path to CADC proxy')
+
+        # Ingestion modes
+        ap.add_argument('--prefix',
+                        help='file name prefix that identifies files '
+                             'to be ingested')
+        ap.add_argument('--indir',
+                        required=True,
+                        help='path to release data on disk')
+        ap.add_argument('--replace',
+                        action='store_true',
+                        help='observations in JCMTLS and JCMTUSER can '
+                             'replace existing observations')
+        ap.add_argument('--ingest',
+                        action='store_true',
+                        help='ingest from AD files that are ready for '
+                             'ingestion if there are no errors')
+
+        # Basic fits2caom2 options
+        # Optionally, specify explicit paths to the config and default files
+        ap.add_argument('--collection',
+                        required=True,
+                        choices=self.collection_choices,
+                        help='collection to use for ingestion')
+        ap.add_argument('--config',
+                        help='path to fits2caom2 config file')
+        ap.add_argument('--default',
+                        help='path to fits2caom2 default file')
+
+        # Big jobs require extra memory
+        ap.add_argument('--big',
+                        action='store_true',
+                        help='request extra heap space and RAM')
+
+        # output directory
+        ap.add_argument('--workdir',
+                        help='output directory, (default = current directory')
+
+        # debugging options
+        ap.add_argument('--dry-run', '-n',
+                        action='store_true',
+                        dest='dry_run',
+                        help='simulate operation of fits2caom2')
+        ap.add_argument('--verbose', '-v',
+                        action='store_true',
+                        help='show all messages, pass --debug to '
+                        'fits2caom2, and retain all xml and override files')
+        ap.add_argument('--xmloutdir',
+                        help='directory into which to write XML files')
+
+        args = ap.parse_args()
+
+        proxy = os.path.abspath(
+            os.path.expandvars(
+                os.path.expanduser(args.proxy)))
+
+        self.collection = args.collection
+
+        if args.prefix:
+            self.prefix = args.prefix
+            file_id_regex = re.compile(self.prefix + r'.*')
+            self.fileid_regex_dict = {'.fits': [file_id_regex],
+                                      '.fit': [file_id_regex],
+                                      '.log': [file_id_regex],
+                                      '.txt': [file_id_regex]}
+        else:
+            self.fileid_regex_dict = {'.fits': [re.compile(r'.*')],
+                                      '.fit': [re.compile(r'.*')]}
+
+        if args.big:
+            self.big = args.big
+
+        if args.config:
+            self.config = os.path.abspath(
+                os.path.expandvars(
+                    os.path.expanduser(args.config)))
+        if args.default:
+            self.default = os.path.abspath(
+                os.path.expandvars(
+                    os.path.expanduser(args.default)))
+
+        if args.workdir:
+            self.workdir = os.path.abspath(
+                os.path.expandvars(
+                    os.path.expanduser(args.workdir)))
+        else:
+            self.workdir = os.getcwd()
+
+        indirpath = os.path.abspath(
+            os.path.expandvars(
+                os.path.expanduser(args.indir)))
+        # is this a local directorory on the disk?
+        if os.path.isdir(indirpath):
+            self.indir = indirpath
+
+        if args.replace:
+            self.replace = args.replace
+
+        self.dry_run = args.dry_run
+
+        if args.verbose:
+            logging.getLogger().setLevel(logging.DEBUG)
+            self.verbose = True
+
+        # create workdir if it does not already exist
+        if not os.path.exists(self.workdir):
+            os.makedirs(self.workdir)
+
+        if args.ingest:
+            self.ingest = args.ingest
+
+        self.xmloutdir = args.xmloutdir
+
+        # Report command line argument values.
+        logger.info(progname)
+        logger.info('jcmt2caom2version  = %s', jcmt2caom2version)
+        logger.info('tools4caom2version = %s', tools4caom2version)
+        logger.info('configpath         = ' + self.configpath)
+        for attr in dir(args):
+            if attr != 'id' and attr[0] != '_':
+                logger.info('%-18s = %s', attr, getattr(args, attr))
+        logger.info('workdir            = %s', self.workdir)
+
         try:
+            if self.collection in self.external_collections:
+                if not self.prefix:
+                    logger.error('--prefix is mandatory if --collection '
+                                 'is in ' + repr(self.external_collections))
+                    raise CAOMError('error in command line options')
+
+            if not self.indir:
+                raise CAOMError('--indir = ' + args.indir + ' does not exist')
+
+            if not os.path.exists(proxy):
+                raise CAOMError('proxy does not exist: ' + proxy)
+
+            self.tap = CAOM2TAP(proxy)
+
+            if not os.path.isdir(self.workdir):
+                raise CAOMError('workdir is not a directory: '
+                                + self.workdir)
+
+            if self.config and not os.path.isfile(self.config):
+                raise CAOMError('config file does not exist: '
+                                + str(self.config))
+
+            if self.default and not os.path.isfile(self.default):
+                raise CAOMError('default file does not exist: '
+                                + str(self.default))
+
             self.conn = ArcDB()
-
-            # metadict is the fundamental structure in the program, sorting
-            # files by observation, plane and file, and holding all the relevant
-            # metadata in a set of nested dictionaries.
-            self.ap = argparse.ArgumentParser(self.progname)
-            self.defineCommandLineSwitches()
-
-            self.args = self.ap.parse_args()
-            self.processCommandLineSwitches()
-
-            self.logCommandLineSwitches()
 
             # Construct validation object
             self.validation = CAOMValidation(self.workdir,
