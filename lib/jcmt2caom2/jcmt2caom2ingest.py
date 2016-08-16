@@ -32,22 +32,6 @@ checks include metadata checks for mandatory keywords or keywords that must
 have one of a restricted set of values, and verifying whether the file is
 already present in the archive (sometimes forbidden, sometimes mandatory).
 
-With the --store switch, caom2ingest will copy files from VOspace into archive
-storage at the CADC.  This is a privileged operation; the account making the
-request must have appropriate write permissions.
-
-The --storemethod switch has one of two values, "pull" or "push" where "pull"
-is the default.  The "pull" method uses CADC e-transfer to move the files into
-ADS.  The "push" method uses the data web client to push the files into AD.
-
-Either store method can be used for files in VOspace, provided the VOspace
-etransfer directory has been configured in the [transfer] section of the
-userconfig file.
-
-Files on disk at the JAC can be transferred using the "push" method, but it
-is likely that some other transfer mechanism will already be built into the
-data processing system, rendering it unnecessary.
-
 With the --ingest switch, caom2ingest will ingest the files into CAOM-2.
 However it is managed, the transfer of files into AD must already have occurred
 before --ingest is invoked.  In addition, all raw observations in the
@@ -255,8 +239,6 @@ class jcmt2caom2ingest(object):
         self.replace = False     # True if observations in JCMTLS or JCMTUSER
                                  # can replace each other
         self.big = False         # True to use larger memory for fits2caom2
-        self.store = False       # True to store files from indir
-        self.storemethod = None  # e-transfer or data web service
         self.ingest = False      # True to ingest files from indir into CAOM-2
         self.local = False       # True if files are on a local disk
 
@@ -301,13 +283,6 @@ class jcmt2caom2ingest(object):
 
         # Dictionary of explicit WCS infomation, by FITS URI.
         self.explicit_wcs = {}
-
-        # Lists of files to be stored, or to check that they are in storage
-        # Data files are added to data_storage iff they report no errors
-        self.data_storage = []
-        # Preview candidates are added as they are encountered and removed
-        # if they do not match any planes.
-        self.preview_storage = []
 
         # list of containers for input files
         self.containerlist = []
@@ -384,12 +359,10 @@ class jcmt2caom2ingest(object):
         --proxy      : path to CADC proxy certificate
 
         # ingestion arguments
-        --prefix     : (required) prefix for files to be stored/ingested
+        --prefix     : (required) prefix for files to be ingested
         --indir      : (required) directory or ad file containing the release
         --replace    : (optional) observations in JCMTLS or JCMTUSER can
                        replace existing observations
-        --store      : (optional) store files in AD (requires CADC
-                       authorization)
         --ingest     : (optional) ingest new files (requires CADC
                        authorization)
         --xmloutdir  : (optional) directory into which to write the new/updated
@@ -434,15 +407,6 @@ class jcmt2caom2ingest(object):
                              action='store_true',
                              help='observations in JCMTLS and JCMTUSER can '
                                   'replace existing observations')
-        self.ap.add_argument('--store',
-                             action='store_true',
-                             help='store in AD files that are ready for '
-                                  'ingestion if there are no errors')
-        self.ap.add_argument('--storemethod',
-                             choices=['push', 'pull'],
-                             default='pull',
-                             help='use e-transfer (pull) or data web service '
-                                  '(push) to store files in AD')
         self.ap.add_argument('--ingest',
                              action='store_true',
                              help='ingest from AD files that are ready for '
@@ -587,10 +551,6 @@ class jcmt2caom2ingest(object):
         # create workdir if it does not already exist
         if not os.path.exists(self.workdir):
             os.makedirs(self.workdir)
-
-        if self.args.store:
-            self.store = self.args.store
-        self.storemethod = self.args.storemethod
 
         if self.args.ingest:
             self.ingest = self.args.ingest
@@ -755,8 +715,6 @@ class jcmt2caom2ingest(object):
         container: a container of files to read
         """
         self.metadict.clear()
-        self.data_storage = []
-        self.preview_storage = []
 
         try:
             # sort the file_id_list
@@ -832,11 +790,6 @@ class jcmt2caom2ingest(object):
 
         self.build_dict(head, first_extension)
         self.build_metadict(filepath)
-
-        self.data_storage.append(head['SRCPATH'])
-
-#        else:
-#            self.preview_storage.append(container.uri(file_id))
 
     def observationURI(self, collection, observationID):
         """
@@ -1083,7 +1036,7 @@ class jcmt2caom2ingest(object):
 
         # In check mode, errors should not raise exceptions
         raise_exception = True
-        if not (self.store or self.ingest):
+        if not self.ingest:
             raise_exception = False
 
         # If the plane_dict is completely empty, skip further processing
@@ -2943,62 +2896,6 @@ class jcmt2caom2ingest(object):
 
             del self.remove_dict[obsid]
 
-    def storeFiles(self):
-        """
-        If files approved for storage are in vos, move them into AD.
-        If storemethod == 'pull', use the VOspace e-transfer protocol.
-        If storemethod == 'push', copy the files into a local directory
-        and push them into AD using the data web service.
-
-        This does not check that the transfer completes successfully.
-        """
-        transfer_dir = None
-        if (self.storemethod == 'pull'
-                and not self.local
-                and self.userconfig.has_section('vos')
-                and self.userconfig.has_option('vos', 'transfer')):
-
-            transfer_dir = self.userconfig.get('vos', 'transfer')
-            if not self.vosclient.isdir(transfer_dir):
-                raise CAOMError('transfer_dir = ' + transfer_dir +
-                                ' does not exist')
-
-            for filelist in (self.data_storage, self.preview_storage):
-                for filepath in filelist:
-                    basefile = os.path.basename(filepath)
-                    file_id = self.make_file_id(basefile)
-                    logger.info('LINK: %s', filepath)
-                    if transfer_dir and not self.dry_run:
-                        self.vosclient.link(filepath,
-                                            transfer_dir + '/' + basefile)
-
-        elif self.storemethod == 'push':
-            for filelist in (self.data_storage, self.preview_storage):
-                for filepath in filelist:
-                    basefile = os.path.basename(filepath)
-                    file_id = self.make_file_id(basefile)
-                    logger.info('PUT: %s', filepath)
-                    if not self.dry_run:
-                        if self.local:
-                            tempfile = filepath
-                        else:
-                            tempfile = os.path.join(self.workdir, basefile)
-                            self.vosclient.copy(filepath, tempfile)
-                        try:
-                            if not self.data_web.put(tempfile,
-                                                     self.archive,
-                                                     file_id,
-                                                     self.stream):
-                                raise CAOMError(
-                                    'failed to push {0} into AD using the '
-                                    'data_web_client'.format(filepath))
-                        finally:
-                            if not self.local and os.path.exists(tempfile):
-                                os.remove(tempfile)
-        else:
-            raise CAOMError('storemethod = ' + self.storemethod +
-                            'has not been implemented')
-
     def prepare_override_info(self, observationID, productID):
         """
         Prepare the information required in override files for a plane specified
@@ -3270,8 +3167,6 @@ class jcmt2caom2ingest(object):
                 logger.info('PROGRESS: container = %s', c.name)
                 self.fillMetadict(c)
                 self.checkProvenanceInputs()
-                if self.store:
-                    self.storeFiles()
                 if self.ingest:
                     self.ingestPlanesFromMetadict()
 
