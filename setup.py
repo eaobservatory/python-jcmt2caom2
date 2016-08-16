@@ -1,4 +1,5 @@
 # Copyright (C) 2014-2015 Science and Technology Facilities Council.
+# Copyright (C) 2016 East Asian Observatory.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,11 +14,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from distutils import debug
-from setuptools import setup, find_packages
+from distutils.core import setup
 import os
-import os.path
 import sys
+
+sys.path.insert(0, 'lib')
+from jcmt2caom2.__version__ import version
 
 if sys.version_info[0] > 2:
     print 'The jcmt2caom2 package is only compatible with Python version 2.n'
@@ -30,28 +32,38 @@ else:
 configfiles = [os.path.join('config', f) for f in os.listdir('config')]
 
 setup(
-    name="jcmt2caom2",
-    version='1.2.6',
+    name='jcmt2caom2',
+    version=version,
     description='Ingest JCMT data into CAOM-2',
     author='Russell Redman',
     author_email='russell.o.redman@gmail.com',
+    url='https://github.com/eaobservatory/python-jcmt2caom2',
     package_dir={'': 'lib'},
-    packages=find_packages(where='lib'),
-    package_data={'jcmt2caom2': ['data/ignoredobs/*.lis']},
-    scripts=['scripts/jsaingest',
-             'scripts/jsaraw',
-             'scripts/jsasetfield',
-             'scripts/caomcheck',
-             'scripts/remove_products'],
+    packages=[
+        'jcmt2caom2',
+        'jcmt2caom2.instrument',
+        'jcmt2caom2.jsa',
+    ],
+    package_data={'jcmt2caom2': [
+        'data/ignoredobs/*.lis',
+    ]},
+    scripts=[
+        'scripts/jsaingest',
+        'scripts/jsaraw',
+        'scripts/jsasetfield',
+        'scripts/caomcheck',
+        'scripts/remove_products',
+    ],
     # config files are not package data and must be located
     # in ../config relative to the executables in scripts
     data_files=[(configdir, configfiles)],
     provides=['jcmt2caom2'],
-    install_requires=['astropy',
-                      'caom2',
-                      'docopt',
-                      'healpy',
-                      'tools4caom2',
-                      'vos'],
-    zip_safe=False
+    requires=[
+        'astropy',
+        'caom2',
+        'docopt',
+        'healpy',
+        'tools4caom2',
+        'vos',
+    ]
 )
