@@ -82,8 +82,6 @@ import shutil
 import subprocess
 import sys
 
-from vos.vos import Client
-
 from omp.db.part.arc import ArcDB
 
 from caom2.caom2_chunk import Chunk
@@ -103,10 +101,7 @@ from caom2.wcs.caom2_temporal_wcs import TemporalWCS
 
 from tools4caom2.__version__ import version as tools4caom2version
 from tools4caom2.caom2repo_wrapper import Repository
-from tools4caom2.container.adfile import adfile_container
 from tools4caom2.container.filelist import filelist_container
-from tools4caom2.container.vos import vos_container
-from tools4caom2.data_web_client import data_web_client
 from tools4caom2.error import CAOMError
 from tools4caom2.fits2caom2 import run_fits2caom2
 from tools4caom2.mjd import utc2mjd
@@ -240,15 +235,11 @@ class jcmt2caom2ingest(object):
                                  # can replace each other
         self.big = False         # True to use larger memory for fits2caom2
         self.ingest = False      # True to ingest files from indir into CAOM-2
-        self.local = False       # True if files are on a local disk
 
         # Archive-specific fits2caom2 config and default file paths
         self.config = None
         self.default = None
 
-        # Current vos container
-        self.vosclient = Client()
-        self.vos = None
         # dictionary of lists of compiles regex expressions, keyed by extension
         self.fileid_regex_dict = None
 
@@ -360,7 +351,7 @@ class jcmt2caom2ingest(object):
 
         # ingestion arguments
         --prefix     : (required) prefix for files to be ingested
-        --indir      : (required) directory or ad file containing the release
+        --indir      : (required) directory containing the release
         --replace    : (optional) observations in JCMTLS or JCMTUSER can
                        replace existing observations
         --ingest     : (optional) ingest new files (requires CADC
@@ -401,8 +392,7 @@ class jcmt2caom2ingest(object):
                                   'to be ingested')
         self.ap.add_argument('--indir',
                              required=True,
-                             help='path to release data (on disk, in vos, or '
-                                  'an ad file')
+                             help='path to release data on disk')
         self.ap.add_argument('--replace',
                              action='store_true',
                              help='observations in JCMTLS and JCMTUSER can '
@@ -517,27 +507,12 @@ class jcmt2caom2ingest(object):
         else:
             self.workdir = os.getcwd()
 
-        # Parse ingestion options
-        if (re.match(r'vos:.*', self.args.indir)
-                and self.vosclient.access(self.args.indir)
-                and self.vosclient.isdir(self.args.indir)):
-
-            self.indir = self.args.indir
-            self.local = False
-        else:
-            indirpath = os.path.abspath(
-                os.path.expandvars(
-                    os.path.expanduser(self.args.indir)))
-            # is this a local directorory on the disk?
-            if os.path.isdir(indirpath):
-                self.indir = indirpath
-                self.local = True
-
-            # is this an adfile?
-            elif (os.path.isfile(indirpath) and
-                  os.path.splitext(indirpath)[1] == '.ad'):
-                self.indir = indirpath
-                self.local = False
+        indirpath = os.path.abspath(
+            os.path.expandvars(
+                os.path.expanduser(self.args.indir)))
+        # is this a local directorory on the disk?
+        if os.path.isdir(indirpath):
+            self.indir = indirpath
 
         if self.args.replace:
             self.replace = self.args.replace
@@ -573,7 +548,6 @@ class jcmt2caom2ingest(object):
             if attr != 'id' and attr[0] != '_':
                 logger.info('%-15s= %s', attr, str(getattr(self.args, attr)))
         logger.info('workdir = %s', self.workdir)
-        logger.info('local = %s', self.local)
 
         if self.collection in self.external_collections:
             if not self.prefix:
@@ -649,40 +623,9 @@ class jcmt2caom2ingest(object):
                         lambda f: True,
                         self.make_file_id))
 
-            elif os.path.isfile(self.indir):
-                basename, ext = os.path.splitext(self.indir)
-                if ext == '.ad':
-                    # self.indir points to an ad file
-                    self.containerlist.append(
-                        adfile_container(
-                            self.data_web,
-                            self.indir,
-                            self.workdir,
-                            self.make_file_id))
-
-                else:
-                    raise CAOMError('indir is not a directory and: '
-                                    'is not an ad file: ' +
-                                    self.indir)
-
             else:
-                # handle VOspace directories
-                if (self.vosclient.access(self.indir)
-                        and self.vosclient.isdir(self.indir)):
-
-                    self.containerlist.append(
-                        vos_container(self.indir,
-                                      self.archive,
-                                      self.ingest,
-                                      self.workdir,
-                                      self.validation,
-                                      self.vosclient,
-                                      self.data_web,
-                                      self.make_file_id))
-                else:
-                    raise CAOMError('indir is not local and is not '
-                                    'a VOspace directory: ' +
-                                    self.indir)
+                raise CAOMError('indir is not a directory: ' +
+                                self.indir)
 
         except Exception as e:
             logger.exception('Error configuring containers')
@@ -770,11 +713,7 @@ class jcmt2caom2ingest(object):
 
             head['file_id'] = file_id
             head['filepath'] = filepath
-            if isinstance(container, vos_container):
-                head['VOSPATH'] = container.vosroot
-                head['SRCPATH'] = container.uri(file_id)
-            else:
-                head['SRCPATH'] = filepath
+            head['SRCPATH'] = filepath
 
             logger.debug('...got primary header from %s', filepath)
 
@@ -1017,8 +956,7 @@ class jcmt2caom2ingest(object):
             - Each plane is an OrderedDict containing a set of fitsuri dicts.
             - Each plane contains an element 'uri_dict' that holds an
               OrderedDict of input URIs to pass to fits2caom2.  The uri is the
-              key into the dictionary, where the value is the path to the file
-              if it is local or None if it should be fetched from AD.
+              key into the dictionary, where the value is the path to the file.
             - Each plane contains an element 'inputset' that holds a set of
               provenance input URIs for this plane, which can be empty.
             - Each plane also contains an element 'plane_dict' that is an
@@ -1140,10 +1078,7 @@ class jcmt2caom2ingest(object):
             if 'uri_dict' not in thisPlane:
                 thisPlane['uri_dict'] = OrderedDict()
             if self.uri not in thisPlane['uri_dict']:
-                if self.local:
-                    thisPlane['uri_dict'][self.uri] = filepath
-                else:
-                    thisPlane['uri_dict'][self.uri] = None
+                thisPlane['uri_dict'][self.uri] = filepath
 
             # Foreach fitsuri in fitsuri_dict, record the metadata
             for fitsuri in self.fitsuri_dict:
@@ -3019,11 +2954,8 @@ class jcmt2caom2ingest(object):
                         # Run fits2caom2
                         urilist = sorted(thisPlane['uri_dict'].keys())
                         if urilist:
-                            if self.local:
-                                filepathlist = [thisPlane['uri_dict'][u]
-                                                for u in urilist]
-                            else:
-                                filepathlist = None
+                            filepathlist = [thisPlane['uri_dict'][u]
+                                            for u in urilist]
                         else:
                             logger.error(
                                 'for %s/%s/%s, uri_dict is empty so '
@@ -3152,9 +3084,6 @@ class jcmt2caom2ingest(object):
             self.processCommandLineSwitches()
 
             self.logCommandLineSwitches()
-
-            # Read list of files from VOspace and do things
-            self.data_web = data_web_client(self.workdir)
 
             # Construct validation object
             self.validation = CAOMValidation(self.workdir,
