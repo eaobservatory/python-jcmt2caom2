@@ -1365,11 +1365,11 @@ class jcmt2caom2ingest(object):
 
         if algorithm == 'public':
             self.add_to_plane_dict(
-                'proposal.id', 'JCMT-LR1')
+                'proposal.id', 'JCMT-LR')
             self.add_to_plane_dict(
                 'proposal.pi', 'James Clerk Maxwell Telescope')
             self.add_to_plane_dict(
-                'proposal.title', 'JCMT Legacy Release 1')
+                'proposal.title', 'JCMT Legacy Release')
 
         elif is_defined('PROJECT', header):
             proposal_id = header['PROJECT']
