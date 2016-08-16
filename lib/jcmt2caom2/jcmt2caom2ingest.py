@@ -17,25 +17,25 @@
 __author__ = "Russell O. Redman"
 
 import argparse
-from astropy.time import Time
 from collections import OrderedDict
 from contextlib import closing
 import datetime
 import logging
 import os
-from astropy.io import fits
 import re
 import shutil
 import subprocess
 import sys
 
+from astropy.io import fits
+from astropy.time import Time
+
 from omp.db.part.arc import ArcDB
 
 from caom2.caom2_chunk import Chunk
 from caom2.caom2_composite_observation import CompositeObservation
-from caom2.caom2_enums import CalibrationLevel
-from caom2.caom2_enums import ObservationIntentType
-from caom2.caom2_enums import ProductType
+from caom2.caom2_enums import CalibrationLevel, \
+    ObservationIntentType, ProductType
 from caom2.caom2_observation_uri import ObservationURI
 from caom2.caom2_plane_uri import PlaneURI
 from caom2.caom2_simple_observation import SimpleObservation
@@ -51,16 +51,14 @@ from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.error import CAOMError
 from tools4caom2.fits2caom2 import run_fits2caom2
 from tools4caom2.mjd import utc2mjd
-from tools4caom2.utdate_string import UTDATE_REGEX
-from tools4caom2.utdate_string import utdate_string
 from tools4caom2.util import make_file_id_no_ext
 from tools4caom2.validation import CAOMValidation, CAOMValidationError
 
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 from jcmt2caom2.caom2_tap import CAOM2TAP
+from jcmt2caom2.instrument.scuba2 import scuba2_spectral_wcs
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
-from jcmt2caom2.instrument.scuba2 import scuba2_spectral_wcs
 from jcmt2caom2.jsa.intent import intent
 from jcmt2caom2.jsa.obsid import obsidss_to_obsid
 from jcmt2caom2.jsa.product_id import product_id
