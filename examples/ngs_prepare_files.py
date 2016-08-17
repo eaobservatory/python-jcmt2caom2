@@ -1,7 +1,7 @@
 #!/usr/bin/env python2.7
 
 # Copyright (C) 2014-2015 Science and Technology Facilities Council.
-# Copyright (C) 2015 East Asian Observatory.
+# Copyright (C) 2015-2016 East Asian Observatory.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -276,7 +276,7 @@ def rewrite_fits(insdf, outfits, project_name, dprcinst, workdir, tap):
     # ProductType is a crude classification of the nature of the data
     # in each extension of a FITS file
     if product == science_product:
-        headerdict['PRODTYPE'] = '0=science,auxiliary'
+        headerdict['PRODTYPE'] = 'science'
     else:
         headerdict['PRODTYPE'] = 'auxiliary'
 

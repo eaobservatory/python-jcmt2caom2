@@ -132,19 +132,20 @@ class jcmt2caom2ingest(object):
     speedOfLight = 2.99792485e8  # Speed of light in m/s
     freq_csotau = 225.0e9  # Frequency of CSO tau meter in Hz
     lambda_csotau = '%12.9f' % (speedOfLight / freq_csotau)
-    productType = {'cube': '0=science,1=noise,auxiliary',
-                   'reduced': '0=science,1=noise,auxiliary',
-                   'rsp': '0=preview,1=noise,auxiliary',
-                   'rimg': '0=preview,1=noise,auxiliary',
-                   'healpix': '0=science,1=noise,auxiliary',
-                   'hpxrsp': '0=preview,1=noise,auxiliary',
-                   'hpxrimg': '0=preview,1=noise,auxiliary',
-                   'peak-cat': '1=science,auxiliary',
-                   'extent-cat': '1=science,auxiliary',
-                   'extent-mask': 'auxiliary',
-                   'extent-moc': '1=science,auxiliary',
-                   'tile-moc': '1=science,auxiliary',
-                   }
+    productType = {
+        'cube':        {0: 'science', 1: 'noise', None: 'auxiliary'},
+        'reduced':     {0: 'science', 1: 'noise', None: 'auxiliary'},
+        'rsp':         {0: 'preview', 1: 'noise', None: 'auxiliary'},
+        'rimg':        {0: 'preview', 1: 'noise', None: 'auxiliary'},
+        'healpix':     {0: 'science', 1: 'noise', None: 'auxiliary'},
+        'hpxrsp':      {0: 'preview', 1: 'noise', None: 'auxiliary'},
+        'hpxrimg':     {0: 'preview', 1: 'noise', None: 'auxiliary'},
+        'peak-cat':    {1: 'science', None: 'auxiliary'},
+        'extent-cat':  {1: 'science', None: 'auxiliary'},
+        'extent-mask': {None: 'auxiliary'},
+        'extent-moc':  {1: 'science', None: 'auxiliary'},
+        'tile-moc':    {1: 'science', None: 'auxiliary'},
+    }
 
     def __init__(self):
         """
@@ -1691,41 +1692,31 @@ class jcmt2caom2ingest(object):
         # Recall that the order in fitsuri_dict is called is preserved
         # in the override file
 
-        # Translate the PRODTYPE header into a list of (extension_number, type)
-        # pairs, where the default with extension_number = None is always last
-        prodtype = 'auxiliary'
+        # Translate the PRODTYPE header into a (extension_number, type)
+        # dictionary, where the default has extension_number = None.
+        prodtypes = {None: 'auxiliary'}
+
         if is_defined('PRODTYPE', header):
-            prodtype = header['PRODTYPE'].lower()
+            prodtypes[0] = header['PRODTYPE'].lower()
+            if is_defined('PRODTYPE', first_extension):
+                prodtypes[1] = first_extension['PRODTYPE'].lower()
+
         elif product in jcmt2caom2ingest.productType:
-            prodtype = jcmt2caom2ingest.productType[product]
+            prodtypes = jcmt2caom2ingest.productType[product]
 
-        prodtype = re.sub(r'\s', '', prodtype)
-        if ',' in prodtype:
-            prodtype = re.sub(r',{2,}', ',', prodtype)
-            prodtype_list = prodtype.split(',')
-        else:
-            prodtype_list = [prodtype]
+        for prodtype in prodtypes.values():
+            if ProductType.getByValue(prodtype) is None:
+                raise CAOMError('file {0}: invalid ProductType "{1}"'.format(
+                    filename, prodtype))
 
-        prodtype_default = None
-        prodtypes = []
-        prodtype_options = (r'(science|calibration|preview|' +
-                            r'info|catalog|noise|weight|auxiliary)')
-        for pt in prodtype_list:
-            mpt = re.match(r'(\d+)=' + prodtype_options,
-                           pt)
-            if mpt:
-                prodtypes.append((mpt.group(1), mpt.group(2)))
-            else:
-                if re.match(prodtype_options, pt):
-                    prodtype_default = pt
+        prodtype_default = prodtypes.get(None)
 
-        prodtypes = sorted(prodtypes, key=lambda t: t[0])
-        if len(prodtypes):
-            for (ext, pt) in prodtypes:
-                extURI = self.fitsextensionURI(self.archive,
-                                               file_id,
-                                               [int(ext)])
-                fitsuri_dict[extURI]['part.productType'] = pt
+        prodtype_exts = sorted(x for x in prodtypes.keys() if x is not None)
+
+        if prodtype_exts:
+            for ext in prodtype_exts:
+                extURI = self.fitsextensionURI(self.archive, file_id, [ext])
+                fitsuri_dict[extURI]['part.productType'] = prodtypes[ext]
 
             if prodtype_default:
                 fitsuri_dict[uri]['part.productType'] = prodtype_default
