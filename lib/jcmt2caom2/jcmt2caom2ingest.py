@@ -65,6 +65,7 @@ from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.tile import jsa_tile_wcs
 from jcmt2caom2.project import get_project_pi_title
+from jcmt2caom2.type import OrderedStrDict
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +180,6 @@ class jcmt2caom2ingest(object):
         self.collection = None
         self.observationID = None
         self.productID = None
-        self.plane_dict = OrderedDict()
         self.fitsuri_dict = OrderedDict()
         # The memberset contains member time intervals for this plane.
         # The member_cache is a dict keyed by the membership headers
@@ -295,7 +295,6 @@ class jcmt2caom2ingest(object):
         self.uri = ''
         self.observationID = None
         self.productID = None
-        self.plane_dict.clear()
         self.fitsuri_dict.clear()
         self.memberset.clear()
         self.inputset.clear()
@@ -380,8 +379,8 @@ class jcmt2caom2ingest(object):
         if self.ingest:
             self.validation.is_in_archive(filepath)
 
-        self.build_dict(head, first_extension)
-        self.build_metadict(filepath)
+        plane_dict = self.build_dict(head, first_extension)
+        self.build_metadict(filepath, plane_dict)
 
     def observationURI(self, collection, observationID):
         """
@@ -500,24 +499,6 @@ class jcmt2caom2ingest(object):
 
         return fexturi
 
-    def add_to_plane_dict(self, key, value):
-        """
-        Add a key, value pair to the local plane dictionary.  The method will
-        throw an exception and exit if the value does not have a string type.
-
-        Arguments:
-        key : a key in a string.Template
-        value : a string value to be substituted in a string.Template
-        """
-        if not isinstance(value, str):
-            logger.error("in the (key, value) pair ('%s', '%s'),"
-                         " the value should have type 'str' but is %s",
-                         key, repr(value), type(value))
-            raise CAOMError('non-str value being added to plane dict')
-
-        self.plane_dict[key] = value
-        self.override_items += 1
-
     def add_to_fitsuri_dict(self, uri, key, value):
         """
         Add a key, value pair to the local fitsuri dictionary.  The method
@@ -579,7 +560,7 @@ class jcmt2caom2ingest(object):
             self.fitsuri_dict[uri] = OrderedDict()
             self.fitsuri_dict[uri]['custom'] = OrderedDict()
 
-    def build_metadict(self, filepath):
+    def build_metadict(self, filepath, plane_dict):
         """
         Generic routine to build the internal structure metadict (a nested set
         of ordered dictionaries) that will be used to control, sort and fill
@@ -631,125 +612,126 @@ class jcmt2caom2ingest(object):
             raise_exception = False
 
         # If the plane_dict is completely empty, skip further processing
-        if self.override_items:
-            # Fetch the required keys from self.plane_dict
-            if not self.collection:
-                if raise_exception:
-                    raise CAOMError(filepath + ' does not define the required'
-                                    ' key "collection"')
+        if not (plane_dict or self.override_items):
+            return
+
+        # Fetch the required keys from plane_dict
+        if not self.collection:
+            if raise_exception:
+                raise CAOMError(filepath + ' does not define the required'
+                                ' key "collection"')
+            else:
+                return
+
+        if not self.observationID:
+            if raise_exception:
+                raise CAOMError(filepath + ' does not define the required'
+                                ' key "observationID"')
+            else:
+                return
+
+        if not self.productID:
+            if raise_exception:
+                raise CAOMError(
+                    filepath + ' does not define the required' +
+                    ' key "productID"')
+            else:
+                return
+
+        if not self.uri:
+            if raise_exception:
+                raise CAOMError(filepath + ' does not call fitsfileURI()'
+                                ' or fitsextensionURI()')
+            else:
+                return
+
+        logger.info(
+            'PROGRESS: collection="%s" observationID="%s" productID="%s"',
+            self.collection, self.observationID, self.productID)
+
+        # Build the dictionary structure
+        if self.observationID not in self.metadict:
+            self.metadict[self.observationID] = OrderedDict()
+        thisObservation = self.metadict[self.observationID]
+
+        # If memberset is not empty, the observation is a composite.
+        # The memberset is the union of the membersets from all the
+        # files in the observation.
+        if 'memberset' not in thisObservation:
+            thisObservation['memberset'] = set([])
+        if self.memberset:
+            thisObservation['memberset'] |= self.memberset
+
+        # Create the plane-level structures
+        if self.productID not in thisObservation:
+            thisObservation[self.productID] = OrderedDict()
+        thisPlane = thisObservation[self.productID]
+
+        # Items in the plane_dict accumulate so a key will be defined for
+        # the plane if it is defined by any file.  If a key is defined
+        # by several files, the definition from the last file is used.
+        if 'plane_dict' not in thisPlane:
+            thisPlane['plane_dict'] = OrderedDict()
+        if plane_dict:
+            for key in plane_dict:
+                # Handle release_date as a special case
+                if ((key == 'release_date')
+                        and (key in thisPlane['plane_dict'])
+                        and (plane_dict[key] <= thisPlane['plane_dict'][key])):
+                    continue
+
+                elif (key == 'metrics.sourceNumberDensity'
+                        and (key in thisPlane['plane_dict'])
+                        and (plane_dict[key] == '0')):
+                    # Don't overwrite an existing
+                    # metrics.sourceNumberDensity value with 0.
+                    # This allows us to assume 0 when a "tile-moc" is
+                    # seen and have the real value from the "extent-cat"
+                    # always take precedence if present.
+                    continue
+
+                thisPlane['plane_dict'][key] = plane_dict[key]
+
+        # If inputset is not empty, the provenance should be filled.
+        # The inputset is the union of the inputsets from all the files
+        # in the plane.  Beware that files not yet classified into
+        # inputURI's may still remain in fileset, and will be
+        # resolved if possible in checkProvenanceInputs.
+        if 'inputset' not in thisPlane:
+            thisPlane['inputset'] = set([])
+        if self.inputset:
+            thisPlane['inputset'] |= self.inputset
+
+        # The fileset is the set of input files that have not yet been
+        # identified as being recorded in any plane yet.
+        if 'fileset' not in thisPlane:
+            thisPlane['fileset'] = set([])
+        if self.fileset:
+            thisPlane['fileset'] |= self.fileset
+
+        # Record the uri and (optionally) the filepath
+        if 'uri_dict' not in thisPlane:
+            thisPlane['uri_dict'] = OrderedDict()
+        if self.uri not in thisPlane['uri_dict']:
+            thisPlane['uri_dict'][self.uri] = filepath
+
+        # Foreach fitsuri in fitsuri_dict, record the metadata
+        for fitsuri in self.fitsuri_dict:
+            # Create the fitsuri-level structures
+            if fitsuri not in thisPlane:
+                thisPlane[fitsuri] = OrderedDict()
+                thisPlane[fitsuri]['custom'] = OrderedDict()
+            thisFitsuri = thisPlane[fitsuri]
+
+            # Copy the fitsuri dictionary
+            for key in self.fitsuri_dict[fitsuri]:
+                if key == 'custom':
+                    thisCustom = thisFitsuri[key]
+                    for customkey in self.fitsuri_dict[fitsuri][key]:
+                        thisCustom[customkey] = \
+                            self.fitsuri_dict[fitsuri][key][customkey]
                 else:
-                    return
-
-            if not self.observationID:
-                if raise_exception:
-                    raise CAOMError(filepath + ' does not define the required'
-                                    ' key "observationID"')
-                else:
-                    return
-
-            if not self.productID:
-                if raise_exception:
-                    raise CAOMError(
-                        filepath + ' does not define the required' +
-                        ' key "productID"')
-                else:
-                    return
-
-            if not self.uri:
-                if raise_exception:
-                    raise CAOMError(filepath + ' does not call fitsfileURI()'
-                                    ' or fitsextensionURI()')
-                else:
-                    return
-
-            logger.info(
-                'PROGRESS: collection="%s" observationID="%s" productID="%s"',
-                self.collection, self.observationID, self.productID)
-
-            # Build the dictionary structure
-            if self.observationID not in self.metadict:
-                self.metadict[self.observationID] = OrderedDict()
-            thisObservation = self.metadict[self.observationID]
-
-            # If memberset is not empty, the observation is a composite.
-            # The memberset is the union of the membersets from all the
-            # files in the observation.
-            if 'memberset' not in thisObservation:
-                thisObservation['memberset'] = set([])
-            if self.memberset:
-                thisObservation['memberset'] |= self.memberset
-
-            # Create the plane-level structures
-            if self.productID not in thisObservation:
-                thisObservation[self.productID] = OrderedDict()
-            thisPlane = thisObservation[self.productID]
-
-            # Items in the plane_dict accumulate so a key will be defined for
-            # the plane if it is defined by any file.  If a key is defined
-            # by several files, the definition from the last file is used.
-            if 'plane_dict' not in thisPlane:
-                thisPlane['plane_dict'] = OrderedDict()
-            if self.plane_dict:
-                for key in self.plane_dict:
-                    # Handle release_date as a special case
-                    if ((key == 'release_date')
-                            and (key in thisPlane['plane_dict'])
-                            and (self.plane_dict[key]
-                                 <= thisPlane['plane_dict'][key])):
-                        continue
-
-                    elif (key == 'metrics.sourceNumberDensity'
-                            and (key in thisPlane['plane_dict'])
-                            and (self.plane_dict[key] == '0')):
-                        # Don't overwrite an existing
-                        # metrics.sourceNumberDensity value with 0.
-                        # This allows us to assume 0 when a "tile-moc" is
-                        # seen and have the real value from the "extent-cat"
-                        # always take precedence if present.
-                        continue
-
-                    thisPlane['plane_dict'][key] = self.plane_dict[key]
-
-            # If inputset is not empty, the provenance should be filled.
-            # The inputset is the union of the inputsets from all the files
-            # in the plane.  Beware that files not yet classified into
-            # inputURI's may still remain in fileset, and will be
-            # resolved if possible in checkProvenanceInputs.
-            if 'inputset' not in thisPlane:
-                thisPlane['inputset'] = set([])
-            if self.inputset:
-                thisPlane['inputset'] |= self.inputset
-
-            # The fileset is the set of input files that have not yet been
-            # identified as being recorded in any plane yet.
-            if 'fileset' not in thisPlane:
-                thisPlane['fileset'] = set([])
-            if self.fileset:
-                thisPlane['fileset'] |= self.fileset
-
-            # Record the uri and (optionally) the filepath
-            if 'uri_dict' not in thisPlane:
-                thisPlane['uri_dict'] = OrderedDict()
-            if self.uri not in thisPlane['uri_dict']:
-                thisPlane['uri_dict'][self.uri] = filepath
-
-            # Foreach fitsuri in fitsuri_dict, record the metadata
-            for fitsuri in self.fitsuri_dict:
-                # Create the fitsuri-level structures
-                if fitsuri not in thisPlane:
-                    thisPlane[fitsuri] = OrderedDict()
-                    thisPlane[fitsuri]['custom'] = OrderedDict()
-                thisFitsuri = thisPlane[fitsuri]
-
-                # Copy the fitsuri dictionary
-                for key in self.fitsuri_dict[fitsuri]:
-                    if key == 'custom':
-                        thisCustom = thisFitsuri[key]
-                        for customkey in self.fitsuri_dict[fitsuri][key]:
-                            thisCustom[customkey] = \
-                                self.fitsuri_dict[fitsuri][key][customkey]
-                    else:
-                        thisFitsuri[key] = self.fitsuri_dict[fitsuri][key]
+                    thisFitsuri[key] = self.fitsuri_dict[fitsuri][key]
 
     def build_remove_dict(self, run_id):
         """
@@ -797,6 +779,8 @@ class jcmt2caom2ingest(object):
         * observationID
         * productID
         """
+
+        plane_dict = OrderedStrDict()
 
         if 'file_id' not in header:
             raise CAOMError('No file_id in ' + repr(header))
@@ -892,7 +876,7 @@ class jcmt2caom2ingest(object):
                         ' in collection = "{2}"'.format(
                             filename, self.observationID, coll))
 
-        self.add_to_plane_dict('algorithm.name', algorithm)
+        plane_dict['algorithm.name'] = algorithm
 
         # Optional Observation.proposal
         proposal_id = None
@@ -908,19 +892,16 @@ class jcmt2caom2ingest(object):
             proposal_project = header['SURVEY']
 
         if algorithm == 'public':
-            self.add_to_plane_dict(
-                'proposal.id', 'JCMT-LR')
-            self.add_to_plane_dict(
-                'proposal.pi', 'James Clerk Maxwell Telescope')
-            self.add_to_plane_dict(
-                'proposal.title', 'JCMT Legacy Release')
+            plane_dict['proposal.id'] = 'JCMT-LR'
+            plane_dict['proposal.pi'] = 'James Clerk Maxwell Telescope'
+            plane_dict['proposal.title'] = 'JCMT Legacy Release'
 
         elif is_defined('PROJECT', header):
             proposal_id = header['PROJECT']
-            self.add_to_plane_dict('proposal.id', proposal_id)
+            plane_dict['proposal.id'] = proposal_id
 
             if proposal_project:
-                self.add_to_plane_dict('proposal.project', proposal_project)
+                plane_dict['proposal.project'] = proposal_project
 
             if is_defined('PI', header):
                 proposal_pi = header['PI']
@@ -933,9 +914,9 @@ class jcmt2caom2ingest(object):
                     header['PROJECT'], self.conn, self.tap)
 
             if proposal_pi is not None:
-                self.add_to_plane_dict('proposal.pi', proposal_pi)
+                plane_dict['proposal.pi'] = proposal_pi
             if proposal_title is not None:
-                self.add_to_plane_dict('proposal.title', proposal_title)
+                plane_dict['proposal.title'] = proposal_title
 
         # Observation membership headers, which are optional
         earliest_utdate = None
@@ -1178,8 +1159,7 @@ class jcmt2caom2ingest(object):
             # pass the >0.0 test
             if (is_defined('SEEINGST', header) and header['SEEINGST'] > 0.0 and
                     header['SEEINGST']):
-                self.add_to_plane_dict('environment.seeing',
-                                       '%f' % (header['SEEINGST'],))
+                plane_dict['environment.seeing'] = '%f' % (header['SEEINGST'],)
 
             if is_defined('HUMSTART', header):
                 # Humity is reported in %, but should be scaled to [0.0, 1.0]
@@ -1189,24 +1169,23 @@ class jcmt2caom2ingest(object):
                     humidity = 100.0
                 else:
                     humidity = header['HUMSTART']
-                self.add_to_plane_dict('environment.humidity',
-                                       '%f' % (humidity,))
+                plane_dict['environment.humidity'] = '%f' % (humidity,)
 
             if is_defined('ELSTART', header):
-                self.add_to_plane_dict('environment.elevation',
-                                       '%f' % (header['ELSTART'],))
+                plane_dict['environment.elevation'] = \
+                    '%f' % (header['ELSTART'],)
 
             if is_defined('TAU225ST', header):
                 # Some old data appears to have TAU225ST in string form
                 # so convert to float in order to handle that data.
-                self.add_to_plane_dict('environment.tau',
-                                       '%f' % (float(header['TAU225ST']),))
-                self.add_to_plane_dict('environment.wavelengthTau',
-                                       jcmt2caom2ingest.lambda_csotau)
+                plane_dict['environment.tau'] = \
+                    '%f' % (float(header['TAU225ST']),)
+                plane_dict['environment.wavelengthTau'] = \
+                    jcmt2caom2ingest.lambda_csotau
 
             if is_defined('ATSTART', header):
-                self.add_to_plane_dict('environment.ambientTemp',
-                                       '%f' % (header['ATSTART'],))
+                plane_dict['environment.ambientTemp'] = \
+                    '%f' % (header['ATSTART'],)
 
         # Calculate the observation type from OBS_TYPE and SAM_MODE,
         # if they are unambiguous.
@@ -1228,7 +1207,7 @@ class jcmt2caom2ingest(object):
                     obs_type = 'scan'
                 else:
                     obs_type = header['SAM_MODE'].strip()
-            self.add_to_plane_dict('OBSTYPE', obs_type)
+            plane_dict['OBSTYPE'] = obs_type
 
         # Record the instrument configuration if it is unambiguous.
         # It is possible in principle to combine data from multiple backends
@@ -1268,7 +1247,7 @@ class jcmt2caom2ingest(object):
                                                   inbeam)
 
         if instrument_fullname:
-            self.add_to_plane_dict('instrument.name', instrument_fullname)
+            plane_dict['instrument.name'] = instrument_fullname
 
         # Only do these tests if the backend is OK
         if backend in ('ACSIS', 'DAS', 'AOS-C'):
@@ -1327,19 +1306,17 @@ class jcmt2caom2ingest(object):
                                 filename, keyword_dict))
         else:
             self.instrument_keywords = ' '.join(keyword_list)
-            self.add_to_plane_dict('instrument.keywords',
-                                   self.instrument_keywords)
+            plane_dict['instrument.keywords'] = self.instrument_keywords
 
         # Telescope metadata. geolocation is optional.
         self.validation.restricted_value(filename, 'TELESCOP', header, ['JCMT'])
 
         # Target metadata
         self.validation.expect_keyword(filename, 'OBJECT', header)
-        self.add_to_plane_dict('target.name', header['OBJECT'])
+        plane_dict['target.name'] = header['OBJECT']
 
         if backend != 'SCUBA-2' and is_defined('ZSOURCE', header):
-                self.add_to_plane_dict('target.redshift',
-                                       str(header['ZSOURCE']))
+                plane_dict['target.redshift'] = str(header['ZSOURCE'])
 
         target_type = None
         if is_defined('TARGTYPE', header):
@@ -1351,7 +1328,7 @@ class jcmt2caom2ingest(object):
         standard_target = 'FALSE'
         if is_defined('STANDARD', header) and header['STANDARD']:
             standard_target = 'TRUE'
-        self.add_to_plane_dict('STANDARD', standard_target)
+        plane_dict['STANDARD'] = standard_target
 
         moving = 'FALSE'
         # MOVING header is boolean
@@ -1360,7 +1337,7 @@ class jcmt2caom2ingest(object):
                 is_blank('OBSRA', header) or
                 is_blank('OBSDEC', header)):
             moving = 'TRUE'
-        self.add_to_plane_dict('target.moving', moving)
+        plane_dict['target.moving'] = moving
 
         if (moving == 'TRUE'and
                 header['CTYPE1'][0:4] == 'OFLN' and
@@ -1372,18 +1349,14 @@ class jcmt2caom2ingest(object):
                                         'jcmt_stdpipe_a.default')
         elif is_defined('OBSRA', header) and is_defined('OBSDEC', header):
             # Record the nominal target position
-            self.add_to_plane_dict('target_position.cval1',
-                                   str(header['OBSRA']))
-            self.add_to_plane_dict('target_position.cval2',
-                                   str(header['OBSDEC']))
-            self.add_to_plane_dict('target_position.radesys',
-                                   'ICRS')
-            self.add_to_plane_dict('target_position.equinox',
-                                   '2000.0')
+            plane_dict['target_position.cval1'] = str(header['OBSRA'])
+            plane_dict['target_position.cval2'] = str(header['OBSDEC'])
+            plane_dict['target_position.radesys'] = 'ICRS'
+            plane_dict['target_position.equinox'] = '2000.0'
         intent_val = None
         if obs_type and backend:
             intent_val = intent(raw_obs_type, backend).value
-            self.add_to_plane_dict('obs.intent', intent_val)
+            plane_dict['obs.intent'] = intent_val
 
         # Plane metadata
         # metadata needed to create productID
@@ -1505,12 +1478,9 @@ class jcmt2caom2ingest(object):
                         # Don't set the Observation level release date for
                         # "exposures" because the raw data ingestion should
                         # do that.
-                        self.add_to_plane_dict('obs.metaRelease',
-                                               latest_release_date)
-                    self.add_to_plane_dict('plane.metaRelease',
-                                           latest_release_date)
-                    self.add_to_plane_dict('plane.dataRelease',
-                                           latest_release_date)
+                        plane_dict['obs.metaRelease'] = latest_release_date
+                    plane_dict['plane.metaRelease'] = latest_release_date
+                    plane_dict['plane.dataRelease'] = latest_release_date
                 else:
                     raise CAOMError('file {0}: '
                                     'Release date could not be '
@@ -1533,9 +1503,9 @@ class jcmt2caom2ingest(object):
                     # Don't set the Observation level release date for
                     # "exposures" because the raw data ingestion should
                     # do that.
-                    self.add_to_plane_dict('obs.metaRelease', legacy_release_date)
-                self.add_to_plane_dict('plane.metaRelease', legacy_release_date)
-                self.add_to_plane_dict('plane.dataRelease', legacy_release_date)
+                    plane_dict['obs.metaRelease'] = legacy_release_date
+                plane_dict['plane.metaRelease'] = legacy_release_date
+                plane_dict['plane.dataRelease'] = legacy_release_date
 
         calibrationLevel = None
         # The calibration lelvel needs to be defined for all science products
@@ -1574,8 +1544,7 @@ class jcmt2caom2ingest(object):
                             filename, science_product, (sorted(callevel_dict))))
 
             if calibrationLevel:
-                self.add_to_plane_dict('plane.calibrationLevel',
-                                       calibrationLevel)
+                plane_dict['plane.calibrationLevel'] = calibrationLevel
 
         # Check for existence of provenance input headers, which are optional
         logger.info('Reading provenance')
@@ -1675,11 +1644,11 @@ class jcmt2caom2ingest(object):
             elif product in ('tile-moc', 'peak-cat'):
                 dataProductType = 'catalog'
         if dataProductType:
-            self.add_to_plane_dict('plane.dataProductType', dataProductType)
+            plane_dict['plane.dataProductType'] = dataProductType
 
         # Provenance_name
         self.validation.expect_keyword(filename, 'RECIPE', header)
-        self.add_to_plane_dict('provenance.name', header['RECIPE'])
+        plane_dict['provenance.name'] = header['RECIPE']
 
         # Provenance_project
         dpproject = None
@@ -1706,29 +1675,26 @@ class jcmt2caom2ingest(object):
                         (standard_products + legacy_products)))
 
         if dpproject:
-            self.add_to_plane_dict('provenance.project', dpproject)
+            plane_dict['provenance.project'] = dpproject
         else:
             raise CAOMError('file {0}: data processing project '
                             'is undefined'.format(filename))
 
         # Provenance_reference - likely to be overwritten
         if is_defined('REFERENC', header):
-            self.add_to_plane_dict('provenance.reference',
-                                   header['REFERENC'])
+            plane_dict['provenance.reference'] = header['REFERENC']
 
         # ENGVERS, PIPEVERS and PROCVERS are optional
         if (is_defined('ENGVERS', header) and
                 is_defined('PIPEVERS', header)):
-            self.add_to_plane_dict('provenance.version',
-                                   'ENGINE:' + header['ENGVERS'][:20] +
-                                       ' PIPELINE:' + header['PIPEVERS'][:20])
+            plane_dict['provenance.version'] = (
+                'ENGINE:' + header['ENGVERS'][:20]
+                + ' PIPELINE:' + header['PIPEVERS'][:20])
         elif is_defined('PROCVERS', header):
-            self.add_to_plane_dict('provenance.version',
-                                   header['PROCVERS'])
+            plane_dict['provenance.version'] = header['PROCVERS']
 
         if is_defined('PRODUCER', header):
-            self.add_to_plane_dict('provenance.producer',
-                                   header['PRODUCER'])
+            plane_dict['provenance.producer'] = header['PRODUCER']
 
         self.dprcinst = None
         self.validation.expect_keyword(filename, 'DPRCINST', header)
@@ -1750,7 +1716,7 @@ class jcmt2caom2ingest(object):
             self.dprcinst = str(header['DPRCINST'])
 
         if self.dprcinst:
-            self.add_to_plane_dict('provenance.runID', self.dprcinst)
+            plane_dict['provenance.runID'] = self.dprcinst
             self.build_remove_dict(self.dprcinst)
         else:
             raise CAOMError('could not calculate dprcinst')
@@ -1767,21 +1733,19 @@ class jcmt2caom2ingest(object):
         dpdate = header['DPDATE']
         if isinstance(dpdate, datetime.datetime):
             dpdate = header['DPDATE'].isoformat()
-        self.add_to_plane_dict('provenance.lastExecuted', dpdate)
+        plane_dict['provenance.lastExecuted'] = dpdate
 
         # Chunk
         bandpassName = None
         if backend == 'SCUBA-2' and filter:
             bandpassName = 'SCUBA-2-' + filter + 'um'
-            self.add_to_plane_dict('bandpassName', bandpassName)
+            plane_dict['bandpassName'] = bandpassName
         elif backend in ('ACSIS', 'DAS', 'AOSC'):
             if (is_defined('MOLECULE', header) and
                     is_defined('TRANSITI', header) and
                     header['MOLECULE'] != 'No Line'):
-                self.add_to_plane_dict('energy.transition.species',
-                                       header['MOLECULE'])
-                self.add_to_plane_dict('energy.transition.transition',
-                                       header['TRANSITI'])
+                plane_dict['energy.transition.species'] = header['MOLECULE']
+                plane_dict['energy.transition.transition'] = header['TRANSITI']
 
         self.uri = self.fitsfileURI(self.archive, file_id)
         # Recall that the order self.add_fitsuri_dict is called is preserved
@@ -2210,13 +2174,15 @@ class jcmt2caom2ingest(object):
             source_number_density = 0
             if first_extension is not None:
                 source_number_density = first_extension.get('NAXIS2', 0)
-            self.add_to_plane_dict('metrics.sourceNumberDensity',
-                                   '{0}'.format(source_number_density))
+            plane_dict['metrics.sourceNumberDensity'] = '{0}'.format(
+                source_number_density)
         elif product in ['tile-moc']:
             # We see a "tile-moc" but don't know at this point if there is also
             # an "extent-cat".  Therefore set sourceNumberDensity=0
             # and let build_metadict select which value to keep.
-            self.add_to_plane_dict('metrics.sourceNumberDensity', '0')
+            plane_dict['metrics.sourceNumberDensity'] = '0'
+
+        return plane_dict
 
     def lookup_file_id(self, filename, file_id):
         """
