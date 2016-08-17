@@ -65,7 +65,7 @@ class setfield(object):
         self.outdir = None
 
         self.collection = None
-        self.collections = ('JCMT', 'JCMTLS', 'JCMRUSER', 'SANDBOX')
+        self.collections = ('JCMT', 'JCMTLS', 'JCMTUSER', 'SANDBOX')
 
         self.runid = None
         self.releasedate = None
