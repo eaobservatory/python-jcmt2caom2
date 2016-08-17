@@ -1,5 +1,5 @@
 # Copyright (C) 2014-2015 Science and Technology Facilities Council.
-# Copyright (C) 2015 East Asian Observatory.
+# Copyright (C) 2015-2016 East Asian Observatory.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -50,19 +50,6 @@ class setfield(object):
         Create a jcmt2caom2.update instance to update specific fields in the
         matching planes of a set of observations.
         """
-        if sys.argv[0] and sys.argv[0] != '-c':
-            self.progname = os.path.basename(sys.argv[0])
-        else:
-            self.progname = 'setfield'
-
-        if sys.path[0]:
-            self.exedir = os.path.abspath(os.path.dirname(sys.path[0]))
-        else:
-            self.exedir = os.getcwd()
-
-        self.configpath = os.path.abspath(self.exedir + '/../config')
-
-        self.outdir = None
 
         self.collection = None
         self.collections = ('JCMT', 'JCMTLS', 'JCMTUSER', 'SANDBOX')
@@ -70,111 +57,6 @@ class setfield(object):
         self.runid = None
         self.releasedate = None
         self.reference = None
-
-    def parse_command_line(self):
-        """
-        Parse command line arguments
-
-        Arguments:
-        <None>
-
-        Sets the release date and/or reference URL for a set of planes
-        identified by their provenance_runID.  One or both of --releasedate
-        and --reference must be specified.
-        """
-        ap = argparse.ArgumentParser()
-        ap.add_argument(
-            '--proxy',
-            default='~/.ssl/cadcproxy.pem',
-            help='path to CADC proxy')
-
-        ap.add_argument(
-            '--outdir',
-            default='.',
-            help='working directory for output files')
-
-        ap.add_argument(
-            '--collection',
-            choices=self.collections,
-            default='ALL',
-            help='collection to use for ingestion')
-        ap.add_argument(
-            '--runid',
-            required=True,
-            help='provenance_runID for the planes to be updated')
-        ap.add_argument(
-            '--releasedate',
-            help='release date to set for the planes and observations')
-        ap.add_argument(
-            '--reference',
-            help='reference URl to set for the planes and observations')
-
-        ap.add_argument(
-            '--dry-run', '-n',
-            action='store_true',
-            dest='dry_run',
-            help='report observations and planes but do not execute commands')
-        ap.add_argument(
-            '--verbose', '-v',
-            dest='loglevel',
-            action='store_const',
-            const=logging.DEBUG)
-        self.args = ap.parse_args()
-
-        self.proxy = os.path.abspath(
-            os.path.expandvars(
-                os.path.expanduser(self.args.proxy)))
-
-        if self.args.collection == 'ALL':
-            self.collection = self.collections
-        else:
-            self.collection = (self.args.collection,)
-        self.runid = self.args.runid
-        if self.args.releasedate:
-            dt_string = self.args.releasedate
-            if re.match(r'^\d{8}$',
-                        self.args.releasedate):
-                dt = ('-'.join([dt_string[0:4],
-                                dt_string[4:6],
-                                dt_string[6:8]]) + 'T00:00:00')
-            elif re.match(r'^[^\d]*(\d{1,4}-\d{2}-\d{2})$', dt_string):
-                dt = dt_string + 'T00:00:00'
-            else:
-                raise ValueError('the string "%s" does not match a utdate '
-                                 'YYYYMMDD or ISO YYYY-MM-DD format:'
-                                 % (dt_string))
-            self.releasedate = datetime.strptime(dt,
-                                                 '%Y-%m-%dT%H:%M:%S')
-        elif self.args.reference:
-            self.reference = self.args.reference
-        else:
-            raise RuntimeError('one of --releasedate or --reference '
-                               'must be given')
-
-        self.outdir = os.path.abspath(
-            os.path.expanduser(
-                os.path.expandvars(self.args.outdir)))
-
-        if self.args.loglevel:
-            logging.getLogger().setLevel(self.args.loglevel)
-
-        self.dry_run = self.args.dry_run
-
-    def logCommandLineSwitches(self):
-        """
-        Log the internal configuration.
-
-        Arguments:
-        <None>
-        """
-        logger.info(self.progname)
-        logger.info('jcmt2caom2version    = %s', jcmt2caom2version)
-        logger.info('tools4caom2version   = %s', tools4caom2version)
-        for attr in dir(self.args):
-            if attr != 'id' and attr[0] != '_':
-                logger.info('%-15s= %s', attr, getattr(self.args, attr))
-        logger.info('exedir = %s', self.exedir)
-        logger.info('outdir = %s', self.outdir)
 
     def update(self):
         """
@@ -244,11 +126,92 @@ class setfield(object):
         """
         Fetch metadata, build a CAOM-2 object, and push it into the repository
         """
-        self.parse_command_line()
+
+        if sys.argv[0] and sys.argv[0] != '-c':
+            progname = os.path.basename(sys.argv[0])
+        else:
+            progname = 'setfield'
+
+        ap = argparse.ArgumentParser(progname)
+
+        ap.add_argument(
+            '--proxy',
+            default='~/.ssl/cadcproxy.pem',
+            help='path to CADC proxy')
+
+        ap.add_argument(
+            '--collection',
+            choices=self.collections,
+            default='ALL',
+            help='collection to use for ingestion')
+        ap.add_argument(
+            '--runid',
+            required=True,
+            help='provenance_runID for the planes to be updated')
+        ap.add_argument(
+            '--releasedate',
+            help='release date to set for the planes and observations')
+        ap.add_argument(
+            '--reference',
+            help='reference URl to set for the planes and observations')
+
+        ap.add_argument(
+            '--dry-run', '-n',
+            action='store_true',
+            dest='dry_run',
+            help='report observations and planes but do not execute commands')
+        ap.add_argument(
+            '--verbose', '-v',
+            dest='loglevel',
+            action='store_const',
+            const=logging.DEBUG)
+
+        args = ap.parse_args()
+
+        proxy = os.path.abspath(
+            os.path.expandvars(
+                os.path.expanduser(args.proxy)))
+
+        if args.collection == 'ALL':
+            self.collection = self.collections
+        else:
+            self.collection = (args.collection,)
+        self.runid = args.runid
+        if args.releasedate:
+            dt_string = args.releasedate
+            if re.match(r'^\d{8}$',
+                        args.releasedate):
+                dt = ('-'.join([dt_string[0:4],
+                                dt_string[4:6],
+                                dt_string[6:8]]) + 'T00:00:00')
+            elif re.match(r'^[^\d]*(\d{1,4}-\d{2}-\d{2})$', dt_string):
+                dt = dt_string + 'T00:00:00'
+            else:
+                raise ValueError('the string "%s" does not match a utdate '
+                                 'YYYYMMDD or ISO YYYY-MM-DD format:'
+                                 % (dt_string))
+            self.releasedate = datetime.strptime(dt,
+                                                 '%Y-%m-%dT%H:%M:%S')
+        elif args.reference:
+            self.reference = args.reference
+        else:
+            raise RuntimeError('one of --releasedate or --reference '
+                               'must be given')
+
+        if args.loglevel:
+            logging.getLogger().setLevel(args.loglevel)
+
+        self.dry_run = args.dry_run
+
+        logger.info(progname)
+        logger.info('jcmt2caom2version  = %s', jcmt2caom2version)
+        logger.info('tools4caom2version = %s', tools4caom2version)
+        for attr in dir(args):
+            if attr != 'id' and attr[0] != '_':
+                logger.info('%-18s = %s', attr, getattr(args, attr))
 
         try:
-            self.logCommandLineSwitches()
-            self.tap = tapclient(self.proxy)
+            self.tap = tapclient(proxy)
             self.update()
             logger.info('DONE')
         except:
