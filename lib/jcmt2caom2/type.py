@@ -21,6 +21,43 @@ from tools4caom2.error import CAOMError
 logger = logging.getLogger(__name__)
 
 
+class OrderedDefaultDict(MutableMapping):
+    """
+    Class which acts like an `OrderedDict` but has the "default"
+    behavior of `defaultdict`.
+    """
+
+    def __init__(self, default_factory, iterable=()):
+        self._data = OrderedDict(iterable)
+        self.default_factory = default_factory
+
+    def __getitem__(self, key):
+        try:
+            value = self._data[key]
+        except KeyError:
+            value = self._data[key] = self.default_factory()
+
+        return value
+
+    def __setitem__(self, key, value):
+        self._data[key] = value
+
+    def __delitem__(self, key):
+        del self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __contains__(self, key):
+        return key in self._data
+
+    def __repr__(self):
+        return '<OrderedDefaultDict: {0!r}>'.format(list(self._data.items()))
+
+
 class OrderedStrDict(MutableMapping):
     """
     Class which acts like an OrderedDict but requires its values to be

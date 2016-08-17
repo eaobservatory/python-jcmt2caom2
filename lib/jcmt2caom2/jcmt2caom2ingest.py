@@ -17,7 +17,7 @@
 __author__ = "Russell O. Redman"
 
 import argparse
-from collections import OrderedDict
+from collections import defaultdict, namedtuple, OrderedDict
 from contextlib import closing
 import datetime
 import logging
@@ -65,9 +65,14 @@ from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.tile import jsa_tile_wcs
 from jcmt2caom2.project import get_project_pi_title
-from jcmt2caom2.type import OrderedStrDict
+from jcmt2caom2.type import OrderedDefaultDict, OrderedStrDict
 
 logger = logging.getLogger(__name__)
+
+
+FileInfo = namedtuple(
+    'FileInfo',
+    ('plane', 'fitsuri', 'fitsuri_custom'))
 
 
 # Utility functions
@@ -180,7 +185,6 @@ class jcmt2caom2ingest(object):
         self.collection = None
         self.observationID = None
         self.productID = None
-        self.fitsuri_dict = OrderedDict()
         # The memberset contains member time intervals for this plane.
         # The member_cache is a dict keyed by the membership headers
         # MBR<n> or OBS<n> that contains the observationURI, date_obs, date_end
@@ -295,10 +299,8 @@ class jcmt2caom2ingest(object):
         self.uri = ''
         self.observationID = None
         self.productID = None
-        self.fitsuri_dict.clear()
         self.memberset.clear()
         self.inputset.clear()
-        self.override_items = 0
 
     def fillMetadict(self, files):
         """
@@ -379,8 +381,8 @@ class jcmt2caom2ingest(object):
         if self.ingest:
             self.validation.is_in_archive(filepath)
 
-        plane_dict = self.build_dict(head, first_extension)
-        self.build_metadict(filepath, plane_dict)
+        file_info = self.build_dict(head, first_extension)
+        self.build_metadict(filepath, file_info)
 
     def observationURI(self, collection, observationID):
         """
@@ -499,68 +501,7 @@ class jcmt2caom2ingest(object):
 
         return fexturi
 
-    def add_to_fitsuri_dict(self, uri, key, value):
-        """
-        Add a key, value pair to the local fitsuri dictionary.  The method
-        will throw an exception if the value does not have a string type.
-
-        Arguments:
-        uri : the uri of this fits file or extension
-        key : a key in a string.Template
-        value : a string value to be substituted in a string.Template
-        """
-        if not isinstance(value, str):
-            logger.error("in the (key, value) pair ('%s', '%s'),"
-                         " the value should have type 'str' but is %s",
-                         key, repr(value), type(value))
-            raise CAOMError('non-str value being added to fitsuri dict')
-
-        if uri not in self.fitsuri_dict:
-            logger.error('Create the fitsuri before adding '
-                         'key,value pairs to the fitsuri_dict: '
-                         '["%s"]["%s"] = "%s")', uri, key, value)
-            raise CAOMError('trying to add pair for non-existent fitsuri')
-
-        self.fitsuri_dict[uri][key] = value
-        self.override_items += 1
-
-    def add_to_fitsuri_custom_dict(self, uri, key, value):
-        """
-        Add a key, value pair to the local fitsuri dictionary.  Unlike the
-        other dictionaries, the fitsuri custom dictionary can hold arbitray
-        dictionary values, since the values will be processed using custom
-        code and do not necessary get written into the override file.
-
-        Arguments:
-        uri : the uri of this fits file or extension
-        key : a key
-        value : an arbitrary data type
-        """
-        if uri not in self.fitsuri_dict:
-            logger.error('call fitfileURI before adding '
-                         'key,value pairs to the fitsuri_dict: '
-                         '["%s"]["%s"] = "%s")',
-                         uri, key, repr(value))
-            raise CAOMError('trying to add pair for non-existent fitsuri')
-
-        self.fitsuri_dict[uri]['custom'][key] = value
-        self.override_items += 1
-
-    def add_fitsuri_dict(self, uri):
-        """
-        Add a key, value pair to the local fitsuri dictionary.  The method
-        will throw an exception if the value does not have a string type.
-
-        Arguments:
-        uri : the uri of this fits file or extension
-        key : a key in a string.Template
-        value : a string value to be substituted in a string.Template
-        """
-        if uri not in self.fitsuri_dict:
-            self.fitsuri_dict[uri] = OrderedDict()
-            self.fitsuri_dict[uri]['custom'] = OrderedDict()
-
-    def build_metadict(self, filepath, plane_dict):
+    def build_metadict(self, filepath, file_info):
         """
         Generic routine to build the internal structure metadict (a nested set
         of ordered dictionaries) that will be used to control, sort and fill
@@ -612,7 +553,9 @@ class jcmt2caom2ingest(object):
             raise_exception = False
 
         # If the plane_dict is completely empty, skip further processing
-        if not (plane_dict or self.override_items):
+        if not (file_info.plane
+                or file_info.fitsuri
+                or file_info.fitsuri_custom):
             return
 
         # Fetch the required keys from plane_dict
@@ -672,25 +615,25 @@ class jcmt2caom2ingest(object):
         # by several files, the definition from the last file is used.
         if 'plane_dict' not in thisPlane:
             thisPlane['plane_dict'] = OrderedDict()
-        if plane_dict:
-            for key in plane_dict:
-                # Handle release_date as a special case
-                if ((key == 'release_date')
-                        and (key in thisPlane['plane_dict'])
-                        and (plane_dict[key] <= thisPlane['plane_dict'][key])):
-                    continue
 
-                elif (key == 'metrics.sourceNumberDensity'
-                        and (key in thisPlane['plane_dict'])
-                        and (plane_dict[key] == '0')):
-                    # Don't overwrite an existing
-                    # metrics.sourceNumberDensity value with 0.
-                    # This allows us to assume 0 when a "tile-moc" is
-                    # seen and have the real value from the "extent-cat"
-                    # always take precedence if present.
-                    continue
+        for (key, value) in file_info.plane.items():
+            # Handle release_date as a special case
+            if ((key == 'release_date')
+                    and (key in thisPlane['plane_dict'])
+                    and (value <= thisPlane['plane_dict'][key])):
+                continue
 
-                thisPlane['plane_dict'][key] = plane_dict[key]
+            elif (key == 'metrics.sourceNumberDensity'
+                    and (key in thisPlane['plane_dict'])
+                    and (value == '0')):
+                # Don't overwrite an existing
+                # metrics.sourceNumberDensity value with 0.
+                # This allows us to assume 0 when a "tile-moc" is
+                # seen and have the real value from the "extent-cat"
+                # always take precedence if present.
+                continue
+
+            thisPlane['plane_dict'][key] = value
 
         # If inputset is not empty, the provenance should be filled.
         # The inputset is the union of the inputsets from all the files
@@ -715,23 +658,29 @@ class jcmt2caom2ingest(object):
         if self.uri not in thisPlane['uri_dict']:
             thisPlane['uri_dict'][self.uri] = filepath
 
-        # Foreach fitsuri in fitsuri_dict, record the metadata
-        for fitsuri in self.fitsuri_dict:
+        # Foreach fitsuri in the fitsuri dict, record the metadata
+        for (fitsuri, fitsuri_data) in file_info.fitsuri.items():
             # Create the fitsuri-level structures
-            if fitsuri not in thisPlane:
-                thisPlane[fitsuri] = OrderedDict()
-                thisPlane[fitsuri]['custom'] = OrderedDict()
-            thisFitsuri = thisPlane[fitsuri]
+            if fitsuri in thisPlane:
+                thisFitsuri = thisPlane[fitsuri]
+            else:
+                thisFitsuri = thisPlane[fitsuri] = OrderedDict()
+                thisFitsuri['custom'] = OrderedDict()
 
             # Copy the fitsuri dictionary
-            for key in self.fitsuri_dict[fitsuri]:
-                if key == 'custom':
-                    thisCustom = thisFitsuri[key]
-                    for customkey in self.fitsuri_dict[fitsuri][key]:
-                        thisCustom[customkey] = \
-                            self.fitsuri_dict[fitsuri][key][customkey]
-                else:
-                    thisFitsuri[key] = self.fitsuri_dict[fitsuri][key]
+            for (key, value) in fitsuri_data.items():
+                thisFitsuri[key] = value
+
+        for (fitsuri, fitsuri_custom) in file_info.fitsuri_custom.items():
+            # Create the fitsuri-level structures (repeat of above logic).
+            if fitsuri in thisPlane:
+                thisCustom = thisPlane[fitsuri]['custom']
+            else:
+                thisFitsuri = thisPlane[fitsuri] = OrderedDict()
+                thisCustom = thisFitsuri['custom'] = OrderedDict()
+
+            for (key, value) in fitsuri_custom.items():
+                thisCustom[key] = value
 
     def build_remove_dict(self, run_id):
         """
@@ -781,6 +730,8 @@ class jcmt2caom2ingest(object):
         """
 
         plane_dict = OrderedStrDict()
+        fitsuri_dict = OrderedDefaultDict(OrderedStrDict)
+        fitsuri_custom_dict = defaultdict(OrderedDict)
 
         if 'file_id' not in header:
             raise CAOMError('No file_id in ' + repr(header))
@@ -1748,7 +1699,7 @@ class jcmt2caom2ingest(object):
                 plane_dict['energy.transition.transition'] = header['TRANSITI']
 
         self.uri = self.fitsfileURI(self.archive, file_id)
-        # Recall that the order self.add_fitsuri_dict is called is preserved
+        # Recall that the order in fitsuri_dict is called is preserved
         # in the override file
 
         # Translate the PRODTYPE header into a list of (extension_number, type)
@@ -1785,31 +1736,22 @@ class jcmt2caom2ingest(object):
                 extURI = self.fitsextensionURI(self.archive,
                                                file_id,
                                                [int(ext)])
-                self.add_fitsuri_dict(extURI)
-                self.add_to_fitsuri_dict(extURI,
-                                         'part.productType',
-                                         pt)
+                fitsuri_dict[extURI]['part.productType'] = pt
+
             if prodtype_default:
-                self.add_fitsuri_dict(self.uri)
-                self.add_to_fitsuri_dict(self.uri,
-                                         'part.productType',
-                                         prodtype_default)
+                fitsuri_dict[self.uri]['part.productType'] = prodtype_default
+
         elif prodtype_default:
-            self.add_fitsuri_dict(self.uri)
-            self.add_to_fitsuri_dict(self.uri,
-                                     'artifact.productType',
-                                     prodtype_default)
+            fitsuri_dict[self.uri]['artifact.productType'] = prodtype_default
+
         else:
             raise CAOMError(
                 'file {0}: ProductType is not defined'.format(filename))
 
         if is_main_product and len(obstimes):
-            self.add_fitsuri_dict(self.uri)
             # Record times for science products
             for key in sorted(obstimes, key=lambda t: obstimes[t][0]):
-                self.add_to_fitsuri_custom_dict(self.uri,
-                                                key,
-                                                obstimes[key])
+                fitsuri_custom_dict[self.uri][key] = obstimes[key]
 
         # If this is a catalog file, generate explicit WCS information as
         # fits2caom2 may not be able to do it.  For now assume that all
@@ -2182,7 +2124,9 @@ class jcmt2caom2ingest(object):
             # and let build_metadict select which value to keep.
             plane_dict['metrics.sourceNumberDensity'] = '0'
 
-        return plane_dict
+        return FileInfo(
+            plane=plane_dict,
+            fitsuri=fitsuri_dict, fitsuri_custom=fitsuri_custom_dict)
 
     def lookup_file_id(self, filename, file_id):
         """
