@@ -30,21 +30,21 @@ from tools4caom2.tapclient import tapclient
 
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 
-__doc__ = """
-The setfield class is used to update specific fields in a set of existing caom2
-observations identified by the value of provenance_runID in at least one
-of their planes.  Each observation will be read from the CAOM-2 repository,
-the specified fields will be updated in the planes with the matching values of
-provenance_runID, and the observations written back to the repository.  Only a
-few fields can be set with this routine, selected by command line arguments,
-and the same value will be assigned to the specified field in every matching
-plane.
-"""
-
 logger = logging.getLogger()
 
 
 class setfield(object):
+    """
+    The setfield class is used to update specific fields in a set of existing
+    CAOM-2 observations identified by the value of provenance_runID in at least
+    one of their planes.  Each observation will be read from the CAOM-2
+    repository, the specified fields will be updated in the planes with the
+    matching values of provenance_runID, and the observations written back to
+    the repository.  Only a few fields can be set with this routine, selected
+    by command line arguments, and the same value will be assigned to the
+    specified field in every matching plane.
+    """
+
     def __init__(self):
         """
         Create a jcmt2caom2.update instance to update specific fields in the
