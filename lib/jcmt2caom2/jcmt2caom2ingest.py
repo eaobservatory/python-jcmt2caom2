@@ -364,8 +364,8 @@ class jcmt2caom2ingest(object):
         if self.ingest:
             self.validation.is_in_archive(filepath)
 
-        file_info = self.build_dict(head, first_extension)
-        self.build_metadict(filepath, file_info)
+        self.build_metadict(
+            filepath, self.read_file_info(head, first_extension))
 
     def observationURI(self, collection, observationID):
         """
@@ -700,7 +700,7 @@ class jcmt2caom2ingest(object):
             elif result.prod_id not in self.remove_dict[result.obs_id]:
                 self.remove_dict[result.obs_id].append(result.prod_id)
 
-    def build_dict(self, header, first_extension=None):
+    def read_file_info(self, header, first_extension=None):
         """
         Given the headers from a FITS file, define plane and URI-dependent
         data structures.
