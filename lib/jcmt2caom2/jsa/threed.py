@@ -41,15 +41,15 @@ class ThreeD(object):
             self.y = (math.sin(ThreeD.radiansPerDegree * x.x) *
                       math.cos(ThreeD.radiansPerDegree * x.y))
             self.z = math.sin(ThreeD.radiansPerDegree * x.y)
-        elif isinstance(x, tuple) and len(x) == 2:
+        elif isinstance(x, tuple) and len(x) == 3:
             self.x = float(x[0])
             self.y = float(x[1])
             self.z = float(x[2])
-        elif isinstance(x, list) and len(x) == 2:
+        elif isinstance(x, list) and len(x) == 3:
             self.x = float(x[0])
             self.y = float(x[1])
             self.z = float(x[2])
-        elif x is not None and y is not None:
+        elif x is not None and y is not None and z is not None:
             self.x = float(x)
             self.y = float(y)
             self.z = float(z)
