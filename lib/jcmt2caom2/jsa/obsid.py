@@ -24,6 +24,7 @@ obsidss_irregular = {
 obsidss_pattern = re.compile(
     '^(scuba2|acsis|DAS|AOSC|scuba)_(\d+)_(\d{8})[tT](\d{6})_\d+$')
 
+
 def obsidss_to_obsid(obsidss):
     """
     Attempt to guess the OBSID given the OBSIDSS.
@@ -40,7 +41,8 @@ def obsidss_to_obsid(obsidss):
     m = obsidss_pattern.match(obsidss)
 
     if not m:
-        raise CAOMError('format of obsidss not recognised: {0}'.format(obsidss))
+        raise CAOMError(
+            'format of obsidss not recognised: {0}'.format(obsidss))
 
     (inst, obs, date, time) = m.groups()
     obs = int(obs)

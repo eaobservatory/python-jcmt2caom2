@@ -128,7 +128,6 @@ class CAOM2TAP(object):
         conditions = ['Observation.collection=\'{0}\'']
         params = [collection]
 
-
         run_id_conditions = []
 
         n = 1
@@ -142,8 +141,8 @@ class CAOM2TAP(object):
 
         result = []
 
-        for row in self.tap.query(
-                ('SELECT'
+        for row in self.tap.query((
+                'SELECT'
                 ' Observation.observationID,'
                 ' Plane.productID '
                 'FROM'

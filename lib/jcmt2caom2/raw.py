@@ -617,7 +617,7 @@ class raw(object):
                                 1, ThreeD.included_angle(bl3d, tl3d, tr3d))
                         except ValueError as e:
                             raise CAOMError('The bounding box for obsid = ' +
-                                             self.obsid + ' is degenerate')
+                                            self.obsid + ' is degenerate')
 
                         # If the signs are not all the same, the vertices
                         # were recorded in a bowtie order.  Swap any two.

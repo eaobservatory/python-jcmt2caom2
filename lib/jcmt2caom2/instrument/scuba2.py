@@ -20,6 +20,7 @@ from caom2.wcs.caom2_coord_range1d import CoordRange1D
 from caom2.wcs.caom2_ref_coord import RefCoord
 from caom2.wcs.caom2_spectral_wcs import SpectralWCS
 
+
 def scuba2_spectral_wcs(header):
     energy_axis = CoordAxis1D(Axis('WAVE', 'm'))
     wavelength = header['wavelen']

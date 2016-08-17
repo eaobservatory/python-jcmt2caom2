@@ -31,7 +31,6 @@ def get_project_pi_title(project_id, conn, tap):
     could not be found.
     """
 
-
     logger.debug('Fetching project "%s" details from OMP', project_id)
     (project_pi, project_title) = conn.get_project_pi_title(project_id)
 

@@ -59,5 +59,4 @@ def raw_product_id(backend, obsid, conn):
         else:
             raise CAOMError('no rows returned from ACSIS for obsid = ' + obsid)
 
-
     return subsysnr_dict

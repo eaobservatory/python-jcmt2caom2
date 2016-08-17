@@ -1245,7 +1245,8 @@ class jcmt2caom2ingest(object):
             plane_dict['instrument.keywords'] = self.instrument_keywords
 
         # Telescope metadata. geolocation is optional.
-        self.validation.restricted_value(filename, 'TELESCOP', header, ['JCMT'])
+        self.validation.restricted_value(
+            filename, 'TELESCOP', header, ['JCMT'])
 
         # Target metadata
         self.validation.expect_keyword(filename, 'OBJECT', header)
@@ -1468,16 +1469,19 @@ class jcmt2caom2ingest(object):
                     # observations and as co-adds -- only the latter should
                     # be level "PRODUCT".
                     if algorithm == 'public':
-                        calibrationLevel = str(CalibrationLevel.PRODUCT.value)
+                        calibrationLevel = str(
+                            CalibrationLevel.PRODUCT.value)
                     else:
-                        calibrationLevel = str(CalibrationLevel.CALIBRATED.value)
+                        calibrationLevel = str(
+                            CalibrationLevel.CALIBRATED.value)
                 elif science_product in callevel_dict:
                     calibrationLevel = callevel_dict[science_product]
                 else:
                     raise CAOMError(
                         'file {0} '
                         'science product "{1}" is not in {2}!r'.format(
-                            filename, science_product, (sorted(callevel_dict))))
+                            filename, science_product,
+                            (sorted(callevel_dict))))
 
             if calibrationLevel:
                 plane_dict['plane.calibrationLevel'] = calibrationLevel
@@ -1751,8 +1755,8 @@ class jcmt2caom2ingest(object):
         # the CAOM-2 repository rejects the WCS information
         # written by fits2caom2, while awaiting a response to our
         # inquiries to CADC about this problem.
-        is_healpix_850 = (is_defined('PRODID', header) and
-            header['PRODID'] == 'healpix-850um')
+        is_healpix_850 = (is_defined('PRODID', header)
+                          and header['PRODID'] == 'healpix-850um')
         if (is_healpix_850 and (algorithm == 'public') and
                 (uri not in self.explicit_wcs) and (header['TILENUM'] in [
                     3054,
@@ -2256,7 +2260,6 @@ class jcmt2caom2ingest(object):
                                 logger.debug('temporal WCS = %s',
                                              chunk.time)
 
-
     def set_explicit_wcs(self, observation, planeID):
         """
         Customize the CAOM-2 observation with explicit WCS values if any
@@ -2306,7 +2309,6 @@ class jcmt2caom2ingest(object):
 
                 if 'spectral' in wcs:
                     chunk.energy = wcs['spectral']
-
 
     def remove_old_planes(self,
                           observation,
@@ -2377,8 +2379,8 @@ class jcmt2caom2ingest(object):
                     for prod in self.remove_dict[obsid]:
                         if prod in obs.planes:
                             logger.warning(
-                                'removing old plane: %s',
-                                self.planeURI(self.collection, obsid, prod).uri)
+                                'removing old plane: %s', self.planeURI(
+                                    self.collection, obsid, prod).uri)
 
                             del obs.planes[prod]
 
@@ -2386,8 +2388,8 @@ class jcmt2caom2ingest(object):
 
     def prepare_override_info(self, observationID, productID):
         """
-        Prepare the information required in override files for a plane specified
-        by the collection, observationID and productID.
+        Prepare the information required in override files for a plane
+        specified by the collection, observationID and productID.
 
         Arguments:
         observationID : the observationID containing productID
@@ -2483,7 +2485,8 @@ class jcmt2caom2ingest(object):
             obsuri = self.observationURI(self.collection,
                                          observationID)
 
-            with self.repository.process(obsuri, dry_run=self.dry_run) as wrapper:
+            with self.repository.process(
+                    obsuri, dry_run=self.dry_run) as wrapper:
                 if wrapper.observation is not None:
                     self.remove_excess_parts(wrapper.observation)
 
