@@ -51,20 +51,18 @@ class setfield(object):
         matching planes of a set of observations.
         """
 
-        self.collection = None
         self.collections = ('JCMT', 'JCMTLS', 'JCMTUSER', 'SANDBOX')
 
-        self.runid = None
-        self.releasedate = None
-        self.reference = None
+        self.tap = None
 
-    def update(self):
+    def update(self, runid, collection=None,
+               releasedate=None, reference=None,
+               dry_run=False):
         """
         Find all observations that match the provenance_runID, then
         update the requested fields in each observation.
 
-        Arguments:
-        <none>
+        .. warning:: currently ignores the `collection` argument.
         """
         repository = Repository()
 
@@ -78,7 +76,7 @@ class setfield(object):
             '        INNER JOIN caom2.Plane AS Plane',
             '            ON Observation.obsID=Plane.obsID',
             'WHERE',
-            '    Plane.provenance_runID=' + "'" + self.runid + "'",
+            '    Plane.provenance_runID=' + "'" + runid + "'",
             'ORDER BY Observation.collection, ',
             '         Observation.observationID, ',
             '         Plane.productID'])
@@ -101,19 +99,19 @@ class setfield(object):
                 with repository.process(uri) as wrapper:
                     observation = wrapper.observation
                     try:
-                        if self.releasedate:
-                            observation.metaRelease = self.releasedate
+                        if releasedate:
+                            observation.metaRelease = releasedate
                         for productID in observation.planes:
                             logger.debug('PROGRESS: %s/%s', uri, productID)
                             plane = observation.planes[productID]
                             if productID in result_dict[coll][obsid]:
-                                if self.releasedate:
-                                    plane.data_release = self.releasedate
-                                    plane.meta_release = self.releasedate
-                                if self.reference:
-                                    plane.provenance_reference = self.reference
+                                if releasedate:
+                                    plane.data_release = releasedate
+                                    plane.meta_release = releasedate
+                                if reference:
+                                    plane.provenance_reference = reference
 
-                        if self.dry_run:
+                        if dry_run:
                             wrapper.observation = None
 
                     except:
@@ -173,10 +171,13 @@ class setfield(object):
                 os.path.expanduser(args.proxy)))
 
         if args.collection == 'ALL':
-            self.collection = self.collections
+            collection = self.collections
         else:
-            self.collection = (args.collection,)
-        self.runid = args.runid
+            collection = (args.collection,)
+
+        releasedate = None
+        reference = None
+
         if args.releasedate:
             dt_string = args.releasedate
             if re.match(r'^\d{8}$',
@@ -190,18 +191,15 @@ class setfield(object):
                 raise ValueError('the string "%s" does not match a utdate '
                                  'YYYYMMDD or ISO YYYY-MM-DD format:'
                                  % (dt_string))
-            self.releasedate = datetime.strptime(dt,
-                                                 '%Y-%m-%dT%H:%M:%S')
+            releasedate = datetime.strptime(dt, '%Y-%m-%dT%H:%M:%S')
         elif args.reference:
-            self.reference = args.reference
+            reference = args.reference
         else:
             raise RuntimeError('one of --releasedate or --reference '
                                'must be given')
 
         if args.loglevel:
             logging.getLogger().setLevel(args.loglevel)
-
-        self.dry_run = args.dry_run
 
         logger.info(progname)
         logger.info('jcmt2caom2version  = %s', jcmt2caom2version)
@@ -212,10 +210,17 @@ class setfield(object):
 
         try:
             self.tap = tapclient(proxy)
-            self.update()
+
+            self.update(
+                runid=args.runid, collection=collection,
+                releasedate=releasedate, reference=reference,
+                dry_run=args.dry_run)
+
             logger.info('DONE')
+
         except:
             logger.exception('ERROR')
+
             return False
 
         return True
