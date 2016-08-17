@@ -72,7 +72,9 @@ logger = logging.getLogger(__name__)
 
 FileInfo = namedtuple(
     'FileInfo',
-    ('plane', 'fitsuri', 'fitsuri_custom'))
+    ('observationID', 'productID', 'uri',
+     'plane', 'fitsuri', 'fitsuri_custom',
+     'members', 'inputs'))
 
 
 # Utility functions
@@ -183,22 +185,18 @@ class jcmt2caom2ingest(object):
         # Working structures thatcollect metadata from each file to be saved
         # in self.metadict
         self.collection = None
-        self.observationID = None
-        self.productID = None
         # The memberset contains member time intervals for this plane.
         # The member_cache is a dict keyed by the membership headers
         # MBR<n> or OBS<n> that contains the observationURI, date_obs, date_end
         # and release_date for each member.  This is preserved for the whole
         # container on the expectation that the same members will be used by
         # multiple files.
-        self.memberset = set()
         self.member_cache = dict()
         # The inputset is the set of planeURIs that are inputs for a plane
         # The fileset is a set of input files that have not yet been confirmed
         # as belonging to any particular input plane.
         # The input cache is a dictionary giving the planeURI for each file_id
         # found in a member observation.
-        self.inputset = set()
         self.fileset = set()
         self.input_cache = dict()
 
@@ -288,20 +286,6 @@ class jcmt2caom2ingest(object):
 
         return mylist
 
-    def clear(self):
-        """
-        Clear the local plane and artifact dictionaries before each file is
-        read.
-
-        Arguments:
-        <none>
-        """
-        self.uri = ''
-        self.observationID = None
-        self.productID = None
-        self.memberset.clear()
-        self.inputset.clear()
-
     def fillMetadict(self, files):
         """
         Generic routine to fill the metadict structure by iterating over
@@ -340,7 +324,6 @@ class jcmt2caom2ingest(object):
         """
         logger.info('fillMetadictFromFile: %s %s', file_id, filepath)
 
-        self.clear()
         # If the file is not a FITS file or is in serious violation of the FITS
         # standard, substitute an empty dictionary for the headers.  This is
         # a silent replacement, not an error, to allow non-FITS files to be
@@ -566,14 +549,14 @@ class jcmt2caom2ingest(object):
             else:
                 return
 
-        if not self.observationID:
+        if not file_info.observationID:
             if raise_exception:
                 raise CAOMError(filepath + ' does not define the required'
                                 ' key "observationID"')
             else:
                 return
 
-        if not self.productID:
+        if not file_info.productID:
             if raise_exception:
                 raise CAOMError(
                     filepath + ' does not define the required' +
@@ -581,7 +564,7 @@ class jcmt2caom2ingest(object):
             else:
                 return
 
-        if not self.uri:
+        if not file_info.uri:
             if raise_exception:
                 raise CAOMError(filepath + ' does not call fitsfileURI()'
                                 ' or fitsextensionURI()')
@@ -590,25 +573,25 @@ class jcmt2caom2ingest(object):
 
         logger.info(
             'PROGRESS: collection="%s" observationID="%s" productID="%s"',
-            self.collection, self.observationID, self.productID)
+            self.collection, file_info.observationID, file_info.productID)
 
         # Build the dictionary structure
-        if self.observationID not in self.metadict:
-            self.metadict[self.observationID] = OrderedDict()
-        thisObservation = self.metadict[self.observationID]
+        if file_info.observationID not in self.metadict:
+            self.metadict[file_info.observationID] = OrderedDict()
+        thisObservation = self.metadict[file_info.observationID]
 
         # If memberset is not empty, the observation is a composite.
         # The memberset is the union of the membersets from all the
         # files in the observation.
         if 'memberset' not in thisObservation:
             thisObservation['memberset'] = set([])
-        if self.memberset:
-            thisObservation['memberset'] |= self.memberset
+        if file_info.members:
+            thisObservation['memberset'] |= file_info.members
 
         # Create the plane-level structures
-        if self.productID not in thisObservation:
-            thisObservation[self.productID] = OrderedDict()
-        thisPlane = thisObservation[self.productID]
+        if file_info.productID not in thisObservation:
+            thisObservation[file_info.productID] = OrderedDict()
+        thisPlane = thisObservation[file_info.productID]
 
         # Items in the plane_dict accumulate so a key will be defined for
         # the plane if it is defined by any file.  If a key is defined
@@ -642,8 +625,8 @@ class jcmt2caom2ingest(object):
         # resolved if possible in checkProvenanceInputs.
         if 'inputset' not in thisPlane:
             thisPlane['inputset'] = set([])
-        if self.inputset:
-            thisPlane['inputset'] |= self.inputset
+        if file_info.inputs:
+            thisPlane['inputset'] |= file_info.inputs
 
         # The fileset is the set of input files that have not yet been
         # identified as being recorded in any plane yet.
@@ -655,8 +638,8 @@ class jcmt2caom2ingest(object):
         # Record the uri and (optionally) the filepath
         if 'uri_dict' not in thisPlane:
             thisPlane['uri_dict'] = OrderedDict()
-        if self.uri not in thisPlane['uri_dict']:
-            thisPlane['uri_dict'][self.uri] = filepath
+        if file_info.uri not in thisPlane['uri_dict']:
+            thisPlane['uri_dict'][file_info.uri] = filepath
 
         # Foreach fitsuri in the fitsuri dict, record the metadata
         for (fitsuri, fitsuri_data) in file_info.fitsuri.items():
@@ -732,6 +715,8 @@ class jcmt2caom2ingest(object):
         plane_dict = OrderedStrDict()
         fitsuri_dict = OrderedDefaultDict(OrderedStrDict)
         fitsuri_custom_dict = defaultdict(OrderedDict)
+        memberset = set()
+        inputset = set()
 
         if 'file_id' not in header:
             raise CAOMError('No file_id in ' + repr(header))
@@ -786,13 +771,13 @@ class jcmt2caom2ingest(object):
                                            'OBSID',
                                            header)
             algorithm = 'exposure'
-            self.observationID = header['OBSID']
+            observationID = header['OBSID']
         else:
             # any other value for algorithm indicates a composite observation
             self.validation.expect_keyword(filename,
                                            'ASN_ID',
                                            header)
-            self.observationID = header['ASN_ID']
+            observationID = header['ASN_ID']
 
             # Check for duplicate observationIDs.
             # Do not do this for obs products, since the raw data can be
@@ -804,7 +789,7 @@ class jcmt2caom2ingest(object):
             # the observation exists in the collection, or if the
             # observation pre-exists in another collection.
             for coll in self.tap.get_collections_with_obs_id(
-                    self.observationID):
+                    observationID):
                 # Do not raise errors for ingestions into the SANDBOX
                 # or into JCMT if coll is also JCMT.
                 if coll == self.collection:
@@ -817,7 +802,7 @@ class jcmt2caom2ingest(object):
                                 'file: {0}: Must specify --replace if'
                                 ' observationID = "{1}" already exists'
                                 ' in collection = "{2}"'.format(
-                                    filename, self.observationID,
+                                    filename, observationID,
                                     self.collection))
                 elif self.collection != 'SANDBOX':
                     # Complain if the observation matches
@@ -825,7 +810,7 @@ class jcmt2caom2ingest(object):
                     raise CAOMError(
                         'file: {0}, observationID = "{1}" is also in use'
                         ' in collection = "{2}"'.format(
-                            filename, self.observationID, coll))
+                            filename, observationID, coll))
 
         plane_dict['algorithm.name'] = algorithm
 
@@ -999,7 +984,7 @@ class jcmt2caom2ingest(object):
                         if mbrn not in obstimes:
                             obstimes[mbrn] = (mbr_date_obs, mbr_date_end)
 
-                        self.memberset.add(mbrn)
+                        memberset.add(mbrn)
 
         elif is_defined('OBSCNT', header):
             obscnt = header['OBSCNT']
@@ -1102,7 +1087,7 @@ class jcmt2caom2ingest(object):
 
                             if mbrn not in obstimes:
                                 obstimes[mbrn] = (mbr_date_obs, mbr_date_end)
-                            self.memberset.add(mbrn)
+                            memberset.add(mbrn)
 
         # Only record the environment from single-member observations
         if algorithm == 'exposure' or (obscnt == 1 or mbrcnt == 1):
@@ -1330,7 +1315,7 @@ class jcmt2caom2ingest(object):
         bwmode = None
         # Define productID as a string so it does not trigger later syntax
         # errors but will still test False.
-        self.productID = ''
+        productID = ''
 
         if backend == 'SCUBA-2' and is_defined('FILTER', header):
             filter = str(header['FILTER'])
@@ -1348,18 +1333,18 @@ class jcmt2caom2ingest(object):
             if is_defined('BWMODE', header):
                 bwmode = header['BWMODE']
 
-        # Try to compute self.productID using the standard rules
+        # Try to compute productID using the standard rules
         # First, determine the science_product
         if instream in self.external_collections:
             # Externally generated data products must define PRODID, which
             # will be used to fill productID and to define science_product
             # as the first dash-separated token in the string
             self.validation.expect_keyword(filename, 'PRODID', header)
-            self.productID = header['PRODID']
-            if re.search(r'-', self.productID):
-                science_product = self.productID.split('-')[0]
+            productID = header['PRODID']
+            if re.search(r'-', productID):
+                science_product = productID.split('-')[0]
             else:
-                science_product = self.productID
+                science_product = productID
 
         else:
             # Pipeline products must define the science_product as a function
@@ -1390,14 +1375,14 @@ class jcmt2caom2ingest(object):
                                     sorted(science_product_dict.keys())))
 
             if filter:
-                self.productID = product_id(backend,
-                                            product=science_product,
-                                            filter=filter)
+                productID = product_id(backend,
+                                       product=science_product,
+                                       filter=filter)
 
             elif (restfreq and bwmode and subsysnr):
                 if product in ['reduced', 'rimg', 'rsp', 'cube',
                                'healpix', 'hpxrsp', 'hpxrimg']:
-                    self.productID = \
+                    productID = \
                         product_id(backend,
                                    product=science_product,
                                    restfreq=restfreq,
@@ -1417,8 +1402,8 @@ class jcmt2caom2ingest(object):
 
         # Add this plane to the set of known file_id -> plane translations
         self.input_cache[file_id] = self.planeURI(self.collection,
-                                                  self.observationID,
-                                                  self.productID)
+                                                  observationID,
+                                                  productID)
 
         # TODO: do we only need to do this for the "main" product?
         if instream == 'JCMT':
@@ -1436,7 +1421,7 @@ class jcmt2caom2ingest(object):
                     raise CAOMError('file {0}: '
                                     'Release date could not be '
                                     'calculated from membership: '.format(
-                                        filename, self.observationID))
+                                        filename, observationID))
             else:
                 # For "healpix" products (i.e. JSA legacy release) use a dummy
                 # release date for now.
@@ -1520,7 +1505,7 @@ class jcmt2caom2ingest(object):
                         inpn = self.planeURI(pm.group(1),
                                              pm.group(2),
                                              pm.group(3))
-                        self.inputset.add(inpn)
+                        inputset.add(inpn)
                     else:
                         raise CAOMError(
                             'file {0}: {1} = {2} does not '
@@ -1563,7 +1548,7 @@ class jcmt2caom2ingest(object):
                     elif prvn_id in self.input_cache:
                         # The input cache should already have uri's for
                         # raw data
-                        self.inputset.add(self.input_cache[prvn_id])
+                        inputset.add(self.input_cache[prvn_id])
                     else:
                         # uri's for processed data are likely to be defined
                         # during this ingestion, but cannot be checked until
@@ -1698,7 +1683,7 @@ class jcmt2caom2ingest(object):
                 plane_dict['energy.transition.species'] = header['MOLECULE']
                 plane_dict['energy.transition.transition'] = header['TRANSITI']
 
-        self.uri = self.fitsfileURI(self.archive, file_id)
+        uri = self.fitsfileURI(self.archive, file_id)
         # Recall that the order in fitsuri_dict is called is preserved
         # in the override file
 
@@ -1739,10 +1724,10 @@ class jcmt2caom2ingest(object):
                 fitsuri_dict[extURI]['part.productType'] = pt
 
             if prodtype_default:
-                fitsuri_dict[self.uri]['part.productType'] = prodtype_default
+                fitsuri_dict[uri]['part.productType'] = prodtype_default
 
         elif prodtype_default:
-            fitsuri_dict[self.uri]['artifact.productType'] = prodtype_default
+            fitsuri_dict[uri]['artifact.productType'] = prodtype_default
 
         else:
             raise CAOMError(
@@ -1751,13 +1736,13 @@ class jcmt2caom2ingest(object):
         if is_main_product and len(obstimes):
             # Record times for science products
             for key in sorted(obstimes, key=lambda t: obstimes[t][0]):
-                fitsuri_custom_dict[self.uri][key] = obstimes[key]
+                fitsuri_custom_dict[uri][key] = obstimes[key]
 
         # If this is a catalog file, generate explicit WCS information as
         # fits2caom2 may not be able to do it.  For now assume that all
         # tiles are of SCUBA-2 data.
-        if is_catalog and self.uri not in self.explicit_wcs:
-            self.explicit_wcs[self.uri] = {
+        if is_catalog and uri not in self.explicit_wcs:
+            self.explicit_wcs[uri] = {
                 'spatial': jsa_tile_wcs(header),
                 'spectral': scuba2_spectral_wcs(header),
             }
@@ -1769,7 +1754,7 @@ class jcmt2caom2ingest(object):
         is_healpix_850 = (is_defined('PRODID', header) and
             header['PRODID'] == 'healpix-850um')
         if (is_healpix_850 and (algorithm == 'public') and
-                (self.uri not in self.explicit_wcs) and (header['TILENUM'] in [
+                (uri not in self.explicit_wcs) and (header['TILENUM'] in [
                     3054,
                     3055,
                     3066,
@@ -1781,13 +1766,13 @@ class jcmt2caom2ingest(object):
                     14327,
                     15703,
                 ])):
-            self.explicit_wcs[self.uri] = {
+            self.explicit_wcs[uri] = {
                 'spatial': jsa_tile_wcs(header),
                 'replace_only': True,
             }
         # Also temporarily work around problems for HEALPix obs products.
         if (is_healpix_850 and (algorithm == 'exposure') and
-                (self.uri not in self.explicit_wcs) and (header['OBSID'] in [
+                (uri not in self.explicit_wcs) and (header['OBSID'] in [
                     'scuba2_00013_20121214T051903',
                     'scuba2_00018_20121214T061802',
                     'scuba2_00019_20130621T144346',
@@ -2105,7 +2090,7 @@ class jcmt2caom2ingest(object):
                     'scuba2_00085_20150109T224720',
                     'scuba2_00014_20111215T061536',
                 ])):
-            self.explicit_wcs[self.uri] = {
+            self.explicit_wcs[uri] = {
                 'spatial': jsa_tile_wcs(header),
                 'replace_only': True,
             }
@@ -2125,8 +2110,10 @@ class jcmt2caom2ingest(object):
             plane_dict['metrics.sourceNumberDensity'] = '0'
 
         return FileInfo(
+            observationID=observationID, productID=productID, uri=uri,
             plane=plane_dict,
-            fitsuri=fitsuri_dict, fitsuri_custom=fitsuri_custom_dict)
+            fitsuri=fitsuri_dict, fitsuri_custom=fitsuri_custom_dict,
+            members=memberset, inputs=inputset)
 
     def lookup_file_id(self, filename, file_id):
         """
