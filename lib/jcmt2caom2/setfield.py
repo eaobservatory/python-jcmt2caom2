@@ -96,7 +96,7 @@ class setfield(object):
             for obsid in result_dict[coll]:
                 uri = 'caom:' + coll + '/' + obsid
                 logger.info('PROGRESS: ' + uri)
-                with repository.process(uri) as wrapper:
+                with repository.process(uri, dry_run=dry_run) as wrapper:
                     observation = wrapper.observation
                     try:
                         if releasedate:
@@ -110,9 +110,6 @@ class setfield(object):
                                     plane.meta_release = releasedate
                                 if reference:
                                     plane.provenance_reference = reference
-
-                        if dry_run:
-                            wrapper.observation = None
 
                     except:
                         logger.exception('Cannot process %s', uri)
