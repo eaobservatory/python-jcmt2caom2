@@ -103,8 +103,8 @@ class CAOM2TAP(object):
         for row in self.tap.query(
                 'SELECT'
                 ' Plane.productID,'
-                ' Plane.time_bounds_cval1,'
-                ' Plane.time_bounds_cval2,'
+                ' Plane.time_bounds_lower,'
+                ' Plane.time_bounds_upper,'
                 ' Plane.dataRelease,'
                 ' Artifact.uri '
                 'FROM caom2.Observation as Observation'
