@@ -334,6 +334,8 @@ class jcmt2caom2ingest(object):
         except CAOMValidationError:
             return
 
+        head = {}
+
         try:
             with closing(fits.open(filepath, mode='readonly')) as f:
                 head = f[0].header
@@ -349,16 +351,9 @@ class jcmt2caom2ingest(object):
                 except IndexError:
                     pass
 
-            head['file_id'] = file_id
-            head['filepath'] = filepath
-            head['SRCPATH'] = filepath
-
             logger.debug('...got primary header from %s', filepath)
 
         except:
-            head = {}
-            head['file_id'] = file_id
-            head['filepath'] = filepath
             logger.debug('...could not read primary header from ',
                          filepath)
 
@@ -366,7 +361,8 @@ class jcmt2caom2ingest(object):
             self.validation.is_in_archive(filepath)
 
         self.build_metadict(
-            filepath, self.read_file_info(head, first_extension))
+            filepath, self.read_file_info(
+                file_id, filepath, head, first_extension))
 
     def observationURI(self, collection, observationID):
         """
@@ -701,7 +697,8 @@ class jcmt2caom2ingest(object):
             elif result.prod_id not in self.remove_dict[result.obs_id]:
                 self.remove_dict[result.obs_id].append(result.prod_id)
 
-    def read_file_info(self, header, first_extension=None):
+    def read_file_info(self, file_id, filename, header,
+                       first_extension=None):
         """
         Given the headers from a FITS file, define plane and URI-dependent
         data structures.
@@ -719,11 +716,6 @@ class jcmt2caom2ingest(object):
         memberset = set()
         inputset = set()
 
-        if 'file_id' not in header:
-            raise CAOMError('No file_id in ' + repr(header))
-
-        file_id = header['file_id']
-        filename = header['filepath']
         self.validation.check_size(filename)
 
         logger.info('Starting %s', file_id)
@@ -760,7 +752,7 @@ class jcmt2caom2ingest(object):
         algorithm = 'custom'
         if is_defined('ASN_TYPE', header):
             algorithm = header['ASN_TYPE']
-        logger.info('PROGRESS: %s', header['SRCPATH'])
+        logger.info('PROGRESS: %s', filename)
 
         if algorithm == 'obs':
             # Obs products can only be ingested into the JCMT collection
