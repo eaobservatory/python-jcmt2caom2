@@ -29,6 +29,8 @@ import sys
 
 from astropy.io import fits
 from astropy.time import Time
+from pymoc import MOC
+from pymoc.io.fits import read_moc_fits_hdu
 
 from omp.db.part.arc import ArcDB
 
@@ -335,6 +337,7 @@ class jcmt2caom2ingest(object):
             return
 
         head = {}
+        moc = None
 
         try:
             with closing(fits.open(filepath, mode='readonly')) as f:
@@ -348,6 +351,15 @@ class jcmt2caom2ingest(object):
                 first_extension = None
                 try:
                     first_extension = f[1].header
+
+                    # Does this look like a MOC file?
+                    if ((head['NAXIS'] == 0)
+                            and (first_extension['XTENSION'] == 'BINTABLE')
+                            and (first_extension.get('PIXTYPE') == 'HEALPIX')):
+                        moc = MOC()
+                        read_moc_fits_hdu(moc, f[1],
+                                          include_meta=True)
+
                 except IndexError:
                     pass
 
@@ -362,7 +374,7 @@ class jcmt2caom2ingest(object):
 
         self.build_metadict(
             filepath, self.read_file_info(
-                file_id, filepath, head, first_extension))
+                file_id, filepath, head, first_extension, moc))
 
     def observationURI(self, collection, observationID):
         """
@@ -705,7 +717,7 @@ class jcmt2caom2ingest(object):
                 self.remove_dict[result.obs_id].append(result.prod_id)
 
     def read_file_info(self, file_id, filename, header,
-                       first_extension=None):
+                       first_extension=None, moc=None):
         """
         Given the headers from a FITS file, define plane and URI-dependent
         data structures.
@@ -2093,16 +2105,17 @@ class jcmt2caom2ingest(object):
 
         # Determine plane metrics.
         if product in ['peak-cat', 'extent-cat']:
-            source_number_density = 0
-            if first_extension is not None:
-                source_number_density = first_extension.get('NAXIS2', 0)
-            plane_dict['metrics.sourceNumberDensity'] = '{0}'.format(
-                source_number_density)
+            if first_extension is None:
+                logger.warning('Didn\'t get first exenstion for a catalog')
+            elif not is_defined('NAXIS2', first_extension):
+                logger.warning('Catalog has no NAXIS2 in first extension')
+            else:
+                plane_custom_dict['source_count'] = first_extension['NAXIS2']
         elif product in ['tile-moc']:
-            # We see a "tile-moc" but don't know at this point if there is also
-            # an "extent-cat".  Therefore set sourceNumberDensity=0
-            # and let build_metadict select which value to keep.
-            plane_dict['metrics.sourceNumberDensity'] = '0'
+            if moc is None:
+                logger.warning('Didn\'t get MOC object for a tile-moc')
+            else:
+                plane_custom_dict['area_covered'] = moc.area_sq_deg
 
         return FileInfo(
             observationID=observationID, productID=productID, uri=uri,
@@ -2395,6 +2408,30 @@ class jcmt2caom2ingest(object):
 
         general = thisPlane['plane_dict'].copy()
         sections = OrderedDict()
+
+        # Incorporate extra information into the general information.
+        # This allows us to combine information which comes from multiple
+        # input files.
+        thisPlaneCustom = thisPlane['custom']
+        source_count = thisPlaneCustom.get('source_count')
+        area_covered = thisPlaneCustom.get('area_covered')
+        if area_covered is None and productID.startswith('peak-'):
+            # For "peak" catalogs, get the area covered from the "extent"
+            # plane, since the area is defined there and we generate both
+            # planes in a single data processing job.
+            extPlane = thisObservation.get(
+                'extent-' + productID.split('-', 1)[1])
+            if extPlane is not None:
+                area_covered = extPlane['custom'].get('area_covered')
+
+        if area_covered is not None:
+            if source_count is None:
+                general['metrics.sourceNumberDensity'] = '0'
+            else:
+                general['metrics.sourceNumberDensity'] = '{0}'.format(
+                    source_count / area_covered)
+        elif source_count is not None:
+            logger.warning('Source count is defined but area covered is not')
 
         # Prepare artifact-specific overrides.  This involves filtering
         # the data structure to remove things which don't correpsond to
