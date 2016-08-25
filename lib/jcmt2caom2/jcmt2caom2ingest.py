@@ -73,7 +73,7 @@ logger = logging.getLogger(__name__)
 FileInfo = namedtuple(
     'FileInfo',
     ('observationID', 'productID', 'uri',
-     'plane', 'fitsuri', 'fitsuri_custom',
+     'plane', 'plane_custom', 'fitsuri', 'fitsuri_custom',
      'members', 'inputs'))
 
 
@@ -500,6 +500,7 @@ class jcmt2caom2ingest(object):
                     ['inputset']
                     ['fileset']
                     ['plane_dict']
+                    ['custom']
                     [fitsuri]
                         ['custom']
         where:
@@ -615,6 +616,12 @@ class jcmt2caom2ingest(object):
 
             thisPlane['plane_dict'][key] = value
 
+        # Accumulate items for the custom plane information.
+        if 'custom' not in thisPlane:
+            thisPlane['custom'] = OrderedDict()
+
+        thisPlane['custom'].update(file_info.plane_custom)
+
         # If inputset is not empty, the provenance should be filled.
         # The inputset is the union of the inputsets from all the files
         # in the plane.  Beware that files not yet classified into
@@ -711,6 +718,7 @@ class jcmt2caom2ingest(object):
         """
 
         plane_dict = OrderedStrDict()
+        plane_custom_dict = OrderedDict()
         fitsuri_dict = OrderedDefaultDict(OrderedStrDict)
         fitsuri_custom_dict = defaultdict(OrderedDict)
         memberset = set()
@@ -2098,7 +2106,7 @@ class jcmt2caom2ingest(object):
 
         return FileInfo(
             observationID=observationID, productID=productID, uri=uri,
-            plane=plane_dict,
+            plane=plane_dict, plane_custom=plane_custom_dict,
             fitsuri=fitsuri_dict, fitsuri_custom=fitsuri_custom_dict,
             members=memberset, inputs=inputset)
 
@@ -2385,6 +2393,7 @@ class jcmt2caom2ingest(object):
         thisObservation = self.metadict[observationID]
         thisPlane = thisObservation[productID]
 
+        general = thisPlane['plane_dict'].copy()
         sections = OrderedDict()
 
         # Prepare artifact-specific overrides.  This involves filtering
@@ -2395,7 +2404,8 @@ class jcmt2caom2ingest(object):
             if fitsuri not in ('uri_dict',
                                'inputset',
                                'fileset',
-                               'plane_dict'):
+                               'plane_dict',
+                               'custom'):
                 thisFitsuri = thisPlane[fitsuri].copy()
                 try:
                     del thisFitsuri['custom']
@@ -2403,7 +2413,7 @@ class jcmt2caom2ingest(object):
                     pass
                 sections[fitsuri] = thisFitsuri
 
-        return (thisPlane['plane_dict'], sections)
+        return (general, sections)
 
     def replace_members(self, thisObservation, thisPlane):
         """
@@ -2530,7 +2540,8 @@ class jcmt2caom2ingest(object):
                             if fitsuri not in ('plane_dict',
                                                'uri_dict',
                                                'inputset',
-                                               'fileset'):
+                                               'fileset',
+                                               'custom'):
 
                                 self.update_time_information(
                                     wrapper.observation,
