@@ -121,6 +121,25 @@ def read_recipe_instance_mapping():
     return result
 
 
+def read_fixed_object_names():
+    """
+    Read a file listing fixed object names.
+    """
+
+    result = {}
+
+    with open('/net/kamaka/export/data/jsa_proc/fixed-object-names.txt') as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('#') or not line:
+                continue
+
+            (_id, object_name) = line.split(' ', 1)
+            result[_id] = object_name
+
+    return result
+
+
 class jcmt2caom2ingest(object):
     """
     A class to ingest reduced data products into the JSA.
@@ -260,6 +279,9 @@ class jcmt2caom2ingest(object):
 
         # Read recipe instance mapping file.
         self.recipe_instance_mapping = read_recipe_instance_mapping()
+
+        # Read fixed object names file.
+        self.fixed_object_names = read_fixed_object_names()
 
         self.xmloutdir = None
 
@@ -1262,8 +1284,16 @@ class jcmt2caom2ingest(object):
             filename, 'TELESCOP', header, ['JCMT'])
 
         # Target metadata
-        self.validation.expect_keyword(filename, 'OBJECT', header)
-        plane_dict['target.name'] = header['OBJECT']
+        try:
+            self.validation.expect_keyword(filename, 'OBJECT', header)
+            plane_dict['target.name'] = header['OBJECT']
+        except CAOMValidationError:
+            fixed_object_name = self.fixed_object_names.get(observationID)
+            if fixed_object_name is None:
+                raise
+            else:
+                logger.warning('Used fixed object for %s', observationID)
+                plane_dict['target.name'] = fixed_object_name
 
         if backend != 'SCUBA-2' and is_defined('ZSOURCE', header):
                 plane_dict['target.redshift'] = str(header['ZSOURCE'])
