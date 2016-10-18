@@ -46,11 +46,35 @@ def raw_product_id(backend, obsid, conn):
         result = conn.get_heterodyne_product_info(backend, obsid)
 
         if result:
-            for subsysnr, restfreq, bwmode, specid, hybrid in result:
+            for subsysnr, restfreq, bwmode, specid, hybrid, ifchansp in result:
                 restfreqhz = 1.0e9 * float(restfreq)
                 prefix = 'raw'
                 if int(hybrid) > 1:
                     prefix = 'raw-hybrid'
+
+                # If "bwmode" is not specified, try to infer the (modern style)
+                # string from the ifchansp value -- see ORAC-DR
+                # heterodyne/_VERIFY_HEADERS_ primitive.
+                if bwmode is None:
+                    if ifchansp is None:
+                        raise CAOMError('both BWMODE and IFCHANSP are null')
+
+                    bwmodes = {
+                        976562: '1000MHzx1024',
+                        488281: '1000MHzx2048',
+                        61035: '250MHzx4096',
+                        30517: '250MHzx8192',
+                    }
+
+                    bwmode = bwmodes.get(abs(int(ifchansp)))
+
+                    if bwmode is None:
+                        raise CAOMError(
+                            'BWMODE is null and IFCHANSP is not recognised')
+
+                    logger.warning('inferred BWMODE=%s from IFCHANSP=%f',
+                                   bwmode, ifchansp)
+
                 subsysnr_dict[str(subsysnr)] = product_id(backend,
                                                           product=prefix,
                                                           restfreq=restfreqhz,
