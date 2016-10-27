@@ -154,7 +154,6 @@ class jcmt2caom2ingest(object):
     freq_csotau = 225.0e9  # Frequency of CSO tau meter in Hz
     lambda_csotau = '%12.9f' % (speedOfLight / freq_csotau)
     productType = {
-        'cube':        {0: 'science', 1: 'noise', None: 'auxiliary'},
         'reduced':     {0: 'science', 1: 'noise', None: 'auxiliary'},
         'rsp':         {0: 'preview', 1: 'noise', None: 'auxiliary'},
         'rimg':        {0: 'preview', 1: 'noise', None: 'auxiliary'},
@@ -1398,7 +1397,6 @@ class jcmt2caom2ingest(object):
             science_product_dict = {'reduced': 'reduced',
                                     'rsp': 'reduced',
                                     'rimg': 'reduced',
-                                    'cube': 'cube',
                                     'healpix': 'healpix',
                                     'hpxrsp': 'healpix',
                                     'hpxrimg': 'healpix',
@@ -1424,7 +1422,7 @@ class jcmt2caom2ingest(object):
                                        filter=filter)
 
             elif (restfreq and bwmode and subsysnr):
-                if product in ['reduced', 'rimg', 'rsp', 'cube',
+                if product in ['reduced', 'rimg', 'rsp',
                                'healpix', 'hpxrsp', 'hpxrimg']:
                     productID = \
                         product_id(backend,
@@ -1451,7 +1449,7 @@ class jcmt2caom2ingest(object):
 
         # TODO: do we only need to do this for the "main" product?
         if instream == 'JCMT':
-            if science_product in ['reduced', 'cube']:
+            if science_product in ['reduced']:
                 # Set release dates for non-healpix products
                 if latest_release_date:
                     if algorithm != 'exposure':
@@ -1501,8 +1499,7 @@ class jcmt2caom2ingest(object):
                 calibrationLevel = callevel_dict[header['CALLEVEL']]
             else:
                 callevel_dict = \
-                    {'cube':       str(CalibrationLevel.RAW_STANDARD.value),
-                     'reduced':    str(CalibrationLevel.CALIBRATED.value),
+                    {'reduced':    str(CalibrationLevel.CALIBRATED.value),
                      'peak':       str(CalibrationLevel.PRODUCT.value),
                      'extent':     str(CalibrationLevel.PRODUCT.value),
                      }
@@ -1614,7 +1611,7 @@ class jcmt2caom2ingest(object):
             # Axes are always in the order X, Y, Freq, Pol
             # but may be degenerate with length 1.  Only compute the
             # dataProductType for science data.
-            if product in ['reduced', 'cube', 'healpix']:
+            if product in ['reduced', 'healpix']:
                 if (header['NAXIS'] == 3 or
                         (header['NAXIS'] == 4 and header['NAXIS4'] == 1)):
                     if (header['NAXIS1'] == 1 and
@@ -1640,7 +1637,7 @@ class jcmt2caom2ingest(object):
         elif instream == 'JCMTLS' and proposal_project:
             dpproject = proposal_project
         elif instream == 'JCMT':
-            standard_products = ['reduced', 'cube', 'rsp', 'rimg']
+            standard_products = ['reduced', 'rsp', 'rimg']
             legacy_products = ['healpix', 'hpxrsp', 'hpxrimg',
                                'peak-cat', 'extent-cat', 'extent-mask',
                                'extent-moc', 'tile-moc']
