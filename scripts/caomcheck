@@ -176,7 +176,7 @@ def main():
                       " WHERE collection='JCMT' "
                       " AND algorithm_name='exposure' "
                       " AND instrument_name like '%" + cadcinstrument.upper() + "%'"
-                      " AND proposal_id !='JCMT-LR1';")
+                      " AND proposal_id !='JCMT-LR';")
 
         tap = tapclient.tapclient()
         table = tap.query(caom2query, timeout=60)
