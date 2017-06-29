@@ -1803,6 +1803,7 @@ class jcmt2caom2ingest(object):
                     14327,
                     15359,
                     15703,
+                    16042,
                 ])):
             self.explicit_wcs[uri] = {
                 'spatial': jsa_tile_wcs(header),
