@@ -1801,6 +1801,7 @@ class jcmt2caom2ingest(object):
                     14303,
                     14325,
                     14327,
+                    15359,
                     15703,
                 ])):
             self.explicit_wcs[uri] = {
