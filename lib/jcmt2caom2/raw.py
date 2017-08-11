@@ -1,5 +1,5 @@
 # Copyright (C) 2014-2015 Science and Technology Facilities Council.
-# Copyright (C) 2015-2016 East Asian Observatory.
+# Copyright (C) 2015-2017 East Asian Observatory.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -111,6 +111,9 @@ class raw(object):
 
     # Allowed values for backend names in ACSIS
     BACKENDS = ['ACSIS', 'SCUBA-2', 'DAS', 'AOSC']
+
+    # Instrumens for which we do not wish to ingest data.
+    FORBIDDEN_INSTRUMENTS = ('GLT',)
 
     MANDATORY = ('backend',
                  'instrume',
@@ -735,6 +738,11 @@ class raw(object):
         else:
             raise CAOMError('There is no observation with '
                             'obsid = %s' % (self.obsid,))
+
+        # There are some instruments we wish to reject immediately.
+        instrument = common['instrume'].upper()
+        if instrument in self.FORBIDDEN_INSTRUMENTS:
+            raise CAOMError('Forbidden instrument: %s', instrument)
 
         # Append the proposal metadata
         proposal = self.get_proposal(common['project'])
