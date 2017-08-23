@@ -74,9 +74,7 @@ from jcmt2caom2.project import get_project_pi_title
 
 __doc__ = """
 The raw class immplements methods to collect metadata from the database
-to construct a caom2 observation.  Once completed, the observation is
-serialized to a temporary xml file in outdir and push to the CAOM-2
-repository.
+to construct a caom2 observation.
 
 This routine requires read access to the database, but does only reads.
 It therefore always reads the metadata from SYBASE.
@@ -128,16 +126,10 @@ class raw(object):
 
     SpeedOfLight = 299792458.0  # m/s
 
-    def __init__(self,
-                 outdir='./'):
+    def __init__(self):
         """
         Create a jcmt2caom2.raw instance to ingest a single observation.
-
-        Arguments:
-        outdir:      working directory for output files
         """
-
-        self.outdir = None
 
         self.collection = None
         self.obsid = None
@@ -824,9 +816,6 @@ class raw(object):
             '--obsid',
             required=True,
             help='obsid, primary key in COMMON table')
-        ap.add_argument(
-            '--outdir',
-            help='working directory for output files')
 
         ap.add_argument(
             '--collection',
@@ -853,13 +842,6 @@ class raw(object):
 
         self.obsid = args.obsid
 
-        if args.outdir:
-            self.outdir = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(args.outdir)))
-        else:
-            self.outdir = os.getcwd()
-
         if args.loglevel:
             logging.getLogger().setLevel(args.loglevel)
 
@@ -869,7 +851,6 @@ class raw(object):
         logger.info('jcmt2caom2version    = %s', jcmt2caom2version)
         logger.info('tools4caom2version   = %s', tools4caom2version)
         logger.info('obsid                = %s', self.obsid)
-        logger.info('outdir               = %s', self.outdir)
         logger.info('dry run              = %s', self.dry_run)
 
         try:
