@@ -139,6 +139,8 @@ class raw(object):
         self.conn = None
         self.tap = CAOM2TAP()
 
+        self.xmloutdir = None
+
     def get_proposal(self, project_id):
         """
         Get the PI name and proposal title for this project.
@@ -800,6 +802,12 @@ class raw(object):
             wrapper.observation = self.build_observation(
                 wrapper.observation, common, subsystem, files)
 
+            if self.xmloutdir:
+                with open(os.path.join(self.xmloutdir, re.sub(
+                        '[^-_A-Za-z0-9]', '_', self.obsid)) + '.xml',
+                        'wb') as f:
+                    repository.writer.write(wrapper.observation, f)
+
         logger.info('SUCCESS: Observation %s has been ingested',
                     self.obsid)
 
@@ -834,6 +842,9 @@ class raw(object):
             dest='loglevel',
             action='store_const',
             const=logging.DEBUG)
+        ap.add_argument(
+            '--xmloutdir',
+            help='directory into which to write XML files')
 
         args = ap.parse_args()
 
@@ -846,6 +857,8 @@ class raw(object):
             logging.getLogger().setLevel(args.loglevel)
 
         self.dry_run = args.dry_run
+
+        self.xmloutdir = args.xmloutdir
 
         logger.info(sys.argv[0])
         logger.info('jcmt2caom2version    = %s', jcmt2caom2version)
