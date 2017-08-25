@@ -784,12 +784,6 @@ class raw(object):
             logger.error('SERIOUS ERRORS were found in %s', self.obsid)
             raise CAOMError('Serious errors found')
 
-        if self.dry_run:
-            if ingestibility == INGESTIBILITY.GOOD:
-                logger.info('SUCCESS: Observation %s is ready for ingestion',
-                            self.obsid)
-            return
-
         repository = Repository()
 
         uri = 'caom:' + self.collection + '/' + common['obsid']
@@ -798,7 +792,7 @@ class raw(object):
         if files is None:
             raise CAOMError('No rows in FILES for obsid = ' + self.obsid)
 
-        with repository.process(uri) as wrapper:
+        with repository.process(uri, dry_run=self.dry_run) as wrapper:
             wrapper.observation = self.build_observation(
                 wrapper.observation, common, subsystem, files)
 
