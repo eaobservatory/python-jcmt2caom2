@@ -70,7 +70,7 @@ from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.threed import ThreeD
 from jcmt2caom2.jsa.twod import TwoD
-from jcmt2caom2.project import get_project_pi_title
+from jcmt2caom2.project import get_project_pi_title, truncate_string
 
 __doc__ = """
 The raw class immplements methods to collect metadata from the database
@@ -301,7 +301,7 @@ class raw(object):
         if common['survey'] is not None:
             proposal.project = common['survey']
         if common['title'] is not None:
-            proposal.title = common['title']
+            proposal.title = truncate_string(common['title'], 80)
         observation.proposal = proposal
 
         environment = Environment()

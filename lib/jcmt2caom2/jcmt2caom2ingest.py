@@ -66,7 +66,7 @@ from jcmt2caom2.jsa.obsid import obsidss_to_obsid
 from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.tile import jsa_tile_wcs
-from jcmt2caom2.project import get_project_pi_title
+from jcmt2caom2.project import get_project_pi_title, truncate_string
 from jcmt2caom2.type import OrderedDefaultDict, OrderedStrDict
 
 logger = logging.getLogger(__name__)
@@ -886,7 +886,8 @@ class jcmt2caom2ingest(object):
             if proposal_pi is not None:
                 plane_dict['proposal.pi'] = proposal_pi
             if proposal_title is not None:
-                plane_dict['proposal.title'] = proposal_title
+                plane_dict['proposal.title'] = truncate_string(
+                    proposal_title, 80)
 
         # Observation membership headers, which are optional
         earliest_utdate = None

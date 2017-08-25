@@ -48,3 +48,19 @@ def get_project_pi_title(project_id, conn, tap):
             project_title = caom2_title
 
     return (project_pi, project_title)
+
+
+def truncate_string(title, length, marker='...'):
+    """
+    Truncate the given string to the specified length.  If truncation
+    happens, append the marker string.  Typically applied to long project
+    titles.
+
+    (This function operates like the simple (killwords) case of
+    jinja2.filters.do_truncate.)
+    """
+
+    if len(title) <= length:
+        return title
+
+    return title[:length - len(marker)] + marker
