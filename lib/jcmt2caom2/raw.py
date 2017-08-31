@@ -111,7 +111,7 @@ class raw(object):
     BACKENDS = ['ACSIS', 'SCUBA-2', 'DAS', 'AOSC']
 
     # Instrumens for which we do not wish to ingest data.
-    FORBIDDEN_INSTRUMENTS = ('GLT',)
+    FORBIDDEN_INSTRUMENTS = ('GLT', 'GLT86', 'GLT230', 'GLT345')
 
     MANDATORY = ('backend',
                  'instrume',
