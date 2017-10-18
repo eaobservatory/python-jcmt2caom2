@@ -335,9 +335,11 @@ class raw(object):
                                                 inbeam))
         instrument.keywords.extend(self.instrument_keywords)
 
+        observation.instrument = instrument
+
+        hybrid = {}
         if backend in ['ACSIS', 'DAS', 'AOSC']:
             keys = sorted(subsystem.keys())
-            hybrid = {}
             beamsize = 0.0
             for key in keys:
                 productID = self.productID_dict[str(key)]
@@ -398,7 +400,6 @@ class raw(object):
             # The scale factor is:
             # pi/180 * sqrt(pi/2) * 1e-6 * lambda [um]/ 15 [m]
             beamsize = 4.787e-6 * 850.0
-        observation.instrument = instrument
 
         if (observation.obs_type not in (
                 'flatfield', 'noise', 'setup', 'skydip')
@@ -495,215 +496,14 @@ class raw(object):
                 artifact.parts['0'].meta_release = common['release_date']
                 chunk.meta_release = common['release_date']
 
-                # Raw data does not have axes.
-                # bounds and ranges can be specified
+                spatial_wcs = self.build_spatial_wcs(common, beamsize)
+                if spatial_wcs is not None:
+                    chunk.position = spatial_wcs
 
-# Note that for single spectra the bl and tr corners have the same
-# coordinates.  CAOM-2 does not accept a zero-area polygon, so pad the
-# coordinates by the +/- 0.5 * beamsize.
-# Also, a line map in X or Y grid coordinates will have zero area,
-# so expand the box sideways by +/- 0.5 * beamsize.
-# Finally, check for a bowtie polygon, where the corners were recorded
-# in the wrong order.
-                if (common['obs_type'] in ('science', 'pointing', 'focus')
-                        and common['obsrabl'] is not None):
-                    # Sky position makes no sense for other kinds of
-                    # observations, even if supplied in COMMON
+                chunk.energy = self.build_spectral_wcs(
+                    common, subsystem[key], hybrid.get(productID))
 
-                    # Position axis bounds are in ICRS
-                    # Check for various pathologies due to different
-                    # observing strategies
-                    # position accuracy is about 0.1 arcsec (in decimal
-                    # degrees)
-                    eps = 0.1 / 3600.0
-
-                    bl = TwoD(common['obsrabl'], common['obsdecbl'])
-                    br = TwoD(common['obsrabr'], common['obsdecbr'])
-                    tl = TwoD(common['obsratl'], common['obsdectl'])
-                    tr = TwoD(common['obsratr'], common['obsdectr'])
-                    logger.info('initial bounds bl = %s', bl)
-                    logger.info('initial bounds br = %s', br)
-                    logger.info('initial bounds tr = %s', tr)
-                    logger.info('initial bounds tl = %s', tl)
-                    halfbeam = beamsize / 2.0
-
-                    # The precomputed bounding box can be represented as a
-                    # polgon
-                    if ((bl - br).abs() < eps
-                            and (bl - tl).abs() < eps
-                            and (tl - tr).abs() < eps):
-                        # bounding "box" is a point, so expand to a box
-                        logger.info(
-                            'For observation %s the bounds are a point',
-                            common['obsid'])
-
-                        cosdec = math.cos(br.y * math.pi / 180.0)
-                        offsetX = 0.5 * beamsize / cosdec
-                        offsetY = 0.5 * beamsize
-                        bl = bl + TwoD(-offsetX, -offsetY)
-                        br = br + TwoD(offsetX, -offsetY)
-                        tr = tr + TwoD(offsetX, offsetY)
-                        tl = tl + TwoD(-offsetX, offsetY)
-
-                    elif ((bl - br).abs() < eps
-                          and (tl - tr).abs() < eps
-                          and (bl - tl).abs() >= eps):
-                        # bounding box is a line in y, so diff points to + Y
-                        # and the perpendicular points along - X
-                        logger.info(
-                            'For observation %s the bounds are in a line in Y',
-                            common['obsid'])
-
-                        diff = tl - bl
-                        mean = (tl + bl)/2.0
-                        cosdec = math.cos(mean.y * math.pi / 180.0)
-
-                        unitX = TwoD(diff.y, -diff.x * cosdec)
-                        unitX = unitX / unitX.abs()
-                        offsetX = -halfbeam * TwoD(unitX.x / cosdec, unitX.y)
-
-                        unitY = TwoD(diff.x * cosdec, diff.y)
-                        unitY = unitY / unitY.abs()
-                        offsetY = halfbeam * TwoD(unitY.x / cosdec, unitY.y)
-
-                        bl = bl - offsetX - offsetY
-                        tl = tl - offsetX + offsetY
-                        br = br + offsetX - offsetY
-                        tr = tr + offsetX + offsetY
-
-                    elif ((bl - tl).abs() < eps
-                          and (br - tr).abs() < eps
-                          and (bl - br).abs() >= eps):
-                        # bounding box is a line in x
-                        logger.info(
-                            'For observation %s the bounds are in a line in X',
-                            common['obsid'])
-
-                        diff = br - bl
-                        mean = (br + bl)/2.0
-                        cosdec = math.cos(mean.y * math.pi / 180.0)
-
-                        unitX = TwoD(diff.x * cosdec, diff.y)
-                        unitX = unitX / unitX.abs()
-                        offsetX = halfbeam * TwoD(unitX.x / cosdec, unitX.y)
-
-                        unitY = TwoD(diff.y, -diff.x * cosdec)
-                        unitY = unitY / unitY.abs()
-                        offsetY = halfbeam * TwoD(unitY.x / cosdec, unitY.y)
-
-                        bl = bl - offsetX - offsetY
-                        tl = tl - offsetX + offsetY
-                        br = br + offsetX - offsetY
-                        tr = tr + offsetX + offsetY
-
-                    else:
-                        # Get here only if the box is not degenerate
-                        bl3d = ThreeD(bl)
-                        br3d = ThreeD(br)
-                        tr3d = ThreeD(tr)
-                        tl3d = ThreeD(tl)
-
-                        try:
-                            sign1 = math.copysign(
-                                1, ThreeD.included_angle(br3d, bl3d, tl3d))
-                            sign2 = math.copysign(
-                                1, ThreeD.included_angle(tr3d, br3d, bl3d))
-                            sign3 = math.copysign(
-                                1, ThreeD.included_angle(tl3d, tr3d, br3d))
-                            sign4 = math.copysign(
-                                1, ThreeD.included_angle(bl3d, tl3d, tr3d))
-                        except ValueError as e:
-                            raise CAOMError('The bounding box for obsid = ' +
-                                            self.obsid + ' is degenerate')
-
-                        # If the signs are not all the same, the vertices
-                        # were recorded in a bowtie order.  Swap any two.
-                        if (sign1 != sign2 or sign2 != sign3 or
-                                sign3 != sign4):
-                            logger.warning(
-                                'For observation %s the bounds are in a'
-                                ' bowtie order',
-                                common['obsid'])
-                            bl.swap(br)
-
-                    logger.info('final bounds bl = ' + str(bl))
-                    logger.info('final bounds br = ' + str(br))
-                    logger.info('final bounds tr = ' + str(tr))
-                    logger.info('final bounds tl = ' + str(tl))
-                    bounding_box = CoordPolygon2D()
-                    bounding_box.vertices.append(ValueCoord2D(bl.x, bl.y))
-                    bounding_box.vertices.append(ValueCoord2D(br.x, br.y))
-                    bounding_box.vertices.append(ValueCoord2D(tr.x, tr.y))
-                    bounding_box.vertices.append(ValueCoord2D(tl.x, tl.y))
-
-                    spatial_axes = CoordAxis2D(Axis('RA', 'deg'),
-                                               Axis('DEC', 'deg'))
-                    spatial_axes.bounds = bounding_box
-
-                    chunk.position = SpatialWCS(spatial_axes)
-                    chunk.position.coordsys = 'ICRS'
-                    chunk.position.equinox = 2000.0
-
-                # energy range, which can contain two subranges in DSB
-                if backend == 'SCUBA-2':
-                    spectral_axis = scuba2_spectral_wcs(subsystem[key])
-
-                else:
-                    this_hybrid = hybrid[productID]
-
-                    energy_axis = CoordAxis1D(Axis('FREQ', 'GHz'))
-                    if subsystem[key]['sb_mode'] == 'DSB':
-                        # These all correspond to "pixel" 1, so the pixel
-                        # coordinate runs from [0.5, 1.5]
-                        # Note that each artifact already records the frequency
-                        # bounds correctly for that data in that file.  The
-                        # aggregation to the plane will take care of
-                        # overlapping energy bounds.
-                        freq_bounds = CoordBounds1D()
-                        freq_bounds.samples.append(CoordRange1D(
-                            RefCoord(0.5, subsystem[key]['freq_sig_lower']),
-                            RefCoord(1.5, subsystem[key]['freq_sig_upper'])))
-                        freq_bounds.samples.append(CoordRange1D(
-                            RefCoord(0.5, subsystem[key]['freq_img_lower']),
-                            RefCoord(1.5, subsystem[key]['freq_img_upper'])))
-                        energy_axis.bounds = freq_bounds
-                    else:
-                        energy_axis.range = CoordRange1D(
-                            RefCoord(0.5, subsystem[key]['freq_sig_lower']),
-                            RefCoord(1.5, subsystem[key]['freq_sig_upper']))
-
-                    spectral_axis = SpectralWCS(energy_axis, 'BARYCENT')
-                    spectral_axis.ssysobs = subsystem[key]['ssysobs']
-                    spectral_axis.ssyssrc = subsystem[key]['ssyssrc']
-                    spectral_axis.zsource = subsystem[key]['zsource']
-
-                    # Recall that restfreq has been converted to Hz in
-                    # thishybrid so do not use the unconverted value from
-                    # subsystem[key][['restfreq']
-                    spectral_axis.restfrq = this_hybrid['restfreq']
-                    meanfreq = float(this_hybrid['meanfreq'])
-                    ifchansp = float(this_hybrid['ifchansp'])
-                    spectral_axis.resolving_power = abs(1.0e9 * meanfreq /
-                                                        ifchansp)
-
-                    spectral_axis.transition = EnergyTransition(
-                        subsystem[key]['molecule'],
-                        subsystem[key]['transiti'])
-
-                chunk.energy = spectral_axis
-
-                # time range
-                time_axis = CoordAxis1D(Axis('TIME', 'd'))
-                mjdstart = utc2mjd(common['date_obs'])
-                mjdend = utc2mjd(common['date_end'])
-                time_axis.range = CoordRange1D(
-                    RefCoord(0.5, mjdstart),
-                    RefCoord(1.5, mjdend))
-
-                chunk.time = TemporalWCS(time_axis)
-                chunk.time.timesys = 'UTC'
-                chunk.time.exposure = \
-                    (common['date_end'] - common['date_obs']).total_seconds()
+                chunk.time = self.build_temporal_wcs(common)
 
                 # Chunk is done, so append it to the part
                 artifact.parts['0'].chunks.append(chunk)
@@ -712,6 +512,234 @@ class raw(object):
                 plane.artifacts.add(artifact)
 
         return observation
+
+    def build_spatial_wcs(self, common, beamsize):
+        """
+        Construct spatial WCS.
+
+        Returns None if the observation does not have/need positional
+        information.
+        """
+
+        # Raw data does not have axes.
+        # bounds and ranges can be specified
+
+        # Note that for single spectra the bl and tr corners have the same
+        # coordinates.  CAOM-2 does not accept a zero-area polygon, so pad the
+        # coordinates by the +/- 0.5 * beamsize.
+        # Also, a line map in X or Y grid coordinates will have zero area,
+        # so expand the box sideways by +/- 0.5 * beamsize.
+        # Finally, check for a bowtie polygon, where the corners were recorded
+        # in the wrong order.
+        if (common['obs_type'] not in ('science', 'pointing', 'focus')
+                or common['obsrabl'] is None):
+            return None
+
+        # Sky position makes no sense for other kinds of
+        # observations, even if supplied in COMMON
+
+        # Position axis bounds are in ICRS
+        # Check for various pathologies due to different
+        # observing strategies
+        # position accuracy is about 0.1 arcsec (in decimal
+        # degrees)
+        eps = 0.1 / 3600.0
+
+        bl = TwoD(common['obsrabl'], common['obsdecbl'])
+        br = TwoD(common['obsrabr'], common['obsdecbr'])
+        tl = TwoD(common['obsratl'], common['obsdectl'])
+        tr = TwoD(common['obsratr'], common['obsdectr'])
+        logger.info('initial bounds bl = %s', bl)
+        logger.info('initial bounds br = %s', br)
+        logger.info('initial bounds tr = %s', tr)
+        logger.info('initial bounds tl = %s', tl)
+        halfbeam = beamsize / 2.0
+
+        # The precomputed bounding box can be represented as a
+        # polgon
+        if ((bl - br).abs() < eps
+                and (bl - tl).abs() < eps
+                and (tl - tr).abs() < eps):
+            # bounding "box" is a point, so expand to a box
+            logger.info(
+                'For observation %s the bounds are a point',
+                common['obsid'])
+
+            cosdec = math.cos(br.y * math.pi / 180.0)
+            offsetX = 0.5 * beamsize / cosdec
+            offsetY = 0.5 * beamsize
+            bl = bl + TwoD(-offsetX, -offsetY)
+            br = br + TwoD(offsetX, -offsetY)
+            tr = tr + TwoD(offsetX, offsetY)
+            tl = tl + TwoD(-offsetX, offsetY)
+
+        elif ((bl - br).abs() < eps
+              and (tl - tr).abs() < eps
+              and (bl - tl).abs() >= eps):
+            # bounding box is a line in y, so diff points to + Y
+            # and the perpendicular points along - X
+            logger.info(
+                'For observation %s the bounds are in a line in Y',
+                common['obsid'])
+
+            diff = tl - bl
+            mean = (tl + bl)/2.0
+            cosdec = math.cos(mean.y * math.pi / 180.0)
+
+            unitX = TwoD(diff.y, -diff.x * cosdec)
+            unitX = unitX / unitX.abs()
+            offsetX = -halfbeam * TwoD(unitX.x / cosdec, unitX.y)
+
+            unitY = TwoD(diff.x * cosdec, diff.y)
+            unitY = unitY / unitY.abs()
+            offsetY = halfbeam * TwoD(unitY.x / cosdec, unitY.y)
+
+            bl = bl - offsetX - offsetY
+            tl = tl - offsetX + offsetY
+            br = br + offsetX - offsetY
+            tr = tr + offsetX + offsetY
+
+        elif ((bl - tl).abs() < eps
+              and (br - tr).abs() < eps
+              and (bl - br).abs() >= eps):
+            # bounding box is a line in x
+            logger.info(
+                'For observation %s the bounds are in a line in X',
+                common['obsid'])
+
+            diff = br - bl
+            mean = (br + bl)/2.0
+            cosdec = math.cos(mean.y * math.pi / 180.0)
+
+            unitX = TwoD(diff.x * cosdec, diff.y)
+            unitX = unitX / unitX.abs()
+            offsetX = halfbeam * TwoD(unitX.x / cosdec, unitX.y)
+
+            unitY = TwoD(diff.y, -diff.x * cosdec)
+            unitY = unitY / unitY.abs()
+            offsetY = halfbeam * TwoD(unitY.x / cosdec, unitY.y)
+
+            bl = bl - offsetX - offsetY
+            tl = tl - offsetX + offsetY
+            br = br + offsetX - offsetY
+            tr = tr + offsetX + offsetY
+
+        else:
+            # Get here only if the box is not degenerate
+            bl3d = ThreeD(bl)
+            br3d = ThreeD(br)
+            tr3d = ThreeD(tr)
+            tl3d = ThreeD(tl)
+
+            try:
+                sign1 = math.copysign(
+                    1, ThreeD.included_angle(br3d, bl3d, tl3d))
+                sign2 = math.copysign(
+                    1, ThreeD.included_angle(tr3d, br3d, bl3d))
+                sign3 = math.copysign(
+                    1, ThreeD.included_angle(tl3d, tr3d, br3d))
+                sign4 = math.copysign(
+                    1, ThreeD.included_angle(bl3d, tl3d, tr3d))
+            except ValueError as e:
+                raise CAOMError('The bounding box for obsid = ' +
+                                self.obsid + ' is degenerate')
+
+            # If the signs are not all the same, the vertices
+            # were recorded in a bowtie order.  Swap any two.
+            if (sign1 != sign2 or sign2 != sign3 or
+                    sign3 != sign4):
+                logger.warning(
+                    'For observation %s the bounds are in a'
+                    ' bowtie order',
+                    common['obsid'])
+                bl.swap(br)
+
+        logger.info('final bounds bl = ' + str(bl))
+        logger.info('final bounds br = ' + str(br))
+        logger.info('final bounds tr = ' + str(tr))
+        logger.info('final bounds tl = ' + str(tl))
+        bounding_box = CoordPolygon2D()
+        bounding_box.vertices.append(ValueCoord2D(bl.x, bl.y))
+        bounding_box.vertices.append(ValueCoord2D(br.x, br.y))
+        bounding_box.vertices.append(ValueCoord2D(tr.x, tr.y))
+        bounding_box.vertices.append(ValueCoord2D(tl.x, tl.y))
+
+        spatial_axes = CoordAxis2D(Axis('RA', 'deg'),
+                                   Axis('DEC', 'deg'))
+        spatial_axes.bounds = bounding_box
+
+        return SpatialWCS(spatial_axes, coordsys='ICRS', equinox=2000.0)
+
+    def build_spectral_wcs(self, common, subsystem, hybrid):
+        """
+        Construct spectral WCS.
+        """
+
+        backend = common['backend'].upper()
+
+        # energy range, which can contain two subranges in DSB
+        if backend == 'SCUBA-2':
+            return scuba2_spectral_wcs(subsystem)
+
+        else:
+            if hybrid is None:
+                raise CAOMError(
+                    'Hybrid information missing for ACSIS observation')
+
+            energy_axis = CoordAxis1D(Axis('FREQ', 'GHz'))
+            if subsystem['sb_mode'] == 'DSB':
+                # These all correspond to "pixel" 1, so the pixel
+                # coordinate runs from [0.5, 1.5]
+                # Note that each artifact already records the frequency
+                # bounds correctly for that data in that file.  The
+                # aggregation to the plane will take care of
+                # overlapping energy bounds.
+                freq_bounds = CoordBounds1D()
+                freq_bounds.samples.append(CoordRange1D(
+                    RefCoord(0.5, subsystem['freq_sig_lower']),
+                    RefCoord(1.5, subsystem['freq_sig_upper'])))
+                freq_bounds.samples.append(CoordRange1D(
+                    RefCoord(0.5, subsystem['freq_img_lower']),
+                    RefCoord(1.5, subsystem['freq_img_upper'])))
+                energy_axis.bounds = freq_bounds
+            else:
+                energy_axis.range = CoordRange1D(
+                    RefCoord(0.5, subsystem['freq_sig_lower']),
+                    RefCoord(1.5, subsystem['freq_sig_upper']))
+
+            # Recall that restfreq has been converted to Hz in
+            # hybrid so do not use the unconverted value from
+            # subsystem['restfreq']
+            meanfreq = float(hybrid['meanfreq'])
+            ifchansp = float(hybrid['ifchansp'])
+
+            return SpectralWCS(
+                energy_axis, 'BARYCENT',
+                ssysobs=subsystem['ssysobs'],
+                ssyssrc=subsystem['ssyssrc'],
+                zsource=subsystem['zsource'],
+                restfrq=hybrid['restfreq'],
+                resolving_power=abs(1.0e9 * meanfreq / ifchansp),
+                transition=EnergyTransition(
+                    subsystem['molecule'], subsystem['transiti']))
+
+    def build_temporal_wcs(self, common):
+        """
+        Construct temporal WCS.
+        """
+
+        # time range
+        time_axis = CoordAxis1D(Axis('TIME', 'd'))
+        mjdstart = utc2mjd(common['date_obs'])
+        mjdend = utc2mjd(common['date_end'])
+        time_axis.range = CoordRange1D(
+            RefCoord(0.5, mjdstart),
+            RefCoord(1.5, mjdend))
+
+        return TemporalWCS(
+            time_axis,
+            timesys='UTC',
+            exposure=(common['date_end'] - common['date_obs']).total_seconds())
 
     def ingest(self):
         """
