@@ -155,11 +155,11 @@ class jcmt2caom2ingest(object):
     lambda_csotau = '%12.9f' % (speedOfLight / freq_csotau)
     productType = {
         'reduced':     {0: 'science', 1: 'noise', None: 'auxiliary'},
-        'rsp':         {0: 'preview', 1: 'noise', None: 'auxiliary'},
-        'rimg':        {0: 'preview', 1: 'noise', None: 'auxiliary'},
+        'rsp':         {None: 'auxiliary'},
+        'rimg':        {None: 'auxiliary'},
         'healpix':     {0: 'science', 1: 'noise', None: 'auxiliary'},
-        'hpxrsp':      {0: 'preview', 1: 'noise', None: 'auxiliary'},
-        'hpxrimg':     {0: 'preview', 1: 'noise', None: 'auxiliary'},
+        'hpxrsp':      {None: 'auxiliary'},
+        'hpxrimg':     {None: 'auxiliary'},
         'peak-cat':    {1: 'science', None: 'auxiliary'},
         'extent-cat':  {1: 'science', None: 'auxiliary'},
         'extent-mask': {None: 'auxiliary'},
