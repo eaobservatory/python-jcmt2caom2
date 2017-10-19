@@ -200,9 +200,6 @@ class jcmt2caom2ingest(object):
         self.config = None
         self.default = None
 
-        # dictionary of lists of compiles regex expressions, keyed by extension
-        self.fileid_regex_dict = None
-
         # Working structures thatcollect metadata from each file to be saved
         # in self.metadict
         self.collection = None
@@ -2773,13 +2770,15 @@ class jcmt2caom2ingest(object):
         if args.prefix:
             self.prefix = args.prefix
             file_id_regex = re.compile(self.prefix + r'.*')
-            self.fileid_regex_dict = {'.fits': [file_id_regex],
-                                      '.fit': [file_id_regex],
-                                      '.log': [file_id_regex],
-                                      '.txt': [file_id_regex]}
+            fileid_regex_dict = {
+                '.fits': [file_id_regex],
+                '.fit': [file_id_regex],
+                '.log': [file_id_regex],
+                '.txt': [file_id_regex]}
         else:
-            self.fileid_regex_dict = {'.fits': [re.compile(r'.*')],
-                                      '.fit': [re.compile(r'.*')]}
+            fileid_regex_dict = {
+                '.fits': [re.compile(r'.*')],
+                '.fit': [re.compile(r'.*')]}
 
         if args.big:
             self.big = args.big
@@ -2864,7 +2863,7 @@ class jcmt2caom2ingest(object):
 
             # Construct validation object
             self.validation = CAOMValidation(self.archive,
-                                             self.fileid_regex_dict,
+                                             fileid_regex_dict,
                                              self.make_file_id)
 
             self.fillMetadict(self.getfilelist(indirpath))
