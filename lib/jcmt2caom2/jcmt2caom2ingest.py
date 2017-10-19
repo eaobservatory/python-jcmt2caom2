@@ -2863,8 +2863,7 @@ class jcmt2caom2ingest(object):
             self.conn = ArcDB()
 
             # Construct validation object
-            self.validation = CAOMValidation(self.workdir,
-                                             self.archive,
+            self.validation = CAOMValidation(self.archive,
                                              self.fileid_regex_dict,
                                              self.make_file_id)
 
