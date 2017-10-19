@@ -549,10 +549,10 @@ class raw(object):
         br = TwoD(common['obsrabr'], common['obsdecbr'])
         tl = TwoD(common['obsratl'], common['obsdectl'])
         tr = TwoD(common['obsratr'], common['obsdectr'])
-        logger.info('initial bounds bl = %s', bl)
-        logger.info('initial bounds br = %s', br)
-        logger.info('initial bounds tr = %s', tr)
-        logger.info('initial bounds tl = %s', tl)
+        logger.debug('initial bounds bl = %s', bl)
+        logger.debug('initial bounds br = %s', br)
+        logger.debug('initial bounds tr = %s', tr)
+        logger.debug('initial bounds tl = %s', tl)
         halfbeam = beamsize / 2.0
 
         # The precomputed bounding box can be represented as a
@@ -654,10 +654,10 @@ class raw(object):
                     common['obsid'])
                 bl.swap(br)
 
-        logger.info('final bounds bl = ' + str(bl))
-        logger.info('final bounds br = ' + str(br))
-        logger.info('final bounds tr = ' + str(tr))
-        logger.info('final bounds tl = ' + str(tl))
+        logger.debug('final bounds bl = ' + str(bl))
+        logger.debug('final bounds br = ' + str(br))
+        logger.debug('final bounds tr = ' + str(tr))
+        logger.debug('final bounds tl = ' + str(tl))
         bounding_box = CoordPolygon2D()
         bounding_box.vertices.append(ValueCoord2D(bl.x, bl.y))
         bounding_box.vertices.append(ValueCoord2D(br.x, br.y))
