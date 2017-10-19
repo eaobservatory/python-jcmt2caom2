@@ -64,6 +64,5 @@ setup(
         'docopt',
         'healpy',
         'tools4caom2',
-        'vos',
     ]
 )
