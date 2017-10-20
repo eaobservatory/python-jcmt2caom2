@@ -110,8 +110,10 @@ class raw(object):
     # Allowed values for backend names in ACSIS
     BACKENDS = ['ACSIS', 'SCUBA-2', 'DAS', 'AOSC']
 
-    # Instrumens for which we do not wish to ingest data.
-    FORBIDDEN_INSTRUMENTS = ('GLT', 'GLT86', 'GLT230', 'GLT345')
+    # Instrumens for which we wish to ingest data.
+    ALLOWED_INSTRUMENTS = (
+        'HARP', 'RXA3', 'RXA3M', 'SCUBA-2',
+    )
 
     MANDATORY = ('backend',
                  'instrume',
@@ -763,7 +765,7 @@ class raw(object):
 
         # There are some instruments we wish to reject immediately.
         instrument = common['instrume'].upper()
-        if instrument in self.FORBIDDEN_INSTRUMENTS:
+        if instrument not in self.ALLOWED_INSTRUMENTS:
             raise CAOMError('Forbidden instrument: %s', instrument)
 
         # Append the proposal metadata
