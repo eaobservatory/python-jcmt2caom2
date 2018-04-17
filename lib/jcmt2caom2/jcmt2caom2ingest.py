@@ -1723,7 +1723,11 @@ class jcmt2caom2ingest(object):
                     is_defined('TRANSITI', header) and
                     header['MOLECULE'] != 'No Line'):
                 plane_dict['energy.transition.species'] = header['MOLECULE']
-                plane_dict['energy.transition.transition'] = header['TRANSITI']
+
+                # Tidy transition name.  (It appears this used to be done by
+                # CAOM-2 itself, but now we need to do it here.)
+                plane_dict['energy.transition.transition'] = re.sub(
+                    r'\s\s+', ' ', header['TRANSITI'])
 
         uri = self.fitsfileURI(self.archive, file_id)
         # Recall that the order in fitsuri_dict is called is preserved

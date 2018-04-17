@@ -1,5 +1,5 @@
 # Copyright (C) 2014-2015 Science and Technology Facilities Council.
-# Copyright (C) 2015-2017 East Asian Observatory.
+# Copyright (C) 2015-2018 East Asian Observatory.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -715,6 +715,11 @@ class raw(object):
             meanfreq = float(hybrid['meanfreq'])
             ifchansp = float(hybrid['ifchansp'])
 
+            # Tidy transition name.  (It appears this used to be done by
+            # CAOM-2 itself, but now we need to do it here, unless all
+            # database entries get tidied up.)
+            transition = re.sub(r'\s\s+', ' ', subsystem['transiti'])
+
             return SpectralWCS(
                 energy_axis, 'BARYCENT',
                 ssysobs=subsystem['ssysobs'],
@@ -723,7 +728,7 @@ class raw(object):
                 restfrq=hybrid['restfreq'],
                 resolving_power=abs(1.0e9 * meanfreq / ifchansp),
                 transition=EnergyTransition(
-                    subsystem['molecule'], subsystem['transiti']))
+                    subsystem['molecule'], transition))
 
     def build_temporal_wcs(self, common):
         """
