@@ -1,5 +1,5 @@
 # Copyright (C) 2014-2015 Science and Technology Facilities Council.
-# Copyright (C) 2015-2016 East Asian Observatory.
+# Copyright (C) 2015-2018 East Asian Observatory.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -34,10 +34,11 @@ from pymoc.io.fits import read_moc_fits_hdu
 
 from omp.db.part.arc import ArcDB
 
+from caom2.caom2_artifact import Artifact
 from caom2.caom2_chunk import Chunk
 from caom2.caom2_composite_observation import CompositeObservation
 from caom2.caom2_enums import CalibrationLevel, \
-    ObservationIntentType, ProductType
+    ObservationIntentType, ProductType, ReleaseType
 from caom2.caom2_observation_uri import ObservationURI
 from caom2.caom2_plane_uri import PlaneURI
 from caom2.caom2_simple_observation import SimpleObservation
@@ -66,6 +67,7 @@ from jcmt2caom2.jsa.obsid import obsidss_to_obsid
 from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.tile import jsa_tile_wcs
+from jcmt2caom2.png_keywords import read_png_keywords
 from jcmt2caom2.project import get_project_pi_title, truncate_string
 from jcmt2caom2.type import OrderedDefaultDict, OrderedStrDict
 
@@ -155,11 +157,11 @@ class jcmt2caom2ingest(object):
     lambda_csotau = '%12.9f' % (speedOfLight / freq_csotau)
     productType = {
         'reduced':     {0: 'science', 1: 'noise', None: 'auxiliary'},
-        'rsp':         {0: 'preview', 1: 'noise', None: 'auxiliary'},
-        'rimg':        {0: 'preview', 1: 'noise', None: 'auxiliary'},
+        'rsp':         {None: 'auxiliary'},
+        'rimg':        {None: 'auxiliary'},
         'healpix':     {0: 'science', 1: 'noise', None: 'auxiliary'},
-        'hpxrsp':      {0: 'preview', 1: 'noise', None: 'auxiliary'},
-        'hpxrimg':     {0: 'preview', 1: 'noise', None: 'auxiliary'},
+        'hpxrsp':      {None: 'auxiliary'},
+        'hpxrimg':     {None: 'auxiliary'},
         'peak-cat':    {1: 'science', None: 'auxiliary'},
         'extent-cat':  {1: 'science', None: 'auxiliary'},
         'extent-mask': {None: 'auxiliary'},
@@ -393,6 +395,46 @@ class jcmt2caom2ingest(object):
         self.build_metadict(
             filepath, self.read_file_info(
                 file_id, filepath, head, first_extension, moc))
+
+    def get_png_info(self, filenames):
+        """
+        Read headers from the given list of PNG files.
+
+        Returns a dictionary structured like that built by build_metadict:
+
+            observationID =>
+                productID =>
+                    preview => [list of file_ids]
+                    thumbnail => [list of file_ids]
+        """
+
+        info = defaultdict(lambda: defaultdict(dict))
+
+        for filename in filenames:
+            if filename.endswith('preview_64.png'):
+                continue
+            elif filename.endswith('preview_256.png'):
+                type_ = 'thumbnail'
+            elif filename.endswith('preview_1024.png'):
+                type_ = 'preview'
+            else:
+                logger.warning('Unexpected preview size: %s', filename)
+                continue
+
+            file_id = self.make_file_id(filename)
+            keywords = read_png_keywords(filename)
+
+            if keywords['jsa:asn_type'] == 'obs':
+                observationID = keywords['jsa:obsid']
+
+            else:
+                observationID = keywords['jsa:asn_id']
+
+            productID = keywords['jsa:productID']
+
+            info[observationID][productID][type_] = file_id
+
+        return info
 
     def observationURI(self, collection, observationID):
         """
@@ -2377,6 +2419,46 @@ class jcmt2caom2ingest(object):
 
             del self.remove_dict[observationID]
 
+    def add_pngs_to_plane(self, observation, planeID, pngs):
+        """
+        Add PNG images as preview and thumbnail to the plane.
+
+        Also add these images to the raw image plane if appropriate.
+        """
+
+        planes = [observation.planes[planeID]]
+
+        # If this is the "reduced" plane and there is an equivalent
+        # "raw" plane, use these previews for it too.
+        (product, product_suffix) = planeID.split('-', 1)
+        if product == 'reduced':
+            raw_planeID = '{}-{}'.format('raw', product_suffix)
+            if raw_planeID in observation.planes:
+                planes.append(observation.planes[raw_planeID])
+
+        for plane in planes:
+            for (type_name, product_type) in [
+                        ('preview', ProductType.PREVIEW),
+                        ('thumbnail', ProductType.THUMBNAIL),
+                    ]:
+                png_id = pngs.get(type_name)
+                if png_id is None:
+                    logger.warning('PNG %s not found', type_name)
+                    continue
+
+                logger.info(
+                    'ADDING PNG %s to plane %s as %s',
+                    png_id, plane.product_id, type_name)
+
+                uri = self.fitsfileURI(self.archive, png_id)
+
+                artifact = Artifact(
+                    uri, product_type=product_type,
+                    release_type=ReleaseType.META,
+                    content_type='image/png')
+
+                plane.artifacts[uri] = artifact
+
     def remove_old_observations_and_planes(self):
         """
         Implement the cleanup of observations and planes that are
@@ -2531,17 +2613,18 @@ class jcmt2caom2ingest(object):
             elif 'provenance.inputs' in thisPlane['plane_dict']:
                 del thisPlane['plane_dict']['provenance.inputs']
 
-    def ingestPlanesFromMetadict(self):
+    def ingestPlanesFromMetadict(self, png_info):
         """
         Generic routine to ingest the planes in metadict, keeping track of
         members and inputs.
 
         Arguments:
-        <none>
+        png_info
         """
 
         for observationID in self.metadict:
             thisObservation = self.metadict[observationID]
+            observation_png = png_info.get(observationID)
 
             obsuri = self.observationURI(self.collection,
                                          observationID)
@@ -2554,6 +2637,8 @@ class jcmt2caom2ingest(object):
                 for productID in thisObservation:
                     if productID != 'memberset':
                         thisPlane = thisObservation[productID]
+                        plane_png = None if observation_png is None \
+                            else observation_png.get(productID)
 
                         logger.info('PROGRESS ingesting collection="%s"  '
                                     'observationID="%s" productID="%s"',
@@ -2616,6 +2701,10 @@ class jcmt2caom2ingest(object):
                                     observationID, productID, fitsuri)
 
                         self.set_explicit_wcs(wrapper.observation, productID)
+
+                        if plane_png is not None:
+                            self.add_pngs_to_plane(
+                                wrapper.observation, productID, plane_png)
 
                 logger.info('Removing old planes from this observation')
                 self.remove_old_planes(wrapper.observation,
@@ -2782,7 +2871,9 @@ class jcmt2caom2ingest(object):
         else:
             fileid_regex_dict = {
                 '.fits': [re.compile(r'.*')],
-                '.fit': [re.compile(r'.*')]}
+                '.fit': [re.compile(r'.*')],
+                '.png': [re.compile(r'.*')],
+            }
 
         if args.big:
             self.big = args.big
@@ -2870,10 +2961,15 @@ class jcmt2caom2ingest(object):
                                              fileid_regex_dict,
                                              self.make_file_id)
 
-            self.fillMetadict(self.getfilelist(indirpath))
+
+            files = self.getfilelist(indirpath)
+            self.fillMetadict([x for x in files if not x.endswith('.png')])
+
+            png_info = self.get_png_info([x for x in files if x.endswith('.png')])
+
             self.checkProvenanceInputs()
             if self.ingest:
-                self.ingestPlanesFromMetadict()
+                self.ingestPlanesFromMetadict(png_info=png_info)
 
             # declare we are DONE
             logger.info('DONE')

@@ -16,6 +16,7 @@
 
 __author__ = "Russell O. Redman"
 
+from collections import defaultdict
 import argparse
 import logging
 import math
@@ -442,9 +443,19 @@ class raw(object):
         # Delete any existing raw planes, since we will construct
         # new ones from scratch.  For all other planes, update the
         # "data quality" since this is a plane-level attribute.
-        for productID in observation.planes:
+        preview = defaultdict(list)
+        for productID in list(observation.planes):
             if productID[0:3] == 'raw':
-                del observation.planes[productID]
+                old_plane = observation.planes.pop(productID)
+
+                # Keep a list of the preview artifacts.
+                for old_artifact in old_plane.artifacts.values():
+                    old_product_type = old_artifact.product_type
+
+                    if ((old_product_type is ProductType.PREVIEW)
+                            or (old_product_type is ProductType.THUMBNAIL)):
+                        preview[productID].append(old_artifact)
+
             else:
                 observation.planes[productID].quality = data_quality
 
@@ -511,6 +522,12 @@ class raw(object):
                 artifact.parts['0'].chunks.append(chunk)
 
                 # and append the atrifact to the plane
+                plane.artifacts.add(artifact)
+
+            # Restore saved previews
+            for artifact in preview[productID]:
+                logger.debug(
+                    'Retaining old preview/thumbnail: %s', artifact.uri)
                 plane.artifacts.add(artifact)
 
         return observation
