@@ -338,7 +338,7 @@ class raw(object):
         instrument = Instrument(instrument_name(frontend,
                                                 backend,
                                                 inbeam))
-        instrument.keywords.extend(self.instrument_keywords)
+        instrument.keywords.update(self.instrument_keywords)
 
         observation.instrument = instrument
 
@@ -436,7 +436,7 @@ class raw(object):
 
             observation.target = target
 
-        telescope = Telescope('JCMT')
+        telescope = Telescope(u'JCMT')
         telescope.geo_location_x = common['obsgeo_x']
         telescope.geo_location_y = common['obsgeo_y']
         telescope.geo_location_z = common['obsgeo_z']
@@ -484,7 +484,7 @@ class raw(object):
             plane.meta_release = common['release_date']
             plane.data_release = common['release_date']
             # all JCMT raw data is in a non-FITS format
-            plane.calibration_level = CalibrationLevel.RAW_INSTRUMENT
+            plane.calibration_level = CalibrationLevel.RAW_INSTRUMENTAL
             # set the plane data quality
             plane.quality = data_quality
 

@@ -1377,7 +1377,7 @@ class jcmt2caom2ingest(object):
         intent_val = None
         if obs_type and backend:
             intent_val = intent(raw_obs_type, backend).value
-            plane_dict['obs.intent'] = intent_val
+            plane_dict['obs.intent'] = str(intent_val)
 
         # Plane metadata
         # metadata needed to create productID
@@ -1790,7 +1790,7 @@ class jcmt2caom2ingest(object):
             prodtypes = jcmt2caom2ingest.productType[product]
 
         for prodtype in prodtypes.values():
-            if ProductType.getByValue(prodtype) is None:
+            if prodtype not in [x.value for x in ProductType.__members__.values()]:
                 raise CAOMError('file {0}: invalid ProductType "{1}"'.format(
                     filename, prodtype))
 
@@ -2290,7 +2290,7 @@ class jcmt2caom2ingest(object):
                 logger.debug('skip custom processing because fitsuri does '
                              'not point to an artifact')
                 return
-            if (observation.algorithm != SimpleObservation._ALGORITHM and
+            if (observation.algorithm != SimpleObservation.algorithm and
                     len(observation.members) > 1):
                 # single exposure products have DATE-OBS and DATE-END,
                 # and are handled correctly by fits2caom2
