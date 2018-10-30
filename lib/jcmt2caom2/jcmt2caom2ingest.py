@@ -2290,7 +2290,7 @@ class jcmt2caom2ingest(object):
                 logger.debug('skip custom processing because fitsuri does '
                              'not point to an artifact')
                 return
-            if (observation.algorithm != SimpleObservation.algorithm and
+            if (observation.algorithm.name != SimpleObservation._DEFAULT_ALGORITHM_NAME and
                     len(observation.members) > 1):
                 # single exposure products have DATE-OBS and DATE-END,
                 # and are handled correctly by fits2caom2
