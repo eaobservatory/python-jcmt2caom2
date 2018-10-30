@@ -27,34 +27,36 @@ import sys
 from omp.db.part.arc import ArcDB
 from omp.obs.state import OMPState
 
-from caom2.caom2_artifact import Artifact
-from caom2.caom2_chunk import Chunk
-from caom2.caom2_data_quality import DataQuality
-from caom2.caom2_energy_transition import EnergyTransition
-from caom2.caom2_enums import CalibrationLevel, ObservationIntentType, \
-    ProductType, Quality, ReleaseType, Status
-from caom2.caom2_environment import Environment
-from caom2.caom2_instrument import Instrument
-from caom2.caom2_part import Part
-from caom2.caom2_plane import Plane
-from caom2.caom2_proposal import Proposal
-from caom2.caom2_requirements import Requirements
-from caom2.caom2_simple_observation import SimpleObservation
-from caom2.caom2_target import Target
-from caom2.caom2_target_position import TargetPosition
-from caom2.caom2_telescope import Telescope
-from caom2.types.caom2_point import Point
-from caom2.wcs.caom2_axis import Axis
-from caom2.wcs.caom2_coord_axis1d import CoordAxis1D
-from caom2.wcs.caom2_coord_axis2d import CoordAxis2D
-from caom2.wcs.caom2_coord_bounds1d import CoordBounds1D
-from caom2.wcs.caom2_coord_polygon2d import CoordPolygon2D
-from caom2.wcs.caom2_coord_range1d import CoordRange1D
-from caom2.wcs.caom2_ref_coord import RefCoord
-from caom2.wcs.caom2_spatial_wcs import SpatialWCS
-from caom2.wcs.caom2_spectral_wcs import SpectralWCS
-from caom2.wcs.caom2_temporal_wcs import TemporalWCS
-from caom2.wcs.caom2_value_coord2d import ValueCoord2D
+from caom2.artifact import Artifact
+from caom2.chunk import Chunk
+from caom2.plane import DataQuality
+from caom2.wcs import EnergyTransition
+from caom2.plane import CalibrationLevel, Quality
+from caom2.observation import ObservationIntentType, Status
+from caom2.chunk import ProductType
+from caom2.artifact import ReleaseType
+from caom2.observation import Environment
+from caom2.observation import Instrument
+from caom2.part import Part
+from caom2.plane import Plane
+from caom2.observation import Proposal
+from caom2.observation import Requirements
+from caom2.observation import SimpleObservation
+from caom2.observation import Target
+from caom2.observation import TargetPosition
+from caom2.observation import Telescope
+from caom2.shape import Point
+from caom2.wcs import Axis
+from caom2.wcs import CoordAxis1D
+from caom2.wcs import CoordAxis2D
+from caom2.wcs import CoordBounds1D
+from caom2.wcs import CoordPolygon2D
+from caom2.wcs import CoordRange1D
+from caom2.wcs import RefCoord
+from caom2.chunk import SpatialWCS
+from caom2.chunk import SpectralWCS
+from caom2.chunk import TemporalWCS
+from caom2.wcs import ValueCoord2D
 
 from tools4caom2.__version__ import version as tools4caom2version
 from tools4caom2.caom2repo_wrapper import Repository

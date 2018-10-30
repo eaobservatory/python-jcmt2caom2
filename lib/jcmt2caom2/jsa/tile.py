@@ -19,11 +19,11 @@ import re
 import healpy
 import numpy as np
 
-from caom2.wcs.caom2_axis import Axis
-from caom2.wcs.caom2_coord_axis2d import CoordAxis2D
-from caom2.wcs.caom2_coord_polygon2d import CoordPolygon2D
-from caom2.wcs.caom2_spatial_wcs import SpatialWCS
-from caom2.wcs.caom2_value_coord2d import ValueCoord2D
+from caom2.wcs import Axis
+from caom2.wcs import CoordAxis2D
+from caom2.wcs import CoordPolygon2D
+from caom2.chunk import SpatialWCS
+from caom2.wcs import ValueCoord2D
 
 from tools4caom2.error import CAOMError
 

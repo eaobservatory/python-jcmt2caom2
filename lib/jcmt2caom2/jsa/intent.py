@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from caom2.caom2_enums import ObservationIntentType
+from caom2.observation import ObservationIntentType
 
 
 def intent(obs_type, backend):

@@ -14,11 +14,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from caom2.wcs.caom2_axis import Axis
-from caom2.wcs.caom2_coord_axis1d import CoordAxis1D
-from caom2.wcs.caom2_coord_range1d import CoordRange1D
-from caom2.wcs.caom2_ref_coord import RefCoord
-from caom2.wcs.caom2_spectral_wcs import SpectralWCS
+from caom2.wcs import Axis
+from caom2.wcs import CoordAxis1D
+from caom2.wcs import CoordRange1D
+from caom2.wcs import RefCoord
+from caom2.chunk import SpectralWCS
 
 
 def scuba2_spectral_wcs(header):

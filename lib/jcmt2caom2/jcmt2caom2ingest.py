@@ -34,20 +34,22 @@ from pymoc.io.fits import read_moc_fits_hdu
 
 from omp.db.part.arc import ArcDB
 
-from caom2.caom2_artifact import Artifact
-from caom2.caom2_chunk import Chunk
-from caom2.caom2_composite_observation import CompositeObservation
-from caom2.caom2_enums import CalibrationLevel, \
-    ObservationIntentType, ProductType, ReleaseType
-from caom2.caom2_observation_uri import ObservationURI
-from caom2.caom2_plane_uri import PlaneURI
-from caom2.caom2_simple_observation import SimpleObservation
-from caom2.wcs.caom2_axis import Axis
-from caom2.wcs.caom2_coord_axis1d import CoordAxis1D
-from caom2.wcs.caom2_coord_bounds1d import CoordBounds1D
-from caom2.wcs.caom2_coord_range1d import CoordRange1D
-from caom2.wcs.caom2_ref_coord import RefCoord
-from caom2.wcs.caom2_temporal_wcs import TemporalWCS
+from caom2.artifact import Artifact
+from caom2.chunk import Chunk
+from caom2.observation import CompositeObservation
+from caom2.plane import CalibrationLevel
+from caom2.observation import ObservationIntentType
+from caom2.chunk import ProductType
+from caom2.artifact import ReleaseType
+from caom2.common import ObservationURI
+from caom2.plane import PlaneURI
+from caom2.observation import SimpleObservation
+from caom2.wcs import Axis
+from caom2.wcs import CoordAxis1D
+from caom2.wcs import CoordBounds1D
+from caom2.wcs import CoordRange1D
+from caom2.wcs import RefCoord
+from caom2.chunk import TemporalWCS
 
 from tools4caom2.__version__ import version as tools4caom2version
 from tools4caom2.caom2repo_wrapper import Repository
