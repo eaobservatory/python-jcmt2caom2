@@ -170,13 +170,13 @@ def main():
         # dictionary.  Note: use a 'like 'as instrument_names at CADC
         # may include POL, FTS etc.  Also all CAOM instrument names
         # are upper case for JCMT. This is not limited by time.
-        caom2query = ("SELECT caom2.Observation.observationID, "
-                      " caom2.Observation.metaRelease "
-                      " FROM caom2.Observation "
-                      " WHERE collection='JCMT' "
-                      " AND algorithm_name='exposure' "
-                      " AND instrument_name like '%" + cadcinstrument.upper() + "%'"
-                      " AND proposal_id !='JCMT-LR';")
+        caom2query = ("SELECT o.observationID, "
+                      " o.metaRelease "
+                      " FROM caom2.Observation as o JOIN caom2.Plane as p ON o.obsID=p.obsID "
+                      " WHERE o.collection='JCMT' "
+                      " AND o.algorithm_name='exposure' "
+                      " AND o.instrument_name like '%" + cadcinstrument.upper() + "%'"
+                      " AND o.proposal_id !='JCMT-LR' AND p.productID like '%raw%';")
 
         tap = tapclient.tapclient()
         table = tap.query(caom2query, timeout=60)
