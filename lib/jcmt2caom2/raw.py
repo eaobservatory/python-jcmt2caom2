@@ -66,6 +66,7 @@ from tools4caom2.mjd import utc2mjd
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 from jcmt2caom2.caom2_tap import CAOM2TAP
 from jcmt2caom2.instrument.scuba2 import scuba2_spectral_wcs
+from jcmt2caom2.jsa.file_id import make_file_id_jcmt
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.intent import intent
@@ -489,8 +490,8 @@ class raw(object):
             plane.quality = data_quality
 
             # For JCMT raw data, all artifacts have the same WCS
-            for jcmt_file_id in files[obsid_subsysnr]:
-                file_id = os.path.splitext(jcmt_file_id)[0]
+            for file_name in files[obsid_subsysnr]:
+                file_id = make_file_id_jcmt(file_name)
                 uri = 'ad:JCMT/' + file_id
 
                 if observation.intent == ObservationIntentType.SCIENCE:

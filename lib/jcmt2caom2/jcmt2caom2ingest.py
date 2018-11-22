@@ -56,12 +56,12 @@ from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.error import CAOMError
 from tools4caom2.fits2caom2 import run_fits2caom2
 from tools4caom2.mjd import utc2mjd
-from tools4caom2.util import make_file_id_no_ext
 from tools4caom2.validation import CAOMValidation, CAOMValidationError
 
 from jcmt2caom2.__version__ import version as jcmt2caom2version
 from jcmt2caom2.caom2_tap import CAOM2TAP
 from jcmt2caom2.instrument.scuba2 import scuba2_spectral_wcs
+from jcmt2caom2.jsa.file_id import make_file_id_jcmt
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 from jcmt2caom2.jsa.instrument_name import instrument_name
 from jcmt2caom2.jsa.intent import intent
@@ -187,7 +187,7 @@ class jcmt2caom2ingest(object):
 
         # routine to convert filepaths into file_ids
         # The default routine supplied here should work for most archives.
-        self.make_file_id = make_file_id_no_ext
+        self.make_file_id = make_file_id_jcmt
 
         # temporary disk space for working files
         self.workdir = None
@@ -2864,18 +2864,18 @@ class jcmt2caom2ingest(object):
 
         if args.prefix:
             self.prefix = args.prefix
-            file_id_regex = re.compile(self.prefix + r'.*')
-            fileid_regex_dict = {
-                '.fits': [file_id_regex],
-                '.fit': [file_id_regex],
-                '.log': [file_id_regex],
-                '.txt': [file_id_regex]}
+            file_id_regexes = [
+                re.compile(r'^' + self.prefix + r'.*\.fits$'),
+                re.compile(r'^' + self.prefix + r'.*\.fit$'),
+                re.compile(r'^' + self.prefix + r'.*\.log$'),
+                re.compile(r'^' + self.prefix + r'.*\.txt$'),
+            ]
         else:
-            fileid_regex_dict = {
-                '.fits': [re.compile(r'.*')],
-                '.fit': [re.compile(r'.*')],
-                '.png': [re.compile(r'.*')],
-            }
+            file_id_regexes = [
+                re.compile(r'^.*\.fits$'),
+                re.compile(r'^.*\.fit$'),
+                re.compile(r'^.*\.png$'),
+            ]
 
         if args.big:
             self.big = args.big
@@ -2959,9 +2959,8 @@ class jcmt2caom2ingest(object):
             self.conn = ArcDB()
 
             # Construct validation object
-            self.validation = CAOMValidation(self.archive,
-                                             fileid_regex_dict,
-                                             self.make_file_id)
+            self.validation = CAOMValidation(
+                self.archive, file_id_regexes, self.make_file_id)
 
 
             files = self.getfilelist(indirpath)
