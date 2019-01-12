@@ -36,6 +36,7 @@ from omp.db.part.arc import ArcDB
 
 from caom2.artifact import Artifact
 from caom2.chunk import Chunk
+from caom2.common import ChecksumURI
 from caom2.observation import CompositeObservation
 from caom2.plane import CalibrationLevel
 from caom2.observation import ObservationIntentType
@@ -69,6 +70,8 @@ from jcmt2caom2.jsa.obsid import obsidss_to_obsid
 from jcmt2caom2.jsa.product_id import product_id
 from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.tile import jsa_tile_wcs
+from jcmt2caom2.md5sum import get_md5sum
+from jcmt2caom2.mime import determine_mime_type
 from jcmt2caom2.png_keywords import read_png_keywords
 from jcmt2caom2.project import get_project_pi_title, truncate_string
 from jcmt2caom2.type import OrderedDefaultDict, OrderedStrDict
@@ -406,8 +409,10 @@ class jcmt2caom2ingest(object):
 
             observationID =>
                 productID =>
-                    preview => [list of file_ids]
-                    thumbnail => [list of file_ids]
+                    preview => file_info
+                    thumbnail => file_info
+
+        Wheere each `file_info` dictionary contains the file_id, size and md5sum.
         """
 
         info = defaultdict(lambda: defaultdict(dict))
@@ -434,7 +439,11 @@ class jcmt2caom2ingest(object):
 
             productID = keywords['jsa:productID']
 
-            info[observationID][productID][type_] = file_id
+            info[observationID][productID][type_] = {
+                'file_id': file_id,
+                'size': os.path.getsize(filename),
+                'md5sum': get_md5sum(filename),
+            }
 
         return info
 
@@ -2443,10 +2452,12 @@ class jcmt2caom2ingest(object):
                         ('preview', ProductType.PREVIEW),
                         ('thumbnail', ProductType.THUMBNAIL),
                     ]:
-                png_id = pngs.get(type_name)
-                if png_id is None:
+                png_info = pngs.get(type_name)
+                if png_info is None:
                     logger.warning('PNG %s not found', type_name)
                     continue
+
+                png_id = png_info['file_id']
 
                 logger.info(
                     'ADDING PNG %s to plane %s as %s',
@@ -2457,7 +2468,10 @@ class jcmt2caom2ingest(object):
                 artifact = Artifact(
                     uri, product_type=product_type,
                     release_type=ReleaseType.META,
-                    content_type='image/png')
+                    content_type=determine_mime_type(png_id),
+                    content_length=png_info['size'],
+                    content_checksum=ChecksumURI(
+                        'md5:{}'.format(png_info['md5sum'])))
 
                 plane.artifacts[uri] = artifact
 
