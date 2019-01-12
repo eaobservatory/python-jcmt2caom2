@@ -29,6 +29,7 @@ from omp.obs.state import OMPState
 
 from caom2.artifact import Artifact
 from caom2.chunk import Chunk
+from caom2.common import ChecksumURI
 from caom2.plane import DataQuality
 from caom2.wcs import EnergyTransition
 from caom2.plane import CalibrationLevel, Quality
@@ -74,6 +75,7 @@ from jcmt2caom2.jsa.raw_product_id import raw_product_id
 from jcmt2caom2.jsa.target_name import target_name
 from jcmt2caom2.jsa.threed import ThreeD
 from jcmt2caom2.jsa.twod import TwoD
+from jcmt2caom2.mime import determine_mime_type
 from jcmt2caom2.project import get_project_pi_title, truncate_string
 
 __doc__ = """
@@ -261,7 +263,7 @@ class raw(object):
         obsid       obsid from COMMON to be used as the observationID
         common      dictionary containing fields common to the observation
         subsystem   dictionary containing fields from ACSIS or SCUBA2
-        files       dictionary containing the lists of artifact filenames
+        files       dictionary containing artifact info dictionaries
         """
 
         collection = self.collection
@@ -490,7 +492,8 @@ class raw(object):
             plane.quality = data_quality
 
             # For JCMT raw data, all artifacts have the same WCS
-            for file_name in files[obsid_subsysnr]:
+            for file_info in files[obsid_subsysnr]:
+                file_name = file_info['name']
                 file_id = make_file_id_jcmt(file_name)
                 uri = 'ad:JCMT/' + file_id
 
@@ -499,8 +502,17 @@ class raw(object):
                 else:
                     artifact_product_type = ProductType.CALIBRATION
 
-                artifact = Artifact(uri, product_type=artifact_product_type,
-                                    release_type=ReleaseType.DATA)
+                artifact = Artifact(
+                    uri, product_type=artifact_product_type,
+                    release_type=ReleaseType.DATA,
+                    content_type=determine_mime_type(file_name))
+
+                if file_info['size'] is not None:
+                    artifact.content_length = file_info['size']
+
+                if file_info['md5sum'] is not None:
+                    artifact.content_checksum = ChecksumURI(
+                        'md5:{}'.format(file_info['md5sum']))
 
                 artifact.meta_release = common['release_date']
 
@@ -843,7 +855,7 @@ class raw(object):
 
         uri = 'caom:' + self.collection + '/' + common['obsid']
         # get the list of files for this observation
-        files = self.conn.get_files(self.obsid)
+        files = self.conn.get_files(self.obsid, with_info=True)
         if files is None:
             raise CAOMError('No rows in FILES for obsid = ' + self.obsid)
 
