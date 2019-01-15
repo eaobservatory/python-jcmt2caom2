@@ -1608,9 +1608,9 @@ class jcmt2caom2ingest(object):
 
         # Check for existence of provenance input headers, which are optional
         logger.info('Reading provenance')
-        logger.debug('input_cache: %s',
-                     ', '.join([str(k) + ': ' + repr(self.input_cache[k])
-                                for k in sorted(self.input_cache.keys())]))
+        logger.debug('input_cache:')
+        for input_cache_key in sorted(self.input_cache.keys()):
+            logger.debug('%s: %s', input_cache_key, repr(self.input_cache[input_cache_key]))
 
         if is_defined('INPCNT', header):
             planeURI_regex = r'^caom:([^\s/]+)/([^\s/]+)/([^\s/]+)$'
