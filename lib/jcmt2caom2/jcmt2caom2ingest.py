@@ -2903,6 +2903,9 @@ class jcmt2caom2ingest(object):
                         action='store_true',
                         help='show all messages, pass --debug to '
                         'fits2caom2, and retain all xml and override files')
+        ap.add_argument('--quiet', '-q',
+                        action='store_true',
+                        help='show only warning and error messages')
         ap.add_argument('--xmloutdir',
                         help='directory into which to write XML files')
 
@@ -2956,6 +2959,8 @@ class jcmt2caom2ingest(object):
         if args.verbose:
             logging.getLogger().setLevel(logging.DEBUG)
             self.verbose = True
+        elif args.quiet:
+            logging.getLogger().setLevel(logging.WARNING)
 
         # create workdir if it does not already exist
         if not os.path.exists(self.workdir):
