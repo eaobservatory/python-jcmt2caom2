@@ -32,6 +32,12 @@ FileInfo = namedtuple('FileInfo',
                       ('collection', 'obs_id', 'prod_id', 'artifact_uri'))
 
 
+def _remove_file_extension(artifact_uri):
+    # Assume that "." only appears in artifact URIs before a file extension
+    # (appears true based on TAP queries performed to check).
+    return artifact_uri.split('.', 1)[0]
+
+
 class CAOM2TAP(object):
     """
     Class for interacting with CAOM-2 via CADC's TAP srevice.
@@ -164,6 +170,10 @@ class CAOM2TAP(object):
         artifact.
         """
 
+        # Temporarily remove extension and do a "LIKE" query to allow for
+        # CAOM-2 records with and without extensions in artifact URIs.
+        artifact_uri = _remove_file_extension(artifact_uri)
+
         result = []
 
         for row in self.tap.query(
@@ -178,7 +188,7 @@ class CAOM2TAP(object):
                 '  ON Plane.planeID=Artifact.planeID'
                 ' INNER JOIN caom2.Artifact AS Artifact2'
                 '  ON Plane.planeID=Artifact2.planeID '
-                'WHERE Artifact2.uri=\'{0}\''.format(artifact_uri)):
+                'WHERE Artifact2.uri LIKE \'{0}%\''.format(artifact_uri)):
 
             result.append(FileInfo(*row))
 

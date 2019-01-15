@@ -147,6 +147,27 @@ def read_fixed_object_names():
     return result
 
 
+def _ensure_file_extension(file_id):
+    """
+    Infer and add file extension, if missing.
+    """
+
+    if '.' not in file_id:
+        if file_id.startswith('a') or file_id.startswith('s'):
+            file_id = file_id + '.sdf'
+
+            # Also apply routine which determines if we need to add .gz:
+            file_id = make_file_id_jcmt(file_id)
+
+        elif file_id.startswith('jcmts') or file_id.startswith('jcmth'):
+            file_id = file_id + '.fits'
+
+        else:
+            logger.warning('Unexpected start to file_id %s', file_id)
+
+    return file_id
+
+
 class jcmt2caom2ingest(object):
     """
     A class to ingest reduced data products into the JSA.
@@ -1051,6 +1072,10 @@ class jcmt2caom2ingest(object):
                             if row.artifact_uri not in self.input_cache:
                                 filecoll, this_file_id = \
                                     row.artifact_uri.split('/')
+
+                                # Temporarily adjust file_id values to re-add file extension.
+                                this_file_id = _ensure_file_extension(this_file_id)
+
                                 inURI = self.planeURI('JCMT',
                                                       obsid,
                                                       row.prod_id)
@@ -1150,6 +1175,10 @@ class jcmt2caom2ingest(object):
                             if row.artifact_uri not in self.input_cache:
                                 filecoll, this_file_id = \
                                     row.artifact_uri.split('/')
+
+                                # Temporarily adjust file_id values to re-add file extension.
+                                this_file_id = _ensure_file_extension(this_file_id)
+
                                 inURI = self.planeURI('JCMT',
                                                       obsid_guess,
                                                       row.prod_id)
@@ -1618,6 +1647,12 @@ class jcmt2caom2ingest(object):
                     prvkey = 'PRV' + str(i + 1)
                     self.validation.expect_keyword(filename, prvkey, header)
                     prvn = header[prvkey]
+
+                    # Adjust PRVN headers to re-add file extension.
+                    # (Current data products should have the extension in PRVN
+                    # but old products being reingested may not.)
+                    prvn = _ensure_file_extension(prvn)
+
                     logger.debug('%s = %s', prvkey, prvn)
 
                     # jsawrapdr has left some "oractempXXXXXX" entries in the
@@ -2225,6 +2260,9 @@ class jcmt2caom2ingest(object):
                 # Search for 'ad:<anything that isn't a slash>/'
                 # and replace with nothing with in row.artifact_uri
                 fid = re.sub(r'ad:[^/]+/', '', row.artifact_uri)
+
+                # Temporarily adjust file_id values to re-add file extension.
+                fid = _ensure_file_extension(fid)
 
                 if (row.collection in (self.collection,
                                        'JCMT',
