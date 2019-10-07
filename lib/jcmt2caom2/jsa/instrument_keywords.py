@@ -24,7 +24,7 @@ permitted = {
     'ACSIS': {
         'inbeam': ["POL"],
         'sideband': ["LSB", "USB"],
-        'sideband_filter': ["DSB", "SSB"],
+        'sideband_filter': ["DSB", "SSB", "2SB"],
         'switching_mode': ["CHOP", "FREQSW", "NONE", "PSSW"]
     },
 
