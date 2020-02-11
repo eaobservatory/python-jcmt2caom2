@@ -293,11 +293,11 @@ class raw(object):
         if common['obs_type'] == "science":
             # raster is a synonym for scan
             if common['sam_mode'] == "raster":
-                observation.obs_type = "scan"
+                observation.type = "scan"
             else:
-                observation.obs_type = common['sam_mode']
+                observation.type = common['sam_mode']
         else:
-            observation.obs_type = common['obs_type']
+            observation.type = common['obs_type']
 
         # set the observation intent
         observation.intent = intent(common['obs_type'],
@@ -409,7 +409,7 @@ class raw(object):
             # pi/180 * sqrt(pi/2) * 1e-6 * lambda [um]/ 15 [m]
             beamsize = 4.787e-6 * 850.0
 
-        if (observation.obs_type not in (
+        if (observation.type not in (
                 'flatfield', 'noise', 'setup', 'skydip')
                 and common['object']):
             # The target is not significant for the excluded kinds of
