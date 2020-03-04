@@ -1,0 +1,320 @@
+#!/usr/bin/env python2
+
+# Copyright (C) 2020 East Asian Observatory
+# All Rights Reserved.
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 2 of the License, or (at your option) any later
+# version.
+#
+# This program is distributed in the hope that it will be useful,but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc.,51 Franklin
+# Street, Fifth Floor, Boston, MA  02110-1301, USA
+
+"""
+jsasyncwvm - Sync WVM data to the JCMT archive and CAOM-2
+
+Usage:
+    jsasyncwvm [-v | -q] [--dry-run] [--date-start <date>] [--date-end <date>] [--xmloutdir <dir>]
+
+Options:
+    --date-start <date>  Date from which to start sync, otherwise last 30 days
+    --date-end <date>    Date at which to end sync
+    --xmloutdir <dir>    Directory into which to write CAOM-2 XML
+    --verbose, -v        Print debugging information.
+    --quiet, -q          Omit informational messages.
+"""
+
+
+from collections import namedtuple
+from datetime import datetime, timedelta
+import logging
+import os
+from pprint import pprint
+import re
+import sys
+
+from docopt import docopt
+
+from caom2.artifact import Artifact, ReleaseType
+from caom2.chunk import Chunk, ProductType, TemporalWCS
+from caom2.observation import Instrument, ObservationIntentType, \
+    Proposal, SimpleObservation, Telescope
+from caom2.part import Part
+from caom2.plane import CalibrationLevel, Plane
+from caom2.wcs import Axis, CoordAxis1D, CoordRange1D, RefCoord
+
+from jsa_proc.cadc.fetch import put_cadc_file
+from tools4caom2.caom2repo_wrapper import Repository
+from tools4caom2.mjd import utc2mjd
+from tools4caom2.tapclient import tapclient, tapclient_ad
+from tools4caom2.util import configure_logger
+
+WVMFileInfo = namedtuple('WVMFileInfo', ('path', 'name', 'size'))
+WVMObsInfo = namedtuple('WVMObsInfo', ('obs_id', 'plane_id', 'date'))
+
+pattern_date = re.compile('^\d{8}$')
+pattern_wvm_dir = re.compile('^\d{8}$')
+pattern_wvm_file = re.compile('^(\d{8})\.wvm$')
+pattern_wvm_uri = re.compile('^ad:JCMT/(\d{8}\.wvm)$')
+
+base_wvm_dir = '/jcmtdata/raw/wvm'
+
+logger = logging.getLogger('jsasyncwvm')
+
+
+def main():
+    args = docopt(__doc__)
+
+    loglevel = logging.INFO
+
+    if args['--verbose']:
+        loglevel = logging.DEBUG
+    elif args['--quiet']:
+        loglevel = logging.WARNING
+
+    configure_logger(level=loglevel)
+
+    date_start = args['--date-start']
+    if date_start is None:
+        date_start = (
+            datetime.utcnow() - timedelta(days=30)).strftime('%Y%m%d')
+    elif not pattern_date.search(date_start):
+        raise Exception('Please give --date-start as YYYYMMDD')
+
+    date_end = args['--date-end']
+    if not ((date_end is None) or (pattern_date.search(date_end))):
+        raise Exception('Please give --date-end as YYYYMMDD')
+
+    files = find_wvm_files(date_start, date_end)
+
+    to_store = check_archive_wvm_files(files)
+
+    store_archive_wvm_files(to_store, dry_run=args['--dry-run'])
+
+    to_ingest = check_caom2_wvm_files(files)
+
+    ingest_caom2_wvm_files(
+        to_ingest,
+        xml_out_dir=args['--xmloutdir'],
+        dry_run=args['--dry-run'])
+
+
+def find_wvm_files(date_start, date_end):
+    result = []
+
+    logger.debug('Finding WVM files on disk')
+
+    for dir_ in sorted(os.listdir(base_wvm_dir)):
+        if not pattern_wvm_dir.search(dir_):
+            continue
+
+        if (date_start is not None) and (dir_ < date_start):
+            continue
+
+        if (date_end is not None) and (dir_ > date_end):
+            continue
+
+        path = os.path.join(base_wvm_dir, dir_)
+
+        for file_ in sorted(os.listdir(path)):
+            if not pattern_wvm_file.search(file_):
+                continue
+
+            filepath = os.path.join(path, file_)
+
+            result.append(WVMFileInfo(path, file_, os.stat(filepath).st_size))
+
+    return result
+
+
+def check_archive_wvm_files(files):
+    to_update = []
+
+    logger.debug('Querying AD TAP for WVM files')
+
+    cadc_files = {}
+    adtap = tapclient_ad()
+    for (file_, cadc_size) in adtap.query(
+            'SELECT fileName, uncompressedFileSize FROM archive_files '
+            'WHERE archiveName=\'JCMT\' and fileName like \'%.wvm\'',
+            timeout=600):
+        cadc_files[file_] = cadc_size
+
+    for file_ in files:
+        cadc_size = cadc_files.get(file_.name)
+
+        if cadc_size is None:
+            logger.debug('File %s is not at CADC', file_.name)
+            to_update.append(file_)
+
+        else:
+            if cadc_size < file_.size:
+                logger.debug('File %s is smaller at CADC', file_.name)
+                to_update.append(file_)
+
+            elif cadc_size > file_.size:
+                raise Exception('File {} is larger at CADC'.format(file_.name))
+
+            else:
+                logger.debug('File %s is same size at CADC', file_.name)
+
+    return to_update
+
+
+def store_archive_wvm_files(files, dry_run=False):
+    logger.debug('Beginning to store %i WVM files', len(files))
+
+    for file_ in files:
+        logger.info('Storing file %s at CADC', file_.name)
+
+        if not dry_run:
+            put_cadc_file(file_.name, file_.path, 'raw')
+
+
+def check_caom2_wvm_files(files):
+    to_ingest = []
+
+    logger.debug('Querying CAOM-2 TAP for WVM artifacts')
+
+    cadc_records = {}
+    tap = tapclient()
+    for (obs_id, plane_id, file_uri, file_size) in tap.query(
+            'SELECT Observation.observationID,'
+            ' Plane.productID,'
+            ' Artifact.uri, Artifact.contentLength '
+            'FROM caom2.Observation AS Observation'
+            ' INNER JOIN caom2.Plane as Plane'
+            '  ON Observation.obsID=Plane.obsID'
+            ' INNER JOIN caom2.Artifact AS Artifact'
+            '  ON Plane.planeID=Artifact.planeID '
+            'WHERE Observation.collection = \'JCMT\''
+            '  AND Artifact.uri LIKE \'ad:JCMT/%.wvm\'',
+            timeout=600):
+        match = pattern_wvm_uri.search(file_uri)
+        if not match:
+            raise Exception('Did not recognize URI {}'.format(file_uri))
+
+        cadc_records[match.group(1)] = file_size
+
+    for file_ in files:
+        cadc_size = cadc_records.get(file_.name)
+
+        if cadc_size is None:
+            logger.debug('File %s is not in CAOM-2', file_.name)
+            to_ingest.append(file_)
+
+        else:
+            if cadc_size < file_.size:
+                logger.debug('File %s is smaller in CAOM-2 record', file_.name)
+                to_ingest.append(file_)
+
+            elif cadc_size > file_.size:
+                raise Exception('File {} is larger in CAOM-2 record'.format(
+                    file_.name))
+
+            else:
+                logger.debug('File %s is already in CAOM-2', file_.name)
+
+    return to_ingest
+
+
+def ingest_caom2_wvm_files(files, xml_out_dir=None, dry_run=False):
+    logger.debug('Beginning to ingest %i WVM files', len(files))
+    repository = Repository()
+
+    for file_ in files:
+        logger.info('Ingesting file %s into CAOM-2', file_.name)
+
+        info = _make_obs_info(file_)
+        uri = 'caom:JCMT/{}'.format(info.obs_id)
+
+        with repository.process(uri, dry_run=dry_run) as wrapper:
+            wrapper.observation = _build_caom2_observation(
+                wrapper.observation, file_, info)
+
+            if xml_out_dir is not None:
+                with open(
+                        os.path.join(xml_out_dir, re.sub(
+                            '[^-_A-Za-z0-9]', '_', info.obs_id)) + '.xml',
+                        'wb') as f:
+                    repository.writer.write(wrapper.observation, f)
+
+
+def _make_obs_info(file_):
+    match = pattern_wvm_file.search(file_.name)
+    if not match:
+        raise Exception('File {} does not match pattern'.format(file_.name))
+
+    date = match.group(1)
+
+    return WVMObsInfo(
+        obs_id='jcmt_conditions_{}'.format(date),
+        plane_id='opacity-wvm',
+        date=datetime.strptime(date, '%Y%m%d'))
+
+
+def _build_caom2_observation(observation, file_, info):
+    if observation is None:
+        observation = SimpleObservation('JCMT', info.obs_id)
+
+    elif info.plane_id in observation.planes.keys():
+        observation.planes.pop(info.plane_id, None)
+
+    observation.instrument = Instrument('WVM')
+    observation.intent = ObservationIntentType.CALIBRATION
+    observation.meta_release = info.date
+
+    telescope = Telescope(u'JCMT')
+    observation.telescope = telescope
+    observation.proposal = Proposal('JCMTCAL')
+
+    plane = Plane(info.plane_id)
+
+    plane.meta_release = info.date
+    plane.data_release = info.date
+    plane.calibration_level = CalibrationLevel.RAW_INSTRUMENTAL
+
+    uri = 'ad:JCMT/{}'.format(file_.name)
+
+    artifact = Artifact(
+        uri, ProductType.CALIBRATION,
+        release_type=ReleaseType.DATA,
+        content_type='text/plain',
+        content_length=file_.size)
+
+    artifact.meta_release = info.date
+
+    part = Part('0')
+
+    chunk = Chunk()
+
+    chunk.meta_release = info.date
+
+    time_axis = CoordAxis1D(Axis('TIME', 'd'))
+
+    time_axis.range = CoordRange1D(
+        RefCoord(0.5, utc2mjd(info.date)),
+        RefCoord(1.5, utc2mjd(info.date + timedelta(days=1))))
+
+    chunk.time = TemporalWCS(time_axis, timesys='UTC')
+
+    part.chunks.append(chunk)
+
+    artifact.parts.add(part)
+
+    plane.artifacts.add(artifact)
+
+    observation.planes.add(plane)
+
+    return observation
+
+
+if __name__ == '__main__':
+    main()
