@@ -317,7 +317,10 @@ class raw(object):
             make_env = True
             environment.ambient_temp = common['atstart']
         if common['elstart'] is not None:
-            environment.elevation = common['elstart']
+            if 90.0 < common['elstart'] < 95.0:
+                environment.elevation = 90.0
+            else:
+                environment.elevation = common['elstart']
         if common['humstart'] is not None:
             if common['humstart'] < 0.0:
                 environment.humidity = 0.0
