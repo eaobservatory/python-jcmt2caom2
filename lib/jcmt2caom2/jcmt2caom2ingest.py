@@ -2760,6 +2760,8 @@ class jcmt2caom2ingest(object):
                             self.add_pngs_to_plane(
                                 wrapper.observation, productID, plane_png)
 
+                self._apply_fixes(wrapper.observation)
+
                 logger.info('Removing old planes from this observation')
                 self.remove_old_planes(wrapper.observation,
                                        observationID)
@@ -2774,6 +2776,15 @@ class jcmt2caom2ingest(object):
 
         logger.info('Removing old observations and planes')
         self.remove_old_observations_and_planes()
+
+    def _apply_fixes(self, observation):
+        for plane in observation.planes.values():
+            for artifact in plane.artifacts.values():
+                for part in artifact.parts.values():
+                    for chunk in part.chunks:
+                        # Remove observable_axis
+                        if chunk.observable_axis is not None:
+                            chunk.observable_axis = None
 
     def remove_excess_parts(self, observation, excess_parts=50):
         """
