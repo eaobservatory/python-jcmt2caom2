@@ -2780,11 +2780,31 @@ class jcmt2caom2ingest(object):
     def _apply_fixes(self, observation):
         for plane in observation.planes.values():
             for artifact in plane.artifacts.values():
-                for part in artifact.parts.values():
-                    for chunk in part.chunks:
+                for (part_name, part) in artifact.parts.items():
+                    for (chunk_num, chunk) in enumerate(part.chunks):
                         # Remove observable_axis
                         if chunk.observable_axis is not None:
                             chunk.observable_axis = None
+
+                        # If we don't identify the axes, remove naxis for now
+                        # to avoid "bad request" error from CAOM-2 repository.
+                        if chunk.naxis is not None:
+                            naxis = 0
+                            for axis in (
+                                    chunk.position_axis_1,
+                                    chunk.position_axis_2,
+                                    chunk.energy_axis,
+                                    chunk.time_axis,
+                                    chunk.polarization_axis,
+                                    chunk.custom_axis,
+                                    ):
+                                if axis is not None:
+                                    naxis += 1
+                            if chunk.naxis != naxis:
+                                logger.warning(
+                                    'Axes do not match, removing naxis value for %s %s %s part %s chunk %i',
+                                    observation.observation_id, plane.product_id, artifact.uri, part_name, chunk_num)
+                                chunk.naxis = None
 
     def remove_excess_parts(self, observation, excess_parts=50):
         """
