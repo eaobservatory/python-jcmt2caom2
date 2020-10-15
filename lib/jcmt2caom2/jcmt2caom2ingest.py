@@ -2790,6 +2790,31 @@ class jcmt2caom2ingest(object):
                         if chunk.observable_axis is not None:
                             chunk.observable_axis = None
 
+                        # Remove weird position in extensions.
+                        part_num = int(part_name)
+                        if part_num > 2:
+                            if chunk.position is not None:
+                                if chunk.position.axis is not None:
+                                    if chunk.position.axis.axis1.ctype.startswith('AZ') and chunk.position.coordsys == 'FK5':
+                                        chunk.position = None
+                                        logger.warning(
+                                            'Position ctype AZ but coordsys FK5, removing spatial WCS for %s %s %s part %s chunk %i',
+                                            observation.observation_id, plane.product_id, artifact.uri, part_name, chunk_num)
+
+                        # If there is no position, we can't specify position_axis_1/2.
+                        if chunk.position is None:
+                            if chunk.position_axis_1 is not None:
+                                chunk.position_axis_1 = None
+                                logger.warning(
+                                    'Position not present, removing position_axis_1 for %s %s %s part %s chunk %i',
+                                    observation.observation_id, plane.product_id, artifact.uri, part_name, chunk_num)
+
+                            if chunk.position_axis_2 is not None:
+                                chunk.position_axis_2 = None
+                                logger.warning(
+                                    'Position not present, removing position_axis_2 for %s %s %s part %s chunk %i',
+                                    observation.observation_id, plane.product_id, artifact.uri, part_name, chunk_num)
+
                         # If we don't identify the axes, remove naxis for now
                         # to avoid "bad request" error from CAOM-2 repository.
                         if chunk.naxis is not None:
@@ -2806,8 +2831,8 @@ class jcmt2caom2ingest(object):
                                     naxis += 1
                             if chunk.naxis != naxis:
                                 logger.warning(
-                                    'Axes do not match, removing naxis value for %s %s %s part %s chunk %i',
-                                    observation.observation_id, plane.product_id, artifact.uri, part_name, chunk_num)
+                                    'Axes do not match (chunk.naxis = %i, axes defined = %i), removing naxis value for %s %s %s part %s chunk %i',
+                                    chunk.naxis, naxis, observation.observation_id, plane.product_id, artifact.uri, part_name, chunk_num)
                                 chunk.naxis = None
 
     def remove_excess_parts(self, observation, excess_parts=50):
