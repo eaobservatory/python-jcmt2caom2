@@ -1222,8 +1222,12 @@ class jcmt2caom2ingest(object):
                 plane_dict['environment.humidity'] = '%f' % (humidity,)
 
             if is_defined('ELSTART', header):
+                elevation = header['ELSTART']
+                if elevation > 90.0:
+                    logger.warning('Elevation %f > 90', elevation)
+                    elevation = 90.0
                 plane_dict['environment.elevation'] = \
-                    '%f' % (header['ELSTART'],)
+                    '%f' % (elevation,)
 
             if is_defined('TAU225ST', header):
                 # Some old data appears to have TAU225ST in string form
