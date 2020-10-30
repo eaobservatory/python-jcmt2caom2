@@ -2313,7 +2313,7 @@ class jcmt2caom2ingest(object):
                         inputURI = self.lookup_file_id(filename,
                                                        file_id)
                         if (inputURI and
-                                inputURI.uri not in thisPlane['inputset']):
+                                inputURI not in thisPlane['inputset']):
 
                             thisPlane['inputset'].add(inputURI)
                             logger.info('add %s to inputset for %s',
