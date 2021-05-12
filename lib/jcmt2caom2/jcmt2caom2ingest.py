@@ -2781,6 +2781,38 @@ class jcmt2caom2ingest(object):
         logger.info('Removing old observations and planes')
         self.remove_old_observations_and_planes()
 
+    def fix_observation(self, observationID):
+        obsuri = self.observationURI(self.collection, observationID)
+
+        logger.info('URI: %s', str(obsuri))
+
+        with self.repository.process(obsuri, dry_run=self.dry_run) as wrapper:
+            if wrapper.observation is None:
+                logger.error('NOT FOUND observationID="%s"', observationID)
+
+                return False
+
+            else:
+                if self.xmloutdir:
+                    with open(os.path.join(self.xmloutdir, re.sub(
+                            '[^-_A-Za-z0-9]', '_', observationID)) + '_before.xml',
+                            'wb') as f:
+                        self.repository.writer.write(wrapper.observation, f)
+
+                self.remove_excess_parts(wrapper.observation)
+
+                self._apply_fixes(wrapper.observation)
+
+                if self.xmloutdir:
+                    with open(os.path.join(self.xmloutdir, re.sub(
+                            '[^-_A-Za-z0-9]', '_', observationID)) + '_after.xml',
+                            'wb') as f:
+                        self.repository.writer.write(wrapper.observation, f)
+
+        logger.info('SUCCESS observationID="%s"', observationID)
+
+        return True
+
     def _apply_fixes(self, observation):
         for plane in observation.planes.values():
             for artifact in plane.artifacts.values():
@@ -2923,7 +2955,6 @@ class jcmt2caom2ingest(object):
                         help='file name prefix that identifies files '
                              'to be ingested')
         ap.add_argument('--indir',
-                        required=True,
                         help='path to release data on disk')
         ap.add_argument('--replace',
                         action='store_true',
@@ -2933,6 +2964,9 @@ class jcmt2caom2ingest(object):
                         action='store_true',
                         help='ingest from AD files that are ready for '
                              'ingestion if there are no errors')
+
+        ap.add_argument('--fix',
+                        help='apply fixes to existing observation')
 
         # Basic fits2caom2 options
         # Optionally, specify explicit paths to the config and default files
@@ -3042,11 +3076,18 @@ class jcmt2caom2ingest(object):
         logger.info('workdir            = %s', self.workdir)
 
         try:
+            if args.fix:
+                return self.fix_observation(args.fix)
+
             if self.collection in self.external_collections:
                 if not self.prefix:
                     logger.error('--prefix is mandatory if --collection '
                                  'is in ' + repr(self.external_collections))
                     raise CAOMError('error in command line options')
+
+            if not self.indir:
+                logger.error('--indir is mandatory if not in --fix mode')
+                raise CAOMError('error in command line options')
 
             indirpath = os.path.abspath(
                 os.path.expandvars(
@@ -3102,6 +3143,7 @@ class jcmt2caom2ingest(object):
             return False
 
         finally:
-            self.conn.close()
+            if self.conn is not None:
+                self.conn.close()
 
         return True
