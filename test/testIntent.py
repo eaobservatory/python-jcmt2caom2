@@ -19,7 +19,7 @@ from __future__ import absolute_import
 import unittest
 
 from jcmt2caom2.jsa.intent import intent
-from caom2.caom2_enums import ObservationIntentType as OIT
+from caom2.observation import ObservationIntentType as OIT
 
 
 class testIntent(unittest.TestCase):
