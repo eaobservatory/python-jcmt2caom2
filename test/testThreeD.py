@@ -82,22 +82,22 @@ class testThreeD(unittest.TestCase):
         self.assertEqual(1.0, yunit.abs())
         self.assertEqual(1.0, zunit.abs())
 
-        self.assertEquals(180.0,
+        self.assertEqual(180.0,
                           ThreeD.included_angle(
                               ThreeD(1.0, 0.0, 1.0),
                               ThreeD(2.0, 0.0, 1.0),
                               ThreeD(3.0, 0.0, 1.0)))
-        self.assertEquals(0.0,
+        self.assertEqual(0.0,
                           ThreeD.included_angle(
                               ThreeD(1.0, 0.0, 1.0),
                               ThreeD(2.0, 0.0, 1.0),
                               ThreeD(-3.0, 0.0, 1.0)))
-        self.assertEquals(180.0,
+        self.assertEqual(180.0,
                           ThreeD.included_angle(
                               ThreeD(1.0, 0.0, 0.0),
                               ThreeD(0.0, 1.0, 0.0),
                               ThreeD(-1.0, 0.0, 0.0)))
-        self.assertEquals(90.0,
+        self.assertEqual(90.0,
                           ThreeD.included_angle(
                               ThreeD(0.0, 0.0, 1.0),
                               ThreeD(0.0, 1.0, 0.0),

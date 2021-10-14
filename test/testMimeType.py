@@ -33,20 +33,20 @@ class testMimeType(unittest.TestCase):
                 CAOMError, 'Unknown file extension: "filename.docx"'):
             determine_mime_type('filename.docx.gz')
 
-        self.assertEquals(
+        self.assertEqual(
             determine_mime_type('filename.sdf'),
             'application/octet-stream')
-        self.assertEquals(
+        self.assertEqual(
             determine_mime_type('filename.sdf.gz'),
             'application/octet-stream')
-        self.assertEquals(
+        self.assertEqual(
             determine_mime_type('filename.gsd'),
             'application/octet-stream')
 
-        self.assertEquals(
+        self.assertEqual(
             determine_mime_type('preview.png'),
             'image/png')
 
-        self.assertEquals(
+        self.assertEqual(
             determine_mime_type('cat.fits.gz'),
             'application/fits')
