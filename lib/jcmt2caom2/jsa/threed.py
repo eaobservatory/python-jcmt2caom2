@@ -126,7 +126,7 @@ class ThreeD(object):
                       f*self.y,
                       f*self.z)
 
-    def __div__(self, f):
+    def __truediv__(self, f):
         """
         divide self by f
 
@@ -136,6 +136,9 @@ class ThreeD(object):
         return ThreeD(self.x / f,
                       self.y / f,
                       self.z / f)
+
+    def __div__(self, f):
+        return self.__truediv__(f)
 
     def abs(self):
         """

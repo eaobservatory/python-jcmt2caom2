@@ -104,7 +104,7 @@ class TwoD(object):
         """
         return TwoD(f*self.x, f*self.y)
 
-    def __div__(self, f):
+    def __truediv__(self, f):
         """
         divide self by f
 
@@ -112,6 +112,9 @@ class TwoD(object):
         t: another twod
         """
         return TwoD(self.x/f, self.y/f)
+
+    def __div__(self, f):
+        return self.__truediv__(f)
 
     def swap(self, t):
         """
