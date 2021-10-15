@@ -33,6 +33,7 @@ Options:
 
 
 from collections import namedtuple
+from codecs import ascii_decode
 from datetime import datetime, timedelta
 import logging
 import os
@@ -197,6 +198,8 @@ def check_caom2_wvm_files(files):
             'WHERE Observation.collection = \'JCMT\''
             '  AND Artifact.uri LIKE \'ad:JCMT/%.wvm\'',
             timeout=600):
+        file_uri = ascii_decode(file_uri)[0]
+
         match = pattern_wvm_uri.search(file_uri)
         if not match:
             raise Exception('Did not recognize URI {}'.format(file_uri))
