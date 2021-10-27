@@ -108,7 +108,7 @@ def main():
             for i in range(giveninstrument - givenbackend):
                 backendlist.append(instrumentlist[givenbackend+i])
 
-    instrum  = zip(instrumentlist, backendlist[0:giveninstrument])
+    instrum  = list(zip(instrumentlist, backendlist[0:giveninstrument]))
     logging.info('Looking up for ' + ', '.join([i[0]+'-'+i[1] for i in instrum]))
 
     # If no end date was specified, use yesterday.
