@@ -3085,7 +3085,7 @@ class jcmt2caom2ingest(object):
                                  'is in ' + repr(self.external_collections))
                     raise CAOMError('error in command line options')
 
-            if not self.indir:
+            if not args.indir:
                 logger.error('--indir is mandatory if not in --fix mode')
                 raise CAOMError('error in command line options')
 
