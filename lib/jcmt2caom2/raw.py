@@ -232,7 +232,7 @@ class raw(object):
         if common['backend'] in ('ACSIS', 'DAS', 'AOS-C'):
             # Although stored in ACSIS, the sideband properties belong to the
             # whole observation.  Fetch them using any subsysnr.
-            subsysnr = subsystem.keys()[0]
+            subsysnr = min(subsystem.keys())
             keyword_dict['sideband'] = subsystem[subsysnr]['obs_sb']
             keyword_dict['sideband_filter'] = subsystem[subsysnr]['sb_mode']
         someBad, keyword_list = instrument_keywords('raw',
