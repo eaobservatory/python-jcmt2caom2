@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from codecs import ascii_decode
 from collections import namedtuple
 from logging import getLogger
 
@@ -106,7 +107,7 @@ class CAOM2TAP(object):
 
         result = []
 
-        for row in self.tap.query(
+        for (prod_id, date_obs, date_end, release, artifact_uri) in self.tap.query(
                 'SELECT'
                 ' Plane.productID,'
                 ' Plane.time_bounds_lower,'
@@ -121,7 +122,9 @@ class CAOM2TAP(object):
                 'WHERE Observation.collection=\'JCMT\''
                 ' AND Observation.observationID=\'{0}\''.format(obs_id)):
 
-            result.append(ObsInfo(*row))
+            artifact_uri = ascii_decode(artifact_uri)[0]
+
+            result.append(ObsInfo(prod_id, date_obs, date_end, release, artifact_uri))
 
         return result
 
@@ -176,7 +179,7 @@ class CAOM2TAP(object):
 
         result = []
 
-        for row in self.tap.query(
+        for (collection, obs_id, prod_id, artifact_uri) in self.tap.query(
                 'SELECT Observation.collection,'
                 ' Observation.observationID,'
                 ' Plane.productID,'
@@ -190,6 +193,8 @@ class CAOM2TAP(object):
                 '  ON Plane.planeID=Artifact2.planeID '
                 'WHERE Artifact2.uri LIKE \'{0}%\''.format(artifact_uri)):
 
-            result.append(FileInfo(*row))
+            artifact_uri = ascii_decode(artifact_uri)[0]
+
+            result.append(FileInfo(collection, obs_id, prod_id, artifact_uri))
 
         return result
