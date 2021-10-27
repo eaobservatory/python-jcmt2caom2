@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from codecs import ascii_encode
+from codecs import ascii_decode
 import json
 import subprocess
 
@@ -32,11 +32,11 @@ def read_png_keywords(filename):
         [EXIFTOOL_COMMAND, '-j', filename],
         shell=False)
 
-    exif_data = json.loads(exif_json)
+    exif_data = json.loads(ascii_decode(exif_json)[0])
 
     if len(exif_data) != 1:
         raise CAOMError('Did not get expected single item from exiftool')
 
     keywords = exif_data[0]['Keywords']
 
-    return dict(ascii_encode(x)[0].split('=', 1) for x in keywords)
+    return dict(x.split('=', 1) for x in keywords)
