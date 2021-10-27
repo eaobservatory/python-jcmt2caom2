@@ -2897,7 +2897,7 @@ class jcmt2caom2ingest(object):
                     # them (into numeric order) in order to be able to
                     # remove those for the later FITS extensions first.
                     part_names = list(artifact.parts.keys())
-                    part_names.sort(cmp=lambda x, y: cmp(int(x), int(y)))
+                    part_names.sort(key=lambda x: int(x))
 
                     while len(part_names) > part_count:
                         artifact.parts.pop(part_names.pop())
