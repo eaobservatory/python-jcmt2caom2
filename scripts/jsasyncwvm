@@ -268,7 +268,7 @@ def _build_caom2_observation(observation, file_, info):
         observation = SimpleObservation('JCMT', info.obs_id)
 
     elif info.plane_id in observation.planes.keys():
-        observation.planes.pop(info.plane_id, None)
+        observation.planes.pop(info.plane_id)
 
     observation.instrument = Instrument('WVM')
     observation.intent = ObservationIntentType.CALIBRATION
