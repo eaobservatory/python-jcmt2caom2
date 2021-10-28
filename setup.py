@@ -49,6 +49,7 @@ setup(
         'scripts/jsasetfield',
         'scripts/caomcheck',
         'scripts/remove_products',
+        'scripts/jsasyncwvm',
     ],
     # config files are not package data and must be located
     # in ../config relative to the executables in scripts
