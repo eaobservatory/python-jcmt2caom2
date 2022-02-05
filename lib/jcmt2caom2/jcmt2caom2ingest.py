@@ -2201,7 +2201,7 @@ class jcmt2caom2ingest(object):
         """
 
         if observationID in self.remove_dict:
-            for prod in observation.planes.keys():
+            for prod in list(observation.planes.keys()):
                 # logic is, this collection/observation/plane used to be
                 # genrated by this recipe instance, but is not part of the
                 # current ingestion and so is obsolete.
