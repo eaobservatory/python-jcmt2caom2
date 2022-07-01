@@ -21,14 +21,16 @@
 jsasyncwvm - Sync WVM data to the JCMT archive and CAOM-2
 
 Usage:
-    jsasyncwvm [-v | -q] [--dry-run] [--date-start <date>] [--date-end <date>] [--xmloutdir <dir>]
+    jsasyncwvm [-v | -q] [--dry-run] [--date-start <date>] [--date-end <date>] [--wvmdir <dir>] [--xmloutdir <dir>]
 
 Options:
     --date-start <date>  Date from which to start sync, otherwise last 30 days
     --date-end <date>    Date at which to end sync
     --xmloutdir <dir>    Directory into which to write CAOM-2 XML
+    --wvmdir <dir>       Directory containing WVM data [default: /jcmtdata/raw/wvm].
     --verbose, -v        Print debugging information.
     --quiet, -q          Omit informational messages.
+    --dry-run, -n        Do not actually sync data.
 """
 
 
@@ -65,8 +67,6 @@ pattern_wvm_dir = re.compile('^\d{8}$')
 pattern_wvm_file = re.compile('^(\d{8})\.wvm$')
 pattern_wvm_uri = re.compile('^ad:JCMT/(\d{8}\.wvm)$')
 
-base_wvm_dir = '/jcmtdata/raw/wvm'
-
 logger = logging.getLogger('jsasyncwvm')
 
 
@@ -93,7 +93,7 @@ def main():
     if not ((date_end is None) or (pattern_date.search(date_end))):
         raise Exception('Please give --date-end as YYYYMMDD')
 
-    files = find_wvm_files(date_start, date_end)
+    files = find_wvm_files(args['--wvmdir'], date_start, date_end)
 
     to_store = check_archive_wvm_files(files)
 
@@ -107,7 +107,7 @@ def main():
         dry_run=args['--dry-run'])
 
 
-def find_wvm_files(date_start, date_end):
+def find_wvm_files(base_wvm_dir, date_start, date_end):
     result = []
 
     logger.debug('Finding WVM files on disk')
