@@ -2434,8 +2434,11 @@ class jcmt2caom2ingest(object):
 
             with self.repository.process(
                     obsuri, dry_run=self.dry_run) as wrapper:
+                existing_artifacts = None
                 if wrapper.observation is not None:
                     self.remove_excess_parts(wrapper.observation)
+                    existing_artifacts = self.get_existing_artifacts(
+                        wrapper.observation)
 
                 for productID in thisObservation:
                     if productID != 'memberset':
@@ -2514,6 +2517,11 @@ class jcmt2caom2ingest(object):
                 logger.info('Removing old planes from this observation')
                 self.remove_old_planes(wrapper.observation,
                                        observationID)
+
+                if existing_artifacts is not None:
+                    logger.info('Removing old version artifacts from this observation')
+                    self.remove_old_artifacts(
+                        wrapper.observation, existing_artifacts)
 
                 if self.xmloutdir:
                     with open(os.path.join(self.xmloutdir, re.sub(
@@ -2611,6 +2619,111 @@ class jcmt2caom2ingest(object):
                                     'Axes do not match (chunk.naxis = %i, axes defined = %i), removing naxis value for %s %s %s part %s chunk %i',
                                     chunk.naxis, naxis, observation.observation_id, plane.product_id, artifact.uri, part_name, chunk_num)
                                 chunk.naxis = None
+
+    def get_existing_artifacts(self, observation, is_existing=True):
+        """
+        Get a dictionary of existing artifacts in the observation.
+
+        Keys are (planeID, versionless-URI) tuples, values are (full-URI,
+        version string) tuples.
+
+        For "is_existing" mode, give lowest version and warn of multiples.
+        Otherwise give highest version.
+        """
+
+        version_res = [
+            re.compile('_(\d\d\d)(\.fits?)$'),
+            re.compile('_(\d\d\d)(_preview_\d+.png)$'),
+        ]
+
+        existing_artifacts = {}
+
+        for (planeID, plane) in observation.planes.items():
+            # Sort so that the version we want is first.
+            artifactIDs = sorted(plane.artifacts.keys())
+            if not is_existing:
+                artifactIDs = reversed(artifactIDs)
+
+            for artifactID in artifactIDs:
+                for version_re in version_res:
+                    m = version_re.search(artifactID)
+                    if m:
+                        version = m.group(1)
+
+                        (versionless, count) = version_re.subn(
+                            '_XXX\\2', artifactID, count=1)
+                        assert(count == 1)
+
+                        logger.debug(
+                            'Inferred version %s: %s %s',
+                            version, planeID, artifactID)
+
+                        key = (planeID, versionless)
+                        if key in existing_artifacts:
+                            if is_existing:
+                                logger.warning(
+                                    'Multiple versions of %s %s present',
+                                    planeID, artifactID)
+                        else:
+                            existing_artifacts[key] = (artifactID, version)
+
+                        break
+
+                else:
+                    logger.warning(
+                        'No version number found in %s', artifactID)
+
+        return existing_artifacts
+
+    def remove_old_artifacts(self, observation, previous_artifacts):
+        """
+        Compare the version number for artifacts in the observation
+        matching those in the given dictionary of previous artifacts.
+
+        Remove any artifacts for which a matching artifact with
+        higher version number is now present.
+
+        Raise an error if a lower version number is now present.
+
+        Note: only deals with two versions being present (previous lowest
+        and highest new version).  Any others will not be considered.
+        """
+
+        # Fetch with is_existing=False to get highest version and not warn
+        # of duplicates.
+        new_artifacts = self.get_existing_artifacts(
+            observation, is_existing=False)
+
+        for (id_, new_info) in new_artifacts.items():
+            old_info = previous_artifacts.get(id_, None)
+            if old_info is None:
+                continue
+
+            (planeID, versionless) = id_
+            (new_uri, new_ver) = new_info
+            (old_uri, old_ver) = old_info
+
+            if new_ver < old_ver:
+                raise CAOMError(
+                    'Version of %s: %s reverted %s -> %s'
+                    % (planeID, new_uri, old_ver, new_ver))
+
+            if new_ver > old_ver:
+                plane = observation.planes.get(planeID)
+                if plane is None:
+                    logger.warning(
+                        'Plane %s vanished, could not remove old file',
+                        planeID)
+                    continue
+
+                if old_uri not in plane.artifacts:
+                    logger.warning(
+                        'Old file already vanished %s %s',
+                        planeID, old_uri)
+                    continue
+
+                logger.info('Removing old version artifact: %s', old_uri)
+                del plane.artifacts[old_uri]
 
     def remove_excess_parts(self, observation, excess_parts=50):
         """
