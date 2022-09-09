@@ -218,6 +218,7 @@ class jcmt2caom2ingest(object):
 
         # Ingestion parameters and structures
         self.verbose = False
+        self.retain = False
         self.prefix = ''         # ingestible files must start with this prefix
         self.replace = False     # True if observations in JCMTLS or JCMTUSER
                                  # can replace each other
@@ -2488,7 +2489,7 @@ class jcmt2caom2ingest(object):
                             caom2_writer=self.repository.writer,
                             arg=arg,
                             verbose=self.verbose,
-                            retain=False,
+                            retain=self.retain,
                             big=self.big,
                             dry_run=False)
                         logger.info(
@@ -2853,8 +2854,11 @@ class jcmt2caom2ingest(object):
                         help='simulate operation of fits2caom2')
         ap.add_argument('--verbose', '-v',
                         action='store_true',
-                        help='show all messages, pass --debug to '
-                        'fits2caom2, and retain all xml and override files')
+                        help='show all messages, pass --debug to fits2caom2')
+        ap.add_argument('--retain',
+                        action='store_true',
+                        help='retain all fits2caom2 xml and override files')
+
         ap.add_argument('--quiet', '-q',
                         action='store_true',
                         help='show only warning and error messages')
@@ -2913,6 +2917,8 @@ class jcmt2caom2ingest(object):
             self.verbose = True
         elif args.quiet:
             logging.getLogger().setLevel(logging.WARNING)
+        if args.retain:
+            self.retain = True
 
         # create workdir if it does not already exist
         if not os.path.exists(self.workdir):
