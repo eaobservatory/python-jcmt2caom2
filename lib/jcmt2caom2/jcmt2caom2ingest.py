@@ -1713,7 +1713,7 @@ class jcmt2caom2ingest(object):
                     else:
                         dataProductType = 'cube'
             elif product in ('tile-moc', 'peak-cat'):
-                dataProductType = 'catalog'
+                dataProductType = 'measurements'
         if dataProductType:
             plane_dict['plane.dataProductType'] = dataProductType
 
