@@ -95,18 +95,37 @@ def main():
     if not ((date_end is None) or (pattern_date.search(date_end))):
         raise Exception('Please give --date-end as YYYYMMDD')
 
+    months = make_months(date_start, date_end)
+
     files = find_wvm_files(args['--wvmdir'], date_start, date_end)
 
-    to_store = check_archive_wvm_files(files)
+    to_store = check_archive_wvm_files(files, months)
 
     store_archive_wvm_files(to_store, dry_run=args['--dry-run'])
 
-    to_ingest = check_caom2_wvm_files(files)
+    to_ingest = check_caom2_wvm_files(files, months)
 
     ingest_caom2_wvm_files(
         to_ingest,
         xml_out_dir=args['--xmloutdir'],
         dry_run=args['--dry-run'])
+
+
+def make_months(date_start, date_end):
+    """Construct a list of month prefixes for querying."""
+
+    date = datetime.strptime(date_start, '%Y%m%d')
+    if date_end is None:
+        date_end = datetime.utcnow()
+    else:
+        date_end = datetime.strptime(date_end, '%Y%m%d')
+
+    months = set()
+    while date <= date_end:
+        months.add(date.strftime('%Y%m'))
+        date = date + timedelta(days=1)
+
+    return sorted(months)
 
 
 def find_wvm_files(base_wvm_dir, date_start, date_end):
@@ -137,20 +156,22 @@ def find_wvm_files(base_wvm_dir, date_start, date_end):
     return result
 
 
-def check_archive_wvm_files(files):
+def check_archive_wvm_files(files, months):
     to_update = []
 
     logger.debug('Querying luskan TAP for WVM files')
 
     cadc_files = {}
     luskan = tapclient_luskan()
-    for (uri, cadc_size) in luskan.query(
-            'SELECT uri, contentLength FROM inventory.Artifact '
-            'WHERE uri LIKE \'{}\''.format(make_artifact_uri('%.wvm', archive='JCMT')),
-            timeout=600):
+    for month in months:
+        for (uri, cadc_size) in luskan.query(
+                'SELECT uri, contentLength FROM inventory.Artifact '
+                'WHERE uri LIKE \'{}\''.format(make_artifact_uri(
+                    '{}%.wvm'.format(month), archive='JCMT')),
+                timeout=600):
 
-        file_ = extract_artifact_uri_filename(uri, archive='JCMT')
-        cadc_files[file_] = cadc_size
+            file_ = extract_artifact_uri_filename(uri, archive='JCMT')
+            cadc_files[file_] = cadc_size
 
     for file_ in files:
         cadc_size = cadc_files.get(file_.name)
@@ -183,32 +204,33 @@ def store_archive_wvm_files(files, dry_run=False):
             put_cadc_file(file_.name, file_.path)
 
 
-def check_caom2_wvm_files(files):
+def check_caom2_wvm_files(files, months):
     to_ingest = []
 
     logger.debug('Querying CAOM-2 TAP for WVM artifacts')
 
     cadc_records = {}
     tap = tapclient()
-    for (obs_id, plane_id, file_uri, file_size) in tap.query(
-            'SELECT Observation.observationID,'
-            ' Plane.productID,'
-            ' Artifact.uri, Artifact.contentLength '
-            'FROM caom2.Observation AS Observation'
-            ' INNER JOIN caom2.Plane as Plane'
-            '  ON Observation.obsID=Plane.obsID'
-            ' INNER JOIN caom2.Artifact AS Artifact'
-            '  ON Plane.planeID=Artifact.planeID '
-            'WHERE Observation.collection = \'JCMT\''
-            '  AND Artifact.uri LIKE \'ad:JCMT/%.wvm\'',
-            timeout=600):
-        file_uri = ascii_decode(file_uri)[0]
+    for month in months:
+        for (obs_id, plane_id, file_uri, file_size) in tap.query(
+                'SELECT Observation.observationID,'
+                ' Plane.productID,'
+                ' Artifact.uri, Artifact.contentLength '
+                'FROM caom2.Observation AS Observation'
+                ' INNER JOIN caom2.Plane as Plane'
+                '  ON Observation.obsID=Plane.obsID'
+                ' INNER JOIN caom2.Artifact AS Artifact'
+                '  ON Plane.planeID=Artifact.planeID '
+                'WHERE Observation.collection = \'JCMT\''
+                '  AND Artifact.uri LIKE \'ad:JCMT/{}%.wvm\''.format(month),
+                timeout=600):
+            file_uri = ascii_decode(file_uri)[0]
 
-        match = pattern_wvm_uri.search(file_uri)
-        if not match:
-            raise Exception('Did not recognize URI {}'.format(file_uri))
+            match = pattern_wvm_uri.search(file_uri)
+            if not match:
+                raise Exception('Did not recognize URI {}'.format(file_uri))
 
-        cadc_records[match.group(1)] = file_size
+            cadc_records[match.group(1)] = file_size
 
     for file_ in files:
         cadc_size = cadc_records.get(file_.name)
