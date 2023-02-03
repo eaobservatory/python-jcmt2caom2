@@ -67,7 +67,6 @@ WVMObsInfo = namedtuple('WVMObsInfo', ('obs_id', 'plane_id', 'date'))
 pattern_date = re.compile('^\d{8}$')
 pattern_wvm_dir = re.compile('^\d{8}$')
 pattern_wvm_file = re.compile('^(\d{8})\.wvm$')
-pattern_wvm_uri = re.compile('^ad:JCMT/(\d{8}\.wvm)$')
 
 logger = logging.getLogger('jsasyncwvm')
 
@@ -222,15 +221,16 @@ def check_caom2_wvm_files(files, months):
                 ' INNER JOIN caom2.Artifact AS Artifact'
                 '  ON Plane.planeID=Artifact.planeID '
                 'WHERE Observation.collection = \'JCMT\''
-                '  AND Artifact.uri LIKE \'ad:JCMT/{}%.wvm\''.format(month),
+                '  AND Artifact.uri LIKE \'{}\''.format(
+                    make_artifact_uri(
+                        '{}%.wvm'.format(month),
+                        archive='JCMT')),
                 timeout=600):
             file_uri = ascii_decode(file_uri)[0]
 
-            match = pattern_wvm_uri.search(file_uri)
-            if not match:
-                raise Exception('Did not recognize URI {}'.format(file_uri))
+            file_ = extract_artifact_uri_filename(file_uri, archive='JCMT')
 
-            cadc_records[match.group(1)] = file_size
+            cadc_records[file_] = file_size
 
     for file_ in files:
         cadc_size = cadc_records.get(file_.name)
@@ -310,7 +310,7 @@ def _build_caom2_observation(observation, file_, info):
     plane.data_release = info.date
     plane.calibration_level = CalibrationLevel.RAW_INSTRUMENTAL
 
-    uri = 'ad:JCMT/{}'.format(file_.name)
+    uri = make_artifact_uri(file_.name, archive='JCMT')
 
     artifact = Artifact(
         uri, ProductType.CALIBRATION,
