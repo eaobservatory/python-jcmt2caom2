@@ -21,11 +21,12 @@
 jsasyncwvm - Sync WVM data to the JCMT archive and CAOM-2
 
 Usage:
-    jsasyncwvm [-v | -q] [--dry-run] [--date-start <date>] [--date-end <date>] [--wvmdir <dir>] [--xmloutdir <dir>]
+    jsasyncwvm [-v | -q] [--dry-run] [--store-only] [--date-start <date>] [--date-end <date>] [--wvmdir <dir>] [--xmloutdir <dir>]
 
 Options:
     --date-start <date>  Date from which to start sync, otherwise last 30 days
     --date-end <date>    Date at which to end sync
+    --store-only         Store files but do not ingest into CAOM-2.
     --xmloutdir <dir>    Directory into which to write CAOM-2 XML
     --wvmdir <dir>       Directory containing WVM data [default: /jcmtdata/raw/wvm].
     --verbose, -v        Print debugging information.
@@ -101,6 +102,10 @@ def main():
     to_store = check_archive_wvm_files(files, months)
 
     store_archive_wvm_files(to_store, dry_run=args['--dry-run'])
+
+    if args['--store-only']:
+        logger.info('Skipping ingestion due to store-only option')
+        return
 
     to_ingest = check_caom2_wvm_files(files, months)
 
