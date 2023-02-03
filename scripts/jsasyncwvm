@@ -54,9 +54,11 @@ from caom2.plane import CalibrationLevel, Plane
 from caom2.wcs import Axis, CoordAxis1D, CoordRange1D, RefCoord
 
 from jsa_proc.cadc.fetch import put_cadc_file
+from tools4caom2.artifact_uri import extract_artifact_uri_filename, \
+    make_artifact_uri
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.mjd import utc2mjd
-from tools4caom2.tapclient import tapclient, tapclient_ad
+from tools4caom2.tapclient import tapclient, tapclient_luskan
 from tools4caom2.util import configure_logger
 
 WVMFileInfo = namedtuple('WVMFileInfo', ('path', 'name', 'size'))
@@ -138,14 +140,16 @@ def find_wvm_files(base_wvm_dir, date_start, date_end):
 def check_archive_wvm_files(files):
     to_update = []
 
-    logger.debug('Querying AD TAP for WVM files')
+    logger.debug('Querying luskan TAP for WVM files')
 
     cadc_files = {}
-    adtap = tapclient_ad()
-    for (file_, cadc_size) in adtap.query(
-            'SELECT fileName, uncompressedFileSize FROM archive_files '
-            'WHERE archiveName=\'JCMT\' and fileName like \'%.wvm\'',
+    luskan = tapclient_luskan()
+    for (uri, cadc_size) in luskan.query(
+            'SELECT uri, contentLength FROM inventory.Artifact '
+            'WHERE uri LIKE \'{}\''.format(make_artifact_uri('%.wvm', archive='JCMT')),
             timeout=600):
+
+        file_ = extract_artifact_uri_filename(uri, archive='JCMT')
         cadc_files[file_] = cadc_size
 
     for file_ in files:
