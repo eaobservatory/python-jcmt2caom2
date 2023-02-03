@@ -180,7 +180,7 @@ def store_archive_wvm_files(files, dry_run=False):
         logger.info('Storing file %s at CADC', file_.name)
 
         if not dry_run:
-            put_cadc_file(file_.name, file_.path, 'raw')
+            put_cadc_file(file_.name, file_.path)
 
 
 def check_caom2_wvm_files(files):
