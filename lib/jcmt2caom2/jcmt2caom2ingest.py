@@ -53,6 +53,8 @@ from caom2.wcs import RefCoord
 from caom2.chunk import TemporalWCS
 
 from tools4caom2.__version__ import version as tools4caom2version
+from tools4caom2.artifact_uri import extract_artifact_uri_filename, \
+    make_artifact_uri
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.error import CAOMError
 from tools4caom2.fits2caom2 import run_fits2caom2
@@ -540,7 +542,7 @@ class jcmt2caom2ingest(object):
         Returns:
         the value of the fitsfileURI
         """
-        return ('ad:' + archive + '/' + file_id)
+        return make_artifact_uri(file_id, archive='JCMT')
 
     def fitsextensionURI(self,
                          archive,
@@ -2006,10 +2008,8 @@ class jcmt2caom2ingest(object):
             # for all files in the observation containing file_id
             for row in self.tap.get_artifacts_for_plane_with_artifact_uri(
                     self.fitsfileURI(self.archive, file_id)):
-
-                # Search for 'ad:<anything that isn't a slash>/'
-                # and replace with nothing with in row.artifact_uri
-                fid = re.sub(r'ad:[^/]+/', '', row.artifact_uri)
+                fid = extract_artifact_uri_filename(
+                    row.artifact_uri, archive='JCMT')
 
                 # Temporarily adjust file_id values to re-add file extension.
                 fid = _ensure_file_extension(fid)
