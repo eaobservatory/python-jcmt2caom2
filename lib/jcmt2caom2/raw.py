@@ -60,6 +60,7 @@ from caom2.chunk import TemporalWCS
 from caom2.wcs import ValueCoord2D
 
 from tools4caom2.__version__ import version as tools4caom2version
+from tools4caom2.artifact_uri import make_artifact_uri
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.error import CAOMError
 from tools4caom2.mjd import utc2mjd
@@ -498,7 +499,7 @@ class raw(object):
             for file_info in files[obsid_subsysnr]:
                 file_name = file_info['name']
                 file_id = make_file_id_jcmt(file_name)
-                uri = 'ad:JCMT/' + file_id
+                uri = make_artifact_uri(file_id, archive='JCMT')
 
                 if observation.intent == ObservationIntentType.SCIENCE:
                     artifact_product_type = ProductType.SCIENCE
