@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+
+# Copyright (C) 2023 East Asian Observatory
+# All Rights Reserved.
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 2 of the License, or (at your option) any later
+# version.
+#
+# This program is distributed in the hope that it will be useful,but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc.,51 Franklin
+# Street, Fifth Floor, Boston, MA  02110-1301, USA
+
+"""
+jsaclearwvm - Clear WVM data if files are in the JCMT archive
+
+Usage:
+    jsaclearwvm [-v | -q] [--dry-run] [--date-start <date>] [--date-end <date>] [--wvmdir <dir>]
+
+Options:
+    --date-start <date>  Date from which to start clearing.
+    --date-end <date>    Date at which to end clearing.
+    --wvmdir <dir>       Directory containing WVM data [default: /jcmtdata/raw/wvm].
+    --verbose, -v        Print debugging information.
+    --quiet, -q          Omit informational messages.
+    --dry-run, -n        Do not actually clear data.
+"""
+
+import logging
+import os
+
+from docopt import docopt
+
+from tools4caom2.tapclient import tapclient_luskan
+from tools4caom2.util import configure_logger
+
+from jcmt2caom2.wvm import \
+    find_wvm_files, get_archive_wvm_files, make_months, \
+    pattern_date, pattern_wvm_file
+
+logger = logging.getLogger('jsasyncwvm')
+
+
+def main():
+    args = docopt(__doc__)
+
+    loglevel = logging.INFO
+
+    if args['--verbose']:
+        loglevel = logging.DEBUG
+    elif args['--quiet']:
+        loglevel = logging.WARNING
+
+    configure_logger(level=loglevel)
+
+    date_start = args['--date-start']
+    if (date_start is None) or not pattern_date.search(date_start):
+        raise Exception('Please give --date-start as YYYYMMDD')
+
+    date_end = args['--date-end']
+    if (date_end is None) or not pattern_date.search(date_end):
+        raise Exception('Please give --date-end as YYYYMMDD')
+
+    months = make_months(date_start, date_end)
+
+    files = find_wvm_files(
+        args['--wvmdir'], date_start, date_end, with_md5sum=True)
+
+    to_delete = check_archive_wvm_files_md5sum(files, months)
+
+    delete_wvm_files(to_delete, dry_run=args['--dry-run'])
+
+
+def check_archive_wvm_files_md5sum(files, months):
+    to_delete = []
+
+    cadc_files = get_archive_wvm_files(months)
+
+    for file_ in files:
+        cadc_info = cadc_files.get(file_.name)
+
+        if cadc_info is None:
+            logger.debug('File %s is not at CADC', file_.name)
+
+        else:
+            if cadc_info.md5sum == file_.md5sum:
+                logger.debug('File %s matches at CADC', file_.name)
+                to_delete.append(file_)
+
+            else:
+                logger.warning('File %s does not match at CADC', file_.name)
+
+    return to_delete
+
+
+def delete_wvm_files(files, dry_run=True):
+    logger.debug('Beginning to delete %i WVM files', len(files))
+
+    for file_ in files:
+        filepath = os.path.join(file_.path, file_.name)
+
+        logger.info('Deleting WVM file: %s', filepath)
+
+        if not dry_run:
+            os.remove(filepath)
+
+
+if __name__ == '__main__':
+    main()
