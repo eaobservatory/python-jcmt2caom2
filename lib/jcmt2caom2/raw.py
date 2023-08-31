@@ -119,7 +119,8 @@ class raw(object):
 
     # Instrumens for which we wish to ingest data.
     ALLOWED_INSTRUMENTS = (
-        'HARP', 'RXA3', 'RXA3M', 'SCUBA-2', 'RXWB', 'RXWD2', 'UU', 'ALAIHI', 'AWEOWEO',
+        'HARP', 'RXA3', 'RXA3M', 'SCUBA-2', 'RXWB', 'RXWD2',
+        'UU', 'ALAIHI', 'AWEOWEO', 'KUNTUR',
     )
 
     MANDATORY = ('backend',
