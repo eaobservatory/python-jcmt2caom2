@@ -206,7 +206,7 @@ class setfield(object):
                 logger.info('%-18s = %s', attr, getattr(args, attr))
 
         try:
-            self.tap = tapclient(proxy)
+            self.tap = tapclient(proxy=proxy)
 
             self.update(
                 runid=args.runid, collection=collection,

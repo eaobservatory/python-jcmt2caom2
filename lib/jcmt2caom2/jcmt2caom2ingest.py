@@ -2964,7 +2964,7 @@ class jcmt2caom2ingest(object):
             if not os.path.exists(proxy):
                 raise CAOMError('proxy does not exist: ' + proxy)
 
-            self.tap = CAOM2TAP(proxy)
+            self.tap = CAOM2TAP(proxy=proxy)
 
             if not os.path.isdir(self.workdir):
                 raise CAOMError('workdir is not a directory: '

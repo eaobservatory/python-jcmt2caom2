@@ -486,7 +486,7 @@ def run():
         os.path.expandvars(
             os.path.expanduser(a.proxy)))
 
-    tap = tapclient(proxy)
+    tap = tapclient(proxy=proxy)
 
     workdir = os.path.abspath(
         os.path.expandvars(

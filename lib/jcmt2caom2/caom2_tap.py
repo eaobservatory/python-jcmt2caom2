@@ -1,5 +1,5 @@
 # Copyright (C) 2014-2015 Science and Technology Facilities Council.
-# Copyright (C) 2015 East Asian Observatory.
+# Copyright (C) 2015-2024 East Asian Observatory.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@ from codecs import ascii_decode
 from collections import namedtuple
 from logging import getLogger
 
-from tools4caom2.tapclient import tapclient
+from tools4caom2.tapclient import tapclient, tapclient_ams
 
 logger = getLogger(__name__)
 
@@ -44,7 +44,7 @@ class CAOM2TAP(object):
     Class for interacting with CAOM-2 via CADC's TAP srevice.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, ams=True, **kwargs):
         """
         Construct CAOM-2 TAP query object.
 
@@ -52,7 +52,10 @@ class CAOM2TAP(object):
         the tools4caom2.tapclient constructor.
         """
 
-        self.tap = tapclient(*args, **kwargs)
+        if ams:
+            self.tap = tapclient_ams(**kwargs)
+        else:
+            self.tap = tapclient(**kwargs)
 
     def get_proposal_info(self, project_id):
         """
