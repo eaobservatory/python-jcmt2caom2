@@ -1886,18 +1886,24 @@ class jcmt2caom2ingest(object):
                           and header['PRODID'] == 'healpix-850um')
         if (is_healpix_850 and (algorithm == 'public') and
                 (uri not in self.explicit_wcs) and (header['TILENUM'] in [
+                    1399,   # job 318778
                     3054,
                     3055,
                     3066,
                     3067,
                     3755,
+                    5597,   # job 319661
+                    10990,  # job 320507
                     14301,
                     14303,
                     14325,
                     14327,
+                    15358,  # job 321123
                     15359,
                     15703,
                     16042,
+                    16043,  # job 321333
+                    16298,  # job 321359
                 ])):
             self.explicit_wcs[uri] = {
                 'spatial': jsa_tile_wcs(header),
