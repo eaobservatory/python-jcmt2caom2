@@ -2166,7 +2166,9 @@ class jcmt2caom2ingest(object):
                 elif (not (
                         part.product_type in [ProductType.SCIENCE,
                                               ProductType.NOISE]
-                        or ('_extent-mask' in fitsuri and partName == '0'))):
+                        or ('_extent-mask' in fitsuri and (
+                            partName == '0'
+                            or (len(part.chunks) > 0 and part.chunks[0].position is not None))))):
                     continue
 
                 if (len(part.chunks)) == 0:
