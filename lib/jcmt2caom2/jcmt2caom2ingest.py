@@ -2872,6 +2872,9 @@ class jcmt2caom2ingest(object):
                         help='show only warning and error messages')
         ap.add_argument('--xmloutdir',
                         help='directory into which to write XML files')
+        ap.add_argument('--argus',
+                        action='store_true',
+                        help='use argus (public TAP service) instead of AMS')
 
         args = ap.parse_args()
 
@@ -2972,7 +2975,7 @@ class jcmt2caom2ingest(object):
             if not os.path.exists(proxy):
                 raise CAOMError('proxy does not exist: ' + proxy)
 
-            self.tap = CAOM2TAP(proxy=proxy)
+            self.tap = CAOM2TAP(proxy=proxy, ams=(not args.argus))
 
             if not os.path.isdir(self.workdir):
                 raise CAOMError('workdir is not a directory: '

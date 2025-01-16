@@ -147,7 +147,7 @@ class raw(object):
         self.dry_run = None
 
         self.conn = None
-        self.tap = CAOM2TAP()
+        self.tap = None
 
         self.xmloutdir = None
 
@@ -912,6 +912,15 @@ class raw(object):
             '--xmloutdir',
             help='directory into which to write XML files')
 
+        ap.add_argument(
+            '--proxy',
+            default='~/.ssl/cadcproxy.pem',
+            help='path to CADC proxy')
+        ap.add_argument(
+            '--argus',
+            action='store_true',
+            help='use argus (public TAP service) instead of AMS')
+
         args = ap.parse_args()
 
         if args.collection:
@@ -932,7 +941,16 @@ class raw(object):
         logger.info('obsid                = %s', self.obsid)
         logger.info('dry run              = %s', self.dry_run)
 
+        proxy = os.path.abspath(
+            os.path.expandvars(
+                os.path.expanduser(args.proxy)))
+
         try:
+            if not os.path.exists(proxy):
+                raise CAOMError('proxy does not exist: ' + proxy)
+
+            self.tap = CAOM2TAP(proxy=proxy, ams=(not args.argus))
+
             self.conn = ArcDB()
 
             self.ingest()
@@ -944,6 +962,7 @@ class raw(object):
             return False
 
         finally:
-            self.conn.close()
+            if self.conn is not None:
+                self.conn.close()
 
         return True
