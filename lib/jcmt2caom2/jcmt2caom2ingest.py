@@ -1308,10 +1308,6 @@ class jcmt2caom2ingest(object):
 
         # Only do these tests if the backend is OK
         if backend in ('ACSIS', 'DAS', 'AOS-C'):
-            if inbeam and inbeam != 'POL':
-                raise CAOMError('file {0}: INBEAM can only be blank or POL '
-                                'for heterodyne observations'.format(filename))
-
             if is_defined('OBS_TYPE', header):
                 self.validation.restricted_value(
                     filename, 'OBS_TYPE', header,
@@ -1352,18 +1348,14 @@ class jcmt2caom2ingest(object):
             if is_defined('SB_MODE', header):
                 keyword_dict['sideband_filter'] = header['SB_MODE']
 
-        thisBad, keyword_list = instrument_keywords('stdpipe',
-                                                    instrument,
-                                                    backend,
-                                                    keyword_dict)
-        self.instrument_keywords = ''
-        if thisBad:
-            raise CAOMError('instrument_keywords for file {0} could not be '
-                            'constructed from {1!r}'.format(
-                                filename, keyword_dict))
-        else:
-            self.instrument_keywords = ' '.join(keyword_list)
-            plane_dict['instrument.keywords'] = self.instrument_keywords
+        keyword_list = instrument_keywords(
+            'stdpipe',
+            instrument,
+            backend,
+            keyword_dict)
+
+        self.instrument_keywords = ' '.join(keyword_list)
+        plane_dict['instrument.keywords'] = self.instrument_keywords
 
         # Telescope metadata. geolocation is optional.
         self.validation.restricted_value(

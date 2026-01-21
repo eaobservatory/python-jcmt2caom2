@@ -237,16 +237,12 @@ class raw(object):
             subsysnr = min(subsystem.keys())
             keyword_dict['sideband'] = subsystem[subsysnr]['obs_sb']
             keyword_dict['sideband_filter'] = subsystem[subsysnr]['sb_mode']
-        someBad, keyword_list = instrument_keywords('raw',
-                                                    common['instrume'],
-                                                    common['backend'],
-                                                    keyword_dict)
 
-        if someBad:
-            ingestibility = INGESTIBILITY.BAD
-            self.instrument_keywords = []
-        else:
-            self.instrument_keywords = keyword_list
+        self.instrument_keywords = instrument_keywords(
+            'raw',
+            common['instrume'],
+            common['backend'],
+            keyword_dict)
 
         return ingestibility
 

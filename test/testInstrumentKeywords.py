@@ -18,6 +18,8 @@ from __future__ import absolute_import
 
 import unittest
 
+from tools4caom2.error import CAOMError
+
 from jcmt2caom2.jsa.instrument_keywords import instrument_keywords
 
 
@@ -45,6 +47,17 @@ class testInstrumentKeywords(unittest.TestCase):
                        'stdpipe': False,
                        'external': False},
                       ['LSB', 'SSB', 'PSSW']],
+
+                     ['ACSIS',
+                      'UU',
+                      {'sideband': 'LSB',
+                       'sideband_filter': '2SB',
+                       'switching_mode': 'pssw',
+                       'inbeam': 'WAVEPLATE'},
+                      {'raw': False,
+                       'stdpipe': False,
+                       'external': False},
+                       ['WAVEPLATE', 'LSB', '2SB', 'PSSW']],
 
                      ['SCUBA-2',
                       'SCUBA-2',
@@ -95,19 +108,15 @@ class testInstrumentKeywords(unittest.TestCase):
         for strictness in ('raw', 'stdpipe', 'external'):
             for backend, frontend, keyword_dict, strict_dict, retval \
                     in test_data:
-                status, keyword_list = instrument_keywords(strictness,
-                                                           frontend,
-                                                           backend,
-                                                           keyword_dict)
+                args = [strictness, frontend, backend, keyword_dict]
+
                 if strict_dict[strictness]:
-                    self.assertEqual(
-                        status, True,
-                        'The status returned from '
-                        'instrument_keywords("' + strictness +
-                        '", "' + repr(keyword_dict) +
-                        '") was ' + str(status) +
-                        ' but should have been True')
+                    with self.assertRaises(CAOMError):
+                        instrument_keywords(*args)
+
                 else:
+                    keyword_list = instrument_keywords(*args)
+
                     self.assertEqual(
                         keyword_list, retval,
                         'The value returned from '

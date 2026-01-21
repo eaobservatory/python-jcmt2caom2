@@ -17,12 +17,14 @@
 import logging
 import re
 
+from tools4caom2.error import CAOMError
+
 logger = logging.getLogger(__name__)
 
 # global dictionary of permitted combinations of values by backend
 permitted = {
     'ACSIS': {
-        'inbeam': ["POL"],
+        'inbeam': ['WAVEPLATE'],
         'sideband': ["LSB", "USB"],
         'sideband_filter': ["DSB", "SSB", "2SB"],
         'switching_mode': ["CHOP", "FREQSW", "NONE", "PSSW"]
@@ -36,14 +38,14 @@ permitted = {
     },
 
     'AOS-C': {
+        'inbeam': [],
         'sideband': ["LSB", "USB"],
         'sideband_filter': ["DSB", "SSB", 'UNKNOWN'],
         'switching_mode': ["CHOP", "FREQSW", "NONE", "PSSW"]
     },
 
     'SCUBA-2': {
-        'inbeam': ["BLACKBODY", "FTS2", "POL", "POL2_CAL",
-                   "POL2_WAVE", "POL2_ANA", "SHUTTER"],
+        'inbeam': ['BLACKBODY'],
         'switching_mode': ["NONE", "SELF", "SPIN"]
     }
 }
@@ -61,7 +63,7 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict):
                 violation of standards is reported as an error, 'stdpipe'
                 allows some missing values that can legitimately be dropped
                 during normal processing, and 'external' reports invalid values
-                but ignores missing keywords and always returns bad=False.
+                but ignores missing keywords does not raise exceptions.
     frontend: receiver name
     backend: spectrometer name for heterodyne observations
     keyword_dict: a dictionary containing candidate keywords.  Keys for the
@@ -70,11 +72,13 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict):
         x_scan_pat: scan pattern (x makes it the last item in a sorted list)
         sideband: for heterodyne observations, the signal sideband (USB, LSB)
         sideband_mode: single or double sideband (SSB, DSB)
-        swiching_mode: the switching mode in use
+        switching_mode: the switching mode in use
 
-    Returns a tuple containing:
-    bad: True if an error was encountered, False otherwise
+    Returns:
     keywords: a list containing the keywords to be used
+
+    Raises:
+    CAOMError if an error is encountered.
 
     Usage: (omitting error checking)
     For a raw observation:
@@ -86,7 +90,7 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict):
         if backend in ('ACSIS', 'DAS', 'AOS-C'):
             keyword_dict['sideband'] = subsystem['obs_sb']
             keyword_dict['sieband_mode'] = subsystem['sb_mode']
-        mybad, keywords = instrument_keywords('raw', keyword_dict)
+        keywords = instrument_keywords('raw', keyword_dict)
     For processed data:
         keyword_dict = {}
         keyword_dict['frontend'] = header['INSTRUME']
@@ -96,49 +100,49 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict):
         if header['BACKEND'] in ('ACSIS', 'DAS', 'AOS-C'):
             keyword_dict['sideband'] = header['OBS_SB']
             keyword_dict['sieband_filter'] = header['SB_MODE']
-        mybad, keywords = instrument_keywords('stdpipe',
-                                              frontend,
-                                              backend,
-                                              keyword_dict)
+        keywords = instrument_keywords('stdpipe',
+                                       frontend,
+                                       backend,
+                                       keyword_dict)
     """
-    bad = False
+
+    if strictness not in ('raw', 'stdpipe', 'external'):
+        raise CAOMError('Unknown strictness "{}"'.format(strictness))
 
     # The backend is not mandatory for external data products, but the
     # rest of the backend-dependent validity checks must then be skipped
 
-    # This first block of code just reports warnings and sets bad to T
+    # This first block of code just reports errors
     myBackend = backend.strip().upper()
     myFrontend = frontend.strip().upper()
 
     if myBackend not in permitted:
-        logger.warning('instrument_keywords does not recognize ' +
-                       '"%s" as a permitted backend', backend)
-        bad = True
+        raise CAOMError('instrument_keywords does not recognize ' +
+                        '"%s" as a permitted backend' % backend)
+
     else:
         # The remaining checks only work if backend is permitted
         if myBackend in ('ACSIS', 'DAS', 'AOS-C'):
             if 'sideband' not in keyword_dict and strictness == 'raw':
-                logger.warning('with strictness = %s'
-                               ' backend = %s'
-                               ' frontend = %s'
-                               ' sideband is not defined',
-                               strictness, backend, frontend)
-                bad = True
+                raise CAOMError('with strictness = %s'
+                                ' backend = %s'
+                                ' frontend = %s'
+                                ' sideband is not defined'
+                                % (strictness, backend, frontend))
+
             if 'sideband' in keyword_dict:
                 sideband = keyword_dict['sideband'].strip().upper()
                 if sideband not in permitted[myBackend]['sideband']:
-                    logger.warning('sideband %s'
-                                   ' is not in the list permited for %s: %s',
-                                   sideband, myBackend,
-                                   repr(permitted[myBackend]['sideband']))
-                    bad = True
+                    raise CAOMError('sideband %s'
+                                    ' is not in the list permited for %s: %r'
+                                    % (sideband, myBackend,
+                                       permitted[myBackend]['sideband']))
 
-            if ('sideband_filter' not in keyword_dict and
-                    strictness != 'external'):
+            if 'sideband_filter' not in keyword_dict:
+                if strictness != 'external':
+                    raise CAOMError('sideband_filter is not defined')
 
-                logger.warning('sideband_filter is not defined')
-                bad = True
-            if 'sideband_filter' in keyword_dict:
+            else:
                 sideband_filter = \
                     keyword_dict['sideband_filter'].strip().upper()
 
@@ -157,51 +161,58 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict):
 
                 elif (sideband_filter not in
                         permitted[myBackend]['sideband_filter']):
-                    logger.warning(
+                    raise CAOMError(
                         'sideband_filter %s'
-                        ' is not in the list permited for %s: %s',
-                        sideband_filter, backend,
-                        repr(permitted[myBackend]['sideband_filter']))
-                    bad = True
+                        ' is not in the list permited for %s: %r'
+                        % (sideband_filter, backend,
+                           permitted[myBackend]['sideband_filter']))
+
         else:
             if 'sideband' in keyword_dict:
-                logger.warning('sideband is not permitted for %s',
-                               backend)
-                bad = True
+                raise CAOMError(
+                    'sideband is not permitted for %s' % backend)
 
             if 'sideband_filter' in keyword_dict:
-                logger.warning('sideband_filter is not permitted for %s',
-                               backend)
-                bad = True
+                raise CAOMError(
+                    'sideband_filter is not permitted for %s' % backend)
 
-        if 'switching_mode' not in keyword_dict and strictness == 'raw':
-            logger.warning('switching_mode is not defined')
-            bad = True
-        if 'switching_mode' in keyword_dict:
+        if 'switching_mode' not in keyword_dict:
+            if strictness == 'raw':
+                raise CAOMError('switching_mode is not defined')
+
+        else:
             switching_mode = keyword_dict['switching_mode'].strip().upper()
+
             # DAS observations often have 'FREQ' instead of 'FREQSW'
             if switching_mode == 'FREQ':
                 switching_mode = 'FREQSW'
                 keyword_dict['switching_mode'] = switching_mode
 
             if switching_mode not in permitted[myBackend]['switching_mode']:
-                logger.warning('switching_mode %s'
-                               ' is not in the list permited for %s: %s',
-                               switching_mode, backend,
-                               repr(permitted[myBackend]['switching_mode']))
-                bad = True
+                raise CAOMError('switching_mode %s'
+                                ' is not in the list permited for %s: %r'
+                                % (switching_mode, backend,
+                                   permitted[myBackend]['switching_mode']))
 
     # If there were no actual errors, compose the keyword list
     keywords = []
-    if not bad:
-        for key in sorted(keyword_dict.keys()):
-            if key == 'inbeam':
-                inbeam_list = re.split(r'\s+',
-                                       keyword_dict['inbeam'].strip().upper())
-                for item in inbeam_list:
-                    if not re.search(r'POL|FTS|SHUTTER', item):
-                        keywords.append(item)
-            else:
-                keywords.append(keyword_dict[key].strip().upper())
+    for key in sorted(keyword_dict.keys()):
+        if key == 'inbeam':
+            inbeam_list = re.split(r'\s+',
+                                   keyword_dict['inbeam'].strip().upper())
 
-    return (bad, keywords)
+            for item in inbeam_list:
+                if re.search(r'POL|FTS|SHUTTER', item):
+                    continue
+
+                if item not in permitted[myBackend]['inbeam']:
+                    raise CAOMError(
+                        'inbeam entry "%s" is not permitted for %s: %r'
+                        % (item, backend, permitted[myBackend]['inbeam']))
+
+                keywords.append(item)
+
+        else:
+            keywords.append(keyword_dict[key].strip().upper())
+
+    return keywords
