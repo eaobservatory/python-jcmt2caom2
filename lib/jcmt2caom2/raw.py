@@ -90,14 +90,6 @@ It therefore always reads the metadata from SYBASE.
 logger = logging.getLogger(__name__)
 
 
-class INGESTIBILITY(object):
-    """
-    Defines ingestion constants
-    """
-    GOOD = 0
-    BAD = 1
-
-
 class raw(object):
     """
     Use pyCAOM2 to ingest raw JCMT raw data for a single observation using
@@ -198,30 +190,26 @@ class raw(object):
         common      dictionary containing fields common to the observation
         subsystem   dictionary containing fields from ACSIS or SCUBA2
 
-        Returns:
-        INGESTIBILITY.GOOD if observation is OK
-        INGESTIBILITY.BAD  if observation should be skipped
+        Raises:
+        CAOMError if observation should be skipped
         """
 
         nullvalues = []
-        ingestibility = INGESTIBILITY.GOOD
 
         # Check that mandatory fields do not have NULL values
         for field in raw.MANDATORY:
             if common[field] is None:
                 nullvalues.append(field)
         if nullvalues:
-            logger.warning('The following mandatory fields are NULL: %s',
-                           ', '.join(sorted(nullvalues)))
-            ingestibility = INGESTIBILITY.BAD
+            raise CAOMError('The following mandatory fields are NULL: %s'
+                            % (', '.join(sorted(nullvalues))))
 
         if common['obs_type'] in ('phase', 'RAMP'):
             # do not ingest observations with bogus obs_type
             # this is not an error, but log a warning
-            logger.warning(
-                'Observation %s is being skipped because obs_type = %s',
-                self.obsid, common['obs_type'])
-            ingestibility = INGESTIBILITY.BAD
+            raise CAOMError(
+                'Observation %s is being skipped because obs_type = %s'
+                % (self.obsid, common['obs_type']))
 
         # Check observation-level mandatory headers with restricted values
         # by creating the instrument keyword list
@@ -243,8 +231,6 @@ class raw(object):
             common['instrume'],
             common['backend'],
             keyword_dict)
-
-        return ingestibility
 
     def build_observation(self,
                           observation,
@@ -847,10 +833,7 @@ class raw(object):
                                              self.conn)
         logger.debug('query complete')
 
-        ingestibility = self.check_observation(common, subsystem)
-        if ingestibility == INGESTIBILITY.BAD:
-            logger.error('SERIOUS ERRORS were found in %s', self.obsid)
-            raise CAOMError('Serious errors found')
+        self.check_observation(common, subsystem)
 
         repository = Repository()
 
