@@ -258,11 +258,18 @@ class raw(object):
             observation = SimpleObservation(collection,
                                             observationID)
 
-        # Determine data quality metrics for this observation.
+        # Determine data quality metrics for this observation. Treat as "junk"
+        # if there were ingestion errors (previously not ingested so not shown
+        # to users).
+        quality = (
+            OMPState.JUNK
+            if common['ingestion_errors'] is not None
+            else common['quality'])
+
         data_quality = DataQuality(Quality.JUNK) \
-            if OMPState.is_caom_junk(common['quality']) else None
+            if OMPState.is_caom_junk(quality) else None
         requirement_status = Requirements(Status.FAIL) \
-            if OMPState.is_caom_fail(common['quality']) else None
+            if OMPState.is_caom_fail(quality) else None
 
         # "Requirements" is an observation-level attribute, so fill it in now.
         observation.requirements = requirement_status
