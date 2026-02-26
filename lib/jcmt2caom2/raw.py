@@ -890,6 +890,11 @@ class raw(object):
         ap.add_argument(
             '--xmloutdir',
             help='directory into which to write XML files')
+        ap.add_argument(
+            '--dev',
+            action='store_true',
+            dest='dev_db',
+            help='Read from the "dev" copy of the telescope database')
 
         ap.add_argument(
             '--proxy',
@@ -930,7 +935,7 @@ class raw(object):
 
             self.tap = CAOM2TAP(proxy=proxy, ams=(not args.argus))
 
-            self.conn = ArcDB()
+            self.conn = ArcDB(dev=args.dev_db)
 
             self.ingest()
 

@@ -2858,6 +2858,11 @@ class jcmt2caom2ingest(object):
         ap.add_argument('--retain',
                         action='store_true',
                         help='retain all fits2caom2 xml and override files')
+        ap.add_argument(
+            '--dev',
+            action='store_true',
+            dest='dev_db',
+            help='Read from the "dev" copy of the telescope database')
 
         ap.add_argument('--quiet', '-q',
                         action='store_true',
@@ -2981,7 +2986,7 @@ class jcmt2caom2ingest(object):
                 raise CAOMError('default file does not exist: '
                                 + str(self.default))
 
-            self.conn = ArcDB()
+            self.conn = ArcDB(dev=args.dev_db)
 
             # Construct validation object
             self.validation = CAOMValidation(
