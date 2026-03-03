@@ -19,6 +19,8 @@
 # Author: SF Graves
 
 import logging
+import os
+import re
 
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.tapclient import tapclient
@@ -133,3 +135,62 @@ def set_release_date(productID, obsids, releasedate, collection='JCMT',
                 logger.info(
                     'obsid: %s, plane: %s has a releasedate of %s',
                     obsid, productID, str(releasedate))
+
+
+def set_data_quality(
+        obs_id, plane_ids,
+        data_quality=(), requirement_status=(),
+        collection='JCMT', xmloutdir=None,
+        dry_run=False):
+    """
+    Set the quality of the given observation/plane.
+    """
+
+    if (data_quality == ()) and (requirement_status == ()):
+        raise Exception(
+            'Neither data quality nor requirement status specified')
+
+    if obs_id is None:
+        raise Exception(
+            'No obs_id specified')
+
+    if (data_quality != ()) and (not plane_ids):
+        raise Exception(
+            'No plane_id specified when setting data quality')
+
+    logger.info('Fetching observation %s to update quality', obs_id)
+
+    repository = Repository()
+
+    uri = 'caom:' + collection + '/' + obs_id
+
+    with repository.process(uri, dry_run=dry_run) as wrapper:
+        if wrapper.observation is None:
+            logger.warning(
+                'Observation %s not found in repository',
+                obs_id)
+            return
+
+        if requirement_status != ():
+            wrapper.observation.requirements = requirement_status
+
+        if data_quality != ():
+            for plane_id in plane_ids:
+                if plane_id not in wrapper.observation.planes:
+                    logger.warning(
+                        'Plane %s not found in observation %s',
+                        plane_id, obs_id)
+
+                    # Prevent storage back to the repository.
+                    wrapper.observation = None
+
+                    break
+
+                else:
+                    wrapper.observation.planes[plane_id].quality = data_quality
+
+        if xmloutdir and wrapper.observation is not None:
+            with open(os.path.join(xmloutdir, re.sub(
+                    '[^-_A-Za-z0-9]', '_', obs_id)) + '.xml',
+                    'wb') as f:
+                repository.writer.write(wrapper.observation, f)

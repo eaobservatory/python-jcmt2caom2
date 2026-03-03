@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+
+"""
+Usage:
+    jsa-set-quality [options] [--fail | --no-fail] [--junk | --no-junk] <obs_id> [<plane_id>...]
+
+Options:
+    --fail              Set requirements: fail
+    --junk              Set quality: junk.
+
+    --verbose, -v       Print debug output
+    --quiet, -q         Show only important output
+    --dry-run, -n       Do not send modified data back to the CAOM-2 repository
+    --xmloutdir <dir>   Directory into which to write XML version of updated record
+"""
+
+import logging
+
+from docopt import docopt
+from caom2.observation import Requirements, Status
+from caom2.plane import DataQuality, Quality
+
+from jcmt2caom2.adjustments import set_data_quality
+
+
+def main():
+    args = docopt(__doc__)
+
+    loglevel = logging.INFO
+
+    if args['--verbose']:
+        loglevel = logging.DEBUG
+    elif args['--quiet']:
+        loglevel = logging.WARNING
+
+    logging.basicConfig(level=loglevel)
+
+    quality_args = {}
+
+    if args['--fail']:
+        quality_args['requirement_status'] = Requirements(Status.FAIL)
+    elif args['--no-fail']:
+        quality_args['requirement_status'] = None
+
+    if args['--junk']:
+        quality_args['data_quality'] = DataQuality(Quality.JUNK)
+    elif args['--no-junk']:
+        quality_args['data_quality'] = None
+
+    set_data_quality(
+        obs_id=args['<obs_id>'],
+        plane_ids=args['<plane_id>'],
+        xmloutdir=args['--xmloutdir'],
+        dry_run=args['--dry-run'],
+        **quality_args)
+
+
+if __name__ == '__main__':
+    main()
