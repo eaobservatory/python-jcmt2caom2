@@ -38,7 +38,7 @@ from caom2.artifact import Artifact
 from caom2.chunk import Chunk
 from caom2.common import ChecksumURI
 from caom2.observation import CompositeObservation
-from caom2.plane import CalibrationLevel
+from caom2.plane import CalibrationLevel, DataQuality, Quality
 from caom2.observation import ObservationIntentType
 from caom2.chunk import ProductType
 from caom2.artifact import ReleaseType
@@ -2438,7 +2438,11 @@ class jcmt2caom2ingest(object):
                 existing_artifacts = None
                 if wrapper.observation is not None:
                     self.remove_excess_parts(wrapper.observation)
+
                     existing_artifacts = self.get_existing_artifacts(
+                        wrapper.observation)
+
+                    observation_is_junk = self.get_existing_quality(
                         wrapper.observation)
 
                 for productID in thisObservation:
@@ -2495,6 +2499,15 @@ class jcmt2caom2ingest(object):
                         logger.info(
                             'INGESTED: observationID=%s productID="%s"',
                             observationID, productID)
+
+                        # It appears we can't set quality with a fits2caom2
+                        # override, so do it now.
+                        if observation_is_junk:
+                            logger.debug(
+                                'Marking new plane "%s" data quality as junk',
+                                productID)
+                            wrapper.observation.planes[productID].quality = \
+                                DataQuality(Quality.JUNK)
 
                         for fitsuri in thisPlane:
                             if fitsuri not in ('plane_dict',
@@ -2675,6 +2688,26 @@ class jcmt2caom2ingest(object):
                         'No version number found in %s', artifactID)
 
         return existing_artifacts
+
+    def get_existing_quality(self, observation):
+        """
+        Inspect the quality flag of existing raw planes.
+
+        :return: True if any are junk, false otherwise
+        """
+
+        for (planeID, plane) in observation.planes.items():
+            if planeID[0:3] == 'raw':
+                quality = plane.quality
+
+                if quality is not None:
+                    if quality.flag == Quality.JUNK:
+                        logger.debug(
+                            'Existing plane "%s" is marked as junk',
+                            planeID)
+                        return True
+
+        return False
 
     def remove_old_artifacts(self, observation, previous_artifacts):
         """
