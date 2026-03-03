@@ -170,11 +170,11 @@ def _ensure_file_extension(file_id):
     return file_id
 
 
-class jcmt2caom2ingest(object):
+class reduced(object):
     """
     A class to ingest reduced data products into the JSA.
 
-    The jcmt2caom2ingest class implements methods to collect metadata from a
+    The reduced class implements methods to collect metadata from a
     set of FITS files and from the JCMT database that will be passed to
     fits2caom2 to construct a CAOM-2 observation.  Once completed, it is
     serialized as XML and uploaded to the CAOM-2 repository.
@@ -1238,7 +1238,7 @@ class jcmt2caom2ingest(object):
                 plane_dict['environment.tau'] = \
                     '%f' % (float(header['TAU225ST']),)
                 plane_dict['environment.wavelengthTau'] = \
-                    jcmt2caom2ingest.lambda_csotau
+                    self.lambda_csotau
 
             if is_defined('ATSTART', header):
                 plane_dict['environment.ambientTemp'] = \
@@ -1446,7 +1446,7 @@ class jcmt2caom2ingest(object):
             if is_defined('RESTFREQ', header):
                 restfreq = float(header['RESTFREQ'])
             elif is_defined('RESTWAV', header):
-                restfreq = (jcmt2caom2ingest.speedOfLight /
+                restfreq = (self.speedOfLight /
                             float(header['RESTWAV']))
             elif is_defined('RESTFRQ', header):
                 restfreq = float(header['RESTFRQ'])
@@ -1829,8 +1829,8 @@ class jcmt2caom2ingest(object):
             if is_defined('PRODTYPE', first_extension):
                 prodtypes[1] = first_extension['PRODTYPE'].lower()
 
-        elif product in jcmt2caom2ingest.productType:
-            prodtypes = jcmt2caom2ingest.productType[product]
+        elif product in self.productType:
+            prodtypes = self.productType[product]
 
         for prodtype in prodtypes.values():
             if prodtype not in [x.value for x in ProductType.__members__.values()]:

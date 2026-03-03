@@ -5,10 +5,10 @@ import sys
 
 from tools4caom2.util import configure_logger
 
-from jcmt2caom2.jcmt2caom2ingest import jcmt2caom2ingest
+from jcmt2caom2.reduced import reduced
 
 configure_logger(level=logging.INFO)
 
-myingest = jcmt2caom2ingest()
+myingest = reduced()
 if not myingest.run():
     sys.exit(1)
