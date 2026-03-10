@@ -2436,6 +2436,7 @@ class reduced(object):
             with self.repository.process(
                     obsuri, dry_run=self.dry_run) as wrapper:
                 existing_artifacts = None
+                observation_is_junk = False
                 if wrapper.observation is not None:
                     self.remove_excess_parts(wrapper.observation)
 
