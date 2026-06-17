@@ -1959,6 +1959,8 @@ class reduced(object):
                         ('M17BL007', 'NEP-7'),
                         ('M17BL007', 'NEP-8'),
                         ('M17BL007', 'NEP-9'),
+                        ('M20AL005', 'NEP-11'),
+                        ('M20AL005', 'NEP-12'),
                         ('MJLSC02', 'Akari-NEP_PONG2700_850'),
                         ]:
                     if ((header['PROJECT'] == bad_project)
