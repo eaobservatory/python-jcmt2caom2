@@ -202,7 +202,10 @@ def instrument_keywords(strictness, frontend, backend, keyword_dict):
                                    keyword_dict['inbeam'].strip().upper())
 
             for item in inbeam_list:
-                if re.search(r'POL|FTS|SHUTTER', item):
+                # Some data (e.g. scuba2_00034_20130518T084606) appear to have
+                # an inbeam value of '" "'.  After splitting on spaces this
+                # will become 2 '"', so ignore this here also.
+                if re.search(r'POL|FTS|SHUTTER|"', item):
                     continue
 
                 if item not in permitted[myBackend]['inbeam']:
