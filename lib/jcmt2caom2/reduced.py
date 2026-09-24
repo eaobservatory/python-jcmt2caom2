@@ -1874,9 +1874,11 @@ class reduced(object):
         # the CAOM-2 repository rejects the WCS information
         # written by fits2caom2, while awaiting a response to our
         # inquiries to CADC about this problem.
-        is_healpix_850 = (is_defined('PRODID', header)
-                          and header['PRODID'] == 'healpix-850um')
-        if (is_healpix_850 and (algorithm == 'public') and
+        is_healpix_850_450 = (
+            is_defined('PRODID', header) and (
+                header['PRODID'] == 'healpix-850um' or
+                header['PRODID'] == 'healpix-450um'))
+        if (is_healpix_850_450 and (algorithm == 'public') and
                 (uri not in self.explicit_wcs) and (header['TILENUM'] in [
                     1399,   # job 318778
                     3054,
@@ -1902,7 +1904,7 @@ class reduced(object):
                 'replace_only': True,
             }
         # Also temporarily work around problems for HEALPix obs products.
-        if (is_healpix_850 and (algorithm == 'exposure') and
+        if (is_healpix_850_450 and (algorithm == 'exposure') and
                 (uri not in self.explicit_wcs)):
             need_explicit_wcs = False
             if (header['OBSID'] in [
