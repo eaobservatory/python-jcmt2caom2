@@ -1,5 +1,5 @@
 # Copyright (C) 2014-2015 Science and Technology Facilities Council.
-# Copyright (C) 2015-2018 East Asian Observatory.
+# Copyright (C) 2015-2026 East Asian Observatory.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -63,6 +63,7 @@ from tools4caom2.__version__ import version as tools4caom2version
 from tools4caom2.artifact_uri import make_artifact_uri
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.error import CAOMError
+from tools4caom2.login import cadc_log_in
 from tools4caom2.mjd import utc2mjd
 
 from jcmt2caom2.__version__ import version as jcmt2caom2version
@@ -138,6 +139,7 @@ class raw(object):
 
         self.dry_run = None
 
+        self.cookies = None
         self.conn = None
         self.tap = None
 
@@ -842,7 +844,7 @@ class raw(object):
 
         self.check_observation(common, subsystem)
 
-        repository = Repository()
+        repository = Repository(self.cookies)
 
         uri = 'caom:' + self.collection + '/' + common['obsid']
         # get the list of files for this observation
@@ -904,6 +906,11 @@ class raw(object):
             help='Read from the "dev" copy of the telescope database')
 
         ap.add_argument(
+            '--cookie',
+            action='store_true',
+            dest='cookie',
+            help='Use log in cookie instead of proxy certificate')
+        ap.add_argument(
             '--proxy',
             default='~/.ssl/cadcproxy.pem',
             help='path to CADC proxy')
@@ -936,11 +943,16 @@ class raw(object):
             os.path.expandvars(
                 os.path.expanduser(args.proxy)))
 
+        if args.cookie:
+            self.cookies = cadc_log_in()
+
         try:
             if not os.path.exists(proxy):
                 raise CAOMError('proxy does not exist: ' + proxy)
 
-            self.tap = CAOM2TAP(proxy=proxy, ams=(not args.argus))
+            self.tap = CAOM2TAP(
+                proxy=proxy, cookies=self.cookies,
+                ams=(not args.argus))
 
             self.conn = ArcDB(dev=args.dev_db)
 
