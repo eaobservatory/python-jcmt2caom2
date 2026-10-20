@@ -26,6 +26,7 @@ import re
 import shutil
 import subprocess
 import sys
+from tempfile import mkdtemp
 
 from astropy.io import fits
 from astropy.time import Time
@@ -2884,6 +2885,9 @@ class reduced(object):
         # output directory
         ap.add_argument('--workdir',
                         help='output directory, (default = current directory')
+        ap.add_argument('--tempdir',
+                        action='store_true',
+                        help='use temporary output directory')
 
         # debugging options
         ap.add_argument('--dry-run', '-n',
@@ -2947,9 +2951,17 @@ class reduced(object):
                     os.path.expanduser(args.default)))
 
         if args.workdir:
+            if args.tempdir:
+                print('Both --workdir and --tempdir given', file=sys.stderr)
+                return False
+
             self.workdir = os.path.abspath(
                 os.path.expandvars(
                     os.path.expanduser(args.workdir)))
+
+        elif args.tempdir:
+            self.workdir = mkdtemp()
+
         else:
             self.workdir = os.getcwd()
 
