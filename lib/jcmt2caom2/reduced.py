@@ -59,6 +59,7 @@ from tools4caom2.artifact_uri import extract_artifact_uri_filename, \
 from tools4caom2.caom2repo_wrapper import Repository
 from tools4caom2.error import CAOMError
 from tools4caom2.fits2caom2 import run_fits2caom2
+from tools4caom2.login import cadc_log_in
 from tools4caom2.mjd import utc2mjd
 from tools4caom2.validation import CAOMValidation, CAOMValidationError
 
@@ -204,6 +205,8 @@ class reduced(object):
         storing default values for command line arguments.
         """
 
+        self.cookies = None
+
         # Derive the config path from the script or bin directory path
         if 'CADC_ROOT' in os.environ:
             self.configpath = os.path.abspath(
@@ -264,8 +267,8 @@ class reduced(object):
         # TAP client
         self.tap = None
 
-        # Prepare CAOM-2 repository client.
-        self.repository = Repository()
+        # Prepare CAOM-2 repository client later.
+        self.repository = None
 
         # A dictionary giving the number of parts which should be in each
         # artifact.  When we read a FITS file, the part count will be written
@@ -2844,6 +2847,11 @@ class reduced(object):
 
         ap = argparse.ArgumentParser(progname)
 
+        ap.add_argument(
+            '--cookie',
+            action='store_true',
+            dest='cookie',
+            help='Use log in cookie instead of proxy certificate')
         ap.add_argument('--proxy',
                         default='~/.ssl/cadcproxy.pem',
                         help='path to CADC proxy')
@@ -2920,6 +2928,9 @@ class reduced(object):
         proxy = os.path.abspath(
             os.path.expandvars(
                 os.path.expanduser(args.proxy)))
+
+        if args.cookie:
+            self.cookies = cadc_log_in()
 
         self.collection = args.collection
 
@@ -2998,6 +3009,8 @@ class reduced(object):
         logger.info('workdir            = %s', self.workdir)
 
         try:
+            self.repository = Repository(cookies=self.cookies)
+
             if args.fix:
                 return self.fix_observation(args.fix)
 
@@ -3022,7 +3035,9 @@ class reduced(object):
             if not os.path.exists(proxy):
                 raise CAOMError('proxy does not exist: ' + proxy)
 
-            self.tap = CAOM2TAP(proxy=proxy, ams=(not args.argus))
+            self.tap = CAOM2TAP(
+                proxy=proxy, cookies=self.cookies,
+                ams=(not args.argus))
 
             if not os.path.isdir(self.workdir):
                 raise CAOMError('workdir is not a directory: '
@@ -3040,8 +3055,8 @@ class reduced(object):
 
             # Construct validation object
             self.validation = CAOMValidation(
-                self.archive, file_id_regexes, self.make_file_id)
-
+                self.archive, file_id_regexes, self.make_file_id,
+                cookies=self.cookies)
 
             files = self.getfilelist(indirpath)
             self.fillMetadict([x for x in files if not x.endswith('.png')])
